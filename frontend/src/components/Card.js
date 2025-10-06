@@ -52,10 +52,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   elevated: {
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 5,
+    // Shadows removed for cleaner design
   },
 });
