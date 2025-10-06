@@ -8,89 +8,157 @@ import {
   Alert,
   Modal,
   TouchableOpacity,
+  Picker,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
-import { salesAPI } from '../services/api';
+import { salesAPI, productsAPI, customersAPI } from '../services/api';
 import { colors } from '../utils/colors';
 
 export const SalesScreen = () => {
   const { user } = useAuth();
   const [sales, setSales] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [formData, setFormData] = useState({
-    amount: '',
+    productId: '',
+    customerId: '',
+    quantity: '1',
+    unitPrice: '',
+    discount: '0',
     description: '',
   });
 
   useEffect(() => {
-    loadSales();
+    loadData();
   }, []);
 
-  const loadSales = async () => {
+  const loadData = async () => {
     try {
-      const response = await salesAPI.getAll(user?.projectId);
-      setSales(response.data);
+      const [salesRes, productsRes, customersRes] = await Promise.all([
+        salesAPI.getAll(user?.projectId),
+        productsAPI.getAll(),
+        customersAPI.getAll(user?.projectId),
+      ]);
+      setSales(salesRes.data);
+      setProducts(productsRes.data || []);
+      setCustomers(customersRes.data || []);
     } catch (error) {
-      console.error('Error loading sales:', error);
-      Alert.alert('Erreur', 'Impossible de charger les ventes');
+      console.error('Error loading data:', error);
+      Alert.alert('Erreur', 'Impossible de charger les données');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleProductChange = (productId) => {
+    setFormData(prev => ({ ...prev, productId }));
+
+    // Pré-remplir le prix unitaire depuis le produit sélectionné
+    const selectedProduct = products.find(p => p._id === productId);
+    if (selectedProduct) {
+      setFormData(prev => ({ ...prev, unitPrice: selectedProduct.unitPrice.toString() }));
+    }
+  };
+
+  const handleCustomerChange = (customerId) => {
+    setFormData(prev => ({ ...prev, customerId }));
+
+    // Pré-remplir la remise depuis le niveau de fidélité du client
+    const selectedCustomer = customers.find(c => c._id === customerId);
+    if (selectedCustomer && selectedCustomer.discount) {
+      setFormData(prev => ({ ...prev, discount: selectedCustomer.discount.toString() }));
+    }
+  };
+
   const handleAddSale = async () => {
-    if (!formData.amount) {
-      Alert.alert('Erreur', 'Veuillez saisir un montant');
+    if (!formData.productId || !formData.quantity || !formData.unitPrice) {
+      Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires');
       return;
     }
 
     try {
       await salesAPI.create({
-        ...formData,
-        amount: parseFloat(formData.amount),
         projectId: user?.projectId,
+        productId: formData.productId,
+        customerId: formData.customerId || undefined,
+        quantity: parseInt(formData.quantity),
+        unitPrice: parseFloat(formData.unitPrice),
+        discount: parseFloat(formData.discount) || 0,
+        description: formData.description,
       });
 
-      setFormData({ amount: '', description: '' });
+      setFormData({
+        productId: '',
+        customerId: '',
+        quantity: '1',
+        unitPrice: '',
+        discount: '0',
+        description: '',
+      });
       setModalVisible(false);
-      loadSales();
+      loadData();
       Alert.alert('Succès', 'Vente ajoutée avec succès');
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible d\'ajouter la vente');
+      console.error('Error adding sale:', error);
+      Alert.alert('Erreur', error.response?.data?.error || 'Impossible d\'ajouter la vente');
     }
   };
 
-  const renderSaleItem = ({ item }) => (
-    <Card style={styles.saleItem}>
-      <View style={styles.saleHeader}>
-        <View style={styles.saleIcon}>
-          <Ionicons name="cash-outline" size={24} color={colors.success} />
-        </View>
-        <View style={styles.saleInfo}>
-          <Text style={styles.saleAmount}>+{item.amount.toFixed(2)} €</Text>
-          {item.description && (
-            <Text style={styles.saleDescription}>{item.description}</Text>
-          )}
-          <Text style={styles.saleDate}>
-            {new Date(item.date).toLocaleDateString('fr-FR', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </Text>
-        </View>
-      </View>
-    </Card>
-  );
+  const renderSaleItem = ({ item }) => {
+    const product = products.find(p => p._id === item.productId);
+    const customer = customers.find(c => c._id === item.customerId);
 
-  const totalSales = sales.reduce((sum, sale) => sum + sale.amount, 0);
+    return (
+      <Card style={styles.saleItem}>
+        <View style={styles.saleHeader}>
+          <View style={styles.saleIcon}>
+            <Ionicons name="cash-outline" size={24} color={colors.success} />
+          </View>
+          <View style={styles.saleInfo}>
+            <Text style={styles.saleAmount}>+{item.amount?.toFixed(2) || '0.00'} €</Text>
+            {product && (
+              <Text style={styles.saleProduct}>
+                {product.name} x{item.quantity}
+              </Text>
+            )}
+            {customer && (
+              <View style={styles.customerBadge}>
+                <Ionicons name="person-outline" size={12} color={colors.primary} />
+                <Text style={styles.customerName}>{customer.name}</Text>
+              </View>
+            )}
+            {item.description && (
+              <Text style={styles.saleDescription}>{item.description}</Text>
+            )}
+            <Text style={styles.saleDate}>
+              {new Date(item.date).toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </Text>
+          </View>
+        </View>
+      </Card>
+    );
+  };
+
+  const totalSales = sales.reduce((sum, sale) => sum + (sale.amount || 0), 0);
+  const selectedProduct = products.find(p => p._id === formData.productId);
+  const selectedCustomer = customers.find(c => c._id === formData.customerId);
+
+  // Calcul du montant prévu
+  const estimatedAmount = formData.quantity && formData.unitPrice
+    ? (parseInt(formData.quantity) * parseFloat(formData.unitPrice)) - (parseFloat(formData.discount) || 0)
+    : 0;
 
   return (
     <View style={styles.container}>
@@ -132,35 +200,126 @@ export const SalesScreen = () => {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Nouvelle vente</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Nouvelle vente</Text>
+                <TouchableOpacity onPress={() => setModalVisible(false)}>
+                  <Ionicons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+              </View>
 
-            <Input
-              label="Montant *"
-              value={formData.amount}
-              onChangeText={(value) => setFormData(prev => ({ ...prev, amount: value }))}
-              placeholder="0.00"
-              keyboardType="numeric"
-              icon="cash-outline"
-            />
+              <View style={styles.employeeInfo}>
+                <Ionicons name="person-circle-outline" size={20} color={colors.primary} />
+                <Text style={styles.employeeText}>
+                  Vendeur: {user?.fullName || user?.username}
+                </Text>
+              </View>
 
-            <Input
-              label="Description"
-              value={formData.description}
-              onChangeText={(value) => setFormData(prev => ({ ...prev, description: value }))}
-              placeholder="Détails de la vente"
-              icon="document-text-outline"
-              multiline
-            />
+              <Text style={styles.fieldLabel}>Produit *</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={formData.productId}
+                  onValueChange={handleProductChange}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="Sélectionner un produit..." value="" />
+                  {products.map(product => (
+                    <Picker.Item
+                      key={product._id}
+                      label={`${product.name} - ${product.unitPrice}€`}
+                      value={product._id}
+                    />
+                  ))}
+                </Picker>
+              </View>
 
-            <Button
-              title="Ajouter la vente"
-              onPress={handleAddSale}
-            />
+              {selectedProduct && (
+                <View style={styles.infoBox}>
+                  <Ionicons name="information-circle-outline" size={16} color={colors.info} />
+                  <Text style={styles.infoText}>
+                    Prix: {selectedProduct.unitPrice}€ | Catégorie: {selectedProduct.category || 'Aucune'}
+                  </Text>
+                </View>
+              )}
+
+              <Text style={styles.fieldLabel}>Client</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={formData.customerId}
+                  onValueChange={handleCustomerChange}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="Aucun client sélectionné" value="" />
+                  {customers.map(customer => (
+                    <Picker.Item
+                      key={customer._id}
+                      label={`${customer.name} - ${customer.phone}`}
+                      value={customer._id}
+                    />
+                  ))}
+                </Picker>
+              </View>
+
+              {selectedCustomer && (
+                <View style={[styles.infoBox, { backgroundColor: colors.success + '10' }]}>
+                  <Ionicons name="star-outline" size={16} color={colors.success} />
+                  <Text style={styles.infoText}>
+                    Fidélité: {selectedCustomer.loyaltyLevel || 'bronze'} |
+                    {selectedCustomer.loyaltyPoints || 0} points |
+                    Remise: {selectedCustomer.discount || 0}%
+                  </Text>
+                </View>
+              )}
+
+              <Input
+                label="Quantité *"
+                value={formData.quantity}
+                onChangeText={(value) => setFormData(prev => ({ ...prev, quantity: value }))}
+                placeholder="1"
+                keyboardType="numeric"
+                icon="layers-outline"
+              />
+
+              <Input
+                label="Prix unitaire *"
+                value={formData.unitPrice}
+                onChangeText={(value) => setFormData(prev => ({ ...prev, unitPrice: value }))}
+                placeholder="0.00"
+                keyboardType="numeric"
+                icon="cash-outline"
+              />
+
+              <Input
+                label="Remise (montant)"
+                value={formData.discount}
+                onChangeText={(value) => setFormData(prev => ({ ...prev, discount: value }))}
+                placeholder="0.00"
+                keyboardType="numeric"
+                icon="pricetag-outline"
+              />
+
+              <Input
+                label="Description"
+                value={formData.description}
+                onChangeText={(value) => setFormData(prev => ({ ...prev, description: value }))}
+                placeholder="Détails de la vente"
+                icon="document-text-outline"
+                multiline
+              />
+
+              {estimatedAmount > 0 && (
+                <View style={styles.amountPreview}>
+                  <Text style={styles.amountPreviewLabel}>Montant total estimé:</Text>
+                  <Text style={styles.amountPreviewValue}>{estimatedAmount.toFixed(2)} €</Text>
+                </View>
+              )}
+
+              <Button
+                title="Enregistrer la vente"
+                onPress={handleAddSale}
+                style={styles.submitButton}
+              />
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -222,16 +381,32 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.success,
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  saleDescription: {
+  saleProduct: {
     fontSize: 14,
+    fontWeight: '600',
     color: colors.text,
     marginBottom: 2,
   },
-  saleDate: {
+  customerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  customerName: {
     fontSize: 12,
+    color: colors.primary,
+    marginLeft: 4,
+  },
+  saleDescription: {
+    fontSize: 13,
     color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  saleDate: {
+    fontSize: 11,
+    color: colors.textLight,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -272,16 +447,83 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     padding: 24,
     paddingBottom: 40,
+    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
   },
   modalTitle: {
     fontSize: 22,
     fontWeight: 'bold',
     color: colors.text,
+  },
+  employeeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '10',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  employeeText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+    marginTop: 8,
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    marginBottom: 12,
+    backgroundColor: colors.background,
+  },
+  picker: {
+    height: 50,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    backgroundColor: colors.info + '10',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.text,
+    marginLeft: 6,
+  },
+  amountPreview: {
+    backgroundColor: colors.success + '10',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 8,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  amountPreviewLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  amountPreviewValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.success,
+  },
+  submitButton: {
+    marginTop: 8,
   },
 });

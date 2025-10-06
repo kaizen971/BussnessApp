@@ -85,4 +85,17 @@ export const feedbackAPI = {
   updateStatus: (id, status) => api.put(`/feedback/${id}`, { status }),
 };
 
+// Products API
+export const productsAPI = {
+  getAll: () => api.get('/products'),
+  create: (data) => api.post('/products', data),
+  update: (id, data) => api.put(`/products/${id}`, data),
+  delete: (id) => api.delete(`/products/${id}`),
+};
+
+// Simulation API
+export const simulationAPI = {
+  calculate: (data) => api.post('/simulation', data),
+};
+
 export default api;
