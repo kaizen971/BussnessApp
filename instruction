@@ -1,0 +1,123 @@
+Objectif de l'application :
+Créer une application simple et intuitive qui permet à tout porteur de projet ou commerçant de :
+Valider la rentabilité de son business ou d’un produit (business plan simplifié),
+Gérer son activité au quotidien (ventes, charges, stock, bénéfices),
+Suivre sa relation client (historique, remises, fidélité),
+Donner des accès différenciés à ses collaborateurs (ex : caissier vs responsable).
+Modules fonctionnels attendus :
+1. Module de simulation (business plan simplifié)
+Entrée des coûts : achat, variables, fixes
+Prix de vente unitaire
+Volume estimé des ventes
+Calcul automatique de la marge, du point mort, du bénéfice
+Export d’un mini business plan (PDF)
+2. Module de gestion opérationnelle
+Tableau de bord : ventes, dépenses, stock, marge nette, trésorerie
+Ajout de ventes avec :
+Produit vendu
+Quantité
+Montant encaissé
+Employé ayant effectué la vente
+Client concerné (nom, téléphone)
+Ajout de dépenses par type
+Gestion du stock (entrée / sortie selon les ventes)
+Création de comptes pour les collaborateurs
+Rôles : admin, responsable, caissier…
+Droits différenciés : lecture seule, ajout de ventes, accès complet, etc.
+Enregistrement du client (nom, téléphone)
+Historique des achats
+Application de remises ou conditions spécifiques
+Suivi de fidélité
+Envoi d’offres promotionnelles (si possible)
+Proposition de Maquette 
+
+Ecran 1 : Ecran d'accueil (Onboarding)
+Logo + nom de l'app
+Slogan : "Valide ton idée. Pilote ton business. Simplement."
+Boutons :
+Créer un compte / Se connecter
+Démo sans compte
+
+Ecran 2 : Choix du module
+Titre : "Que veux-tu faire aujourd'hui ?"
+2 grosses cartes cliquables :
+"Valider une idée de business ou de produit"
+"Suivre mon business en cours"
+
+MODULE 1 : Valider une idée
+Ecran 3 : Saisie des données de base
+Nom du produit / business
+Prix de vente unitaire
+Coût de fabrication ou achat
+Coûts variables unitaires (ex : livraison, emballage)
+Investissements de départ (charges initiales) :
+Loyer / caution
+Matériel de lancement (mobilier, équipement, etc.)
+Frais administratifs (création, licences, etc.)
+Communication initiale (flyers, logo, site, etc.)
+Autres frais ponctuels
+Ecran 4 : Charges mensuelles récurrentes
+Loyer
+Salaires / commissions
+Publicité / marketing
+Fournitures / réassort
+Abonnements (internet, outils, logiciels)
+Entretien / énergie
+Autres charges fixes
+Ecran 5 : Estimations de vente
+Quantité prévue à vendre par mois
+Durée d’analyse (en mois)
+Ecran 6 : Résultat synthétique
+Budget de lancement total nécessaire
+Marge unitaire
+Point mort (nombre de ventes pour être rentable mensuellement)
+Chiffre d'affaires minimum à atteindre chaque mois pour couvrir les charges
+Résultat prévisionnel (CA, bénéfice)
+Courbe simple sur 6 mois
+Bouton : "Exporter PDF" ou "Lancer ce projet"
+
+MODULE 2 : Suivi de business
+Ecran 6 : Tableau de bord
+Trésorerie actuelle
+Récap des ventes
+Récap des dépenses
+Stock disponible
+Marge nette
+Ecran 7 : Ajout de vente
+Date de la vente
+Produit / Service vendu
+Quantité
+Prix total encaissé
+Client associé (nom et téléphone)
+Employé ayant effectué la vente (si plusieurs utilisateurs)
+Ecran 8 : Ajout de dépense
+Date de la dépense
+Catégorie (frais fixe, variable, exceptionnel)
+Montant
+Description
+Ecran 9 : Stock
+Entrée manuelle du stock initial
+Entrée / sortie selon les ventes ou les achats
+
+Gestion des utilisateurs et rôles
+Ecran 10 : Gestion des droits d’accès
+Création de rôles (ex : Administrateur, Responsable, Caissier)
+Attribution des permissions (accès lecture / modification / admin)
+Liste des utilisateurs associés à un projet/business
+Invitations par email ou lien avec rôle prédéfini
+
+Gestion de la relation client (CRM simplifié)
+Ecran 11 : Fiche client
+Nom
+Téléphone
+Historique des achats
+Remises ou conditions commerciales personnalisées
+Niveau de fidélité (ex : % de réduction, nombre de visites)
+Option pour envoyer une offre promotionnelle (SMS ou notification)
+
+Menu secondaire (en bas ou en burger menu)
+Accueil
+Mes projets
+Aide / Tutoriel
+Mon compte
+Passer en version Premium
