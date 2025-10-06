@@ -50,9 +50,18 @@ export const AuthProvider = ({ children }) => {
 
       return { success: true };
     } catch (error) {
+      console.log('Login error details:', error.response?.data);
+      const errorData = error.response?.data;
+      const errorMessage = errorData?.error || 'Échec de la connexion - vérifiez votre connexion';
+      const errorCode = errorData?.code || 'UNKNOWN';
+      const errorField = errorData?.field;
+
       return {
         success: false,
-        error: error.response?.data?.error || 'Login failed'
+        error: errorMessage,
+        code: errorCode,
+        field: errorField,
+        details: errorData?.details
       };
     }
   };
@@ -70,9 +79,18 @@ export const AuthProvider = ({ children }) => {
 
       return { success: true };
     } catch (error) {
+      console.log('Registration error details:', error.response?.data);
+      const errorData = error.response?.data;
+      const errorMessage = errorData?.error || 'Échec de l\'inscription - vérifiez votre connexion';
+      const errorCode = errorData?.code || 'UNKNOWN';
+      const errorField = errorData?.field;
+
       return {
         success: false,
-        error: error.response?.data?.error || 'Registration failed'
+        error: errorMessage,
+        code: errorCode,
+        field: errorField,
+        details: errorData?.details
       };
     }
   };

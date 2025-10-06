@@ -33,7 +33,21 @@ export const LoginScreen = ({ navigation }) => {
     setLoading(false);
 
     if (!result.success) {
-      Alert.alert('Erreur de connexion', result.error);
+      // Affichage détaillé de l'erreur avec le code et les détails
+      let errorTitle = 'Erreur de connexion';
+      let errorMessage = result.error;
+
+      if (result.code) {
+        errorMessage += `\n\nCode: ${result.code}`;
+      }
+      if (result.field) {
+        errorMessage += `\nChamp concerné: ${result.field}`;
+      }
+      if (result.details) {
+        errorMessage += `\n\nDétails techniques: ${result.details}`;
+      }
+
+      Alert.alert(errorTitle, errorMessage);
     }
   };
 

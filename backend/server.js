@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const app = express();
-const PORT = 3001;
+const PORT = 3003;
 
 // IMPORTANT: Trust proxy configuration
 app.set('trust proxy', 1);
@@ -154,10 +154,74 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
   try {
     const { username, email, password, fullName, role, projectId } = req.body;
 
+    // Validation détaillée des champs requis
+    if (!username || username.trim() === '') {
+      return res.status(400).json({
+        error: 'Nom d\'utilisateur requis',
+        field: 'username',
+        code: 'MISSING_USERNAME'
+      });
+    }
+
+    if (!email || email.trim() === '') {
+      return res.status(400).json({
+        error: 'Email requis',
+        field: 'email',
+        code: 'MISSING_EMAIL'
+      });
+    }
+
+    // Validation format email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        error: 'Format d\'email invalide',
+        field: 'email',
+        code: 'INVALID_EMAIL_FORMAT'
+      });
+    }
+
+    if (!password || password.trim() === '') {
+      return res.status(400).json({
+        error: 'Mot de passe requis',
+        field: 'password',
+        code: 'MISSING_PASSWORD'
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        error: 'Le mot de passe doit contenir au moins 6 caractères',
+        field: 'password',
+        code: 'PASSWORD_TOO_SHORT'
+      });
+    }
+
+    if (!fullName || fullName.trim() === '') {
+      return res.status(400).json({
+        error: 'Nom complet requis',
+        field: 'fullName',
+        code: 'MISSING_FULLNAME'
+      });
+    }
+
     // Check if user exists
     const existingUser = await User.findOne({ $or: [{ username }, { email }] });
     if (existingUser) {
-      return res.status(400).json({ error: 'Username or email already exists' });
+      if (existingUser.username === username) {
+        return res.status(400).json({
+          error: 'Ce nom d\'utilisateur est déjà utilisé',
+          field: 'username',
+          code: 'USERNAME_EXISTS'
+        });
+      }
+      if (existingUser.email === email) {
+        return res.status(400).json({
+          error: 'Cet email est déjà utilisé',
+          field: 'email',
+          code: 'EMAIL_EXISTS'
+        });
+      }
     }
 
     // Hash password
@@ -165,10 +229,10 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
 
     // Create user
     const user = new User({
-      username,
-      email,
+      username: username.trim(),
+      email: email.trim().toLowerCase(),
       password: hashedPassword,
-      fullName,
+      fullName: fullName.trim(),
       role: role || 'cashier',
       projectId
     });
@@ -187,7 +251,33 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
 
     res.status(201).json({ user: userResponse, token });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    console.error('Registration error:', error);
+
+    // Gestion des erreurs MongoDB spécifiques
+    if (error.name === 'ValidationError') {
+      const field = Object.keys(error.errors)[0];
+      return res.status(400).json({
+        error: `Erreur de validation: ${error.errors[field].message}`,
+        field: field,
+        code: 'VALIDATION_ERROR'
+      });
+    }
+
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return res.status(400).json({
+        error: `Ce ${field === 'username' ? 'nom d\'utilisateur' : 'email'} est déjà utilisé`,
+        field: field,
+        code: 'DUPLICATE_KEY'
+      });
+    }
+
+    // Erreur générique avec détails
+    res.status(500).json({
+      error: 'Erreur lors de l\'inscription. Veuillez réessayer.',
+      details: error.message,
+      code: 'REGISTRATION_ERROR'
+    });
   }
 });
 
@@ -196,21 +286,47 @@ app.post('/BussnessApp/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
 
+    // Validation des champs
+    if (!username || username.trim() === '') {
+      return res.status(400).json({
+        error: 'Nom d\'utilisateur ou email requis',
+        field: 'username',
+        code: 'MISSING_USERNAME'
+      });
+    }
+
+    if (!password || password.trim() === '') {
+      return res.status(400).json({
+        error: 'Mot de passe requis',
+        field: 'password',
+        code: 'MISSING_PASSWORD'
+      });
+    }
+
     // Find user
     const user = await User.findOne({ $or: [{ username }, { email: username }] });
     if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({
+        error: 'Identifiants invalides - utilisateur introuvable',
+        code: 'INVALID_CREDENTIALS'
+      });
     }
 
     // Check if user is active
     if (!user.isActive) {
-      return res.status(403).json({ error: 'Account is disabled' });
+      return res.status(403).json({
+        error: 'Compte désactivé - contactez un administrateur',
+        code: 'ACCOUNT_DISABLED'
+      });
     }
 
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({
+        error: 'Identifiants invalides - mot de passe incorrect',
+        code: 'INVALID_PASSWORD'
+      });
     }
 
     // Generate token
@@ -225,7 +341,12 @@ app.post('/BussnessApp/auth/login', async (req, res) => {
 
     res.json({ user: userResponse, token });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Login error:', error);
+    res.status(500).json({
+      error: 'Erreur lors de la connexion. Veuillez réessayer.',
+      details: error.message,
+      code: 'LOGIN_ERROR'
+    });
   }
 });
 
