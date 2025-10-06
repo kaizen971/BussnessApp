@@ -41,9 +41,27 @@ const ProjectSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
+const ProductSchema = new mongoose.Schema({
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
+  name: { type: String, required: true },
+  description: String,
+  unitPrice: { type: Number, required: true },
+  costPrice: { type: Number, required: true }, // Prix de revient
+  category: String,
+  isActive: { type: Boolean, default: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
 const SaleSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
-  amount: { type: Number, required: true },
+  productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+  customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
+  employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Employé qui a effectué la vente
+  quantity: { type: Number, required: true, default: 1 },
+  unitPrice: { type: Number, required: true },
+  amount: { type: Number, required: true }, // Montant total
+  discount: { type: Number, default: 0 }, // Remise appliquée
   description: String,
   date: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now }
@@ -74,12 +92,18 @@ const CustomerSchema = new mongoose.Schema({
   phone: String,
   totalPurchases: { type: Number, default: 0 },
   loyaltyPoints: { type: Number, default: 0 },
+  loyaltyLevel: { type: String, enum: ['bronze', 'silver', 'gold', 'platinum'], default: 'bronze' },
+  discount: { type: Number, default: 0 }, // Remise personnalisée en %
+  notes: String, // Notes sur le client
+  lastPurchaseDate: Date,
   history: [{
     date: Date,
     amount: Number,
-    description: String
+    description: String,
+    saleId: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale' }
   }],
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
 });
 
 const UserSchema = new mongoose.Schema({
@@ -104,6 +128,7 @@ const FeedbackSchema = new mongoose.Schema({
 
 // Models
 const Project = mongoose.model('Project', ProjectSchema);
+const Product = mongoose.model('Product', ProductSchema);
 const Sale = mongoose.model('Sale', SaleSchema);
 const Expense = mongoose.model('Expense', ExpenseSchema);
 const Stock = mongoose.model('Stock', StockSchema);
@@ -444,7 +469,7 @@ app.put('/BussnessApp/feedback/:id', authenticateToken, checkRole('admin', 'mana
 });
 
 // Projects Routes
-app.get('/BussnessApp/projects', async (req, res) => {
+app.get('/BussnessApp/projects', authenticateToken, async (req, res) => {
   try {
     const projects = await Project.find().sort({ createdAt: -1 });
     res.json(projects);
@@ -453,7 +478,7 @@ app.get('/BussnessApp/projects', async (req, res) => {
   }
 });
 
-app.post('/BussnessApp/projects', async (req, res) => {
+app.post('/BussnessApp/projects', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
   try {
     const project = new Project(req.body);
     await project.save();
@@ -463,7 +488,7 @@ app.post('/BussnessApp/projects', async (req, res) => {
   }
 });
 
-app.get('/BussnessApp/projects/:id', async (req, res) => {
+app.get('/BussnessApp/projects/:id', authenticateToken, async (req, res) => {
   try {
     const project = await Project.findById(req.params.id);
     if (!project) {
@@ -475,7 +500,7 @@ app.get('/BussnessApp/projects/:id', async (req, res) => {
   }
 });
 
-app.put('/BussnessApp/projects/:id', async (req, res) => {
+app.put('/BussnessApp/projects/:id', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
   try {
     const project = await Project.findByIdAndUpdate(
       req.params.id,
@@ -491,7 +516,7 @@ app.put('/BussnessApp/projects/:id', async (req, res) => {
   }
 });
 
-app.delete('/BussnessApp/projects/:id', async (req, res) => {
+app.delete('/BussnessApp/projects/:id', authenticateToken, checkRole('admin'), async (req, res) => {
   try {
     const project = await Project.findByIdAndDelete(req.params.id);
     if (!project) {
@@ -503,30 +528,144 @@ app.delete('/BussnessApp/projects/:id', async (req, res) => {
   }
 });
 
-// Sales Routes
-app.get('/BussnessApp/sales', async (req, res) => {
+// Products Routes
+app.get('/BussnessApp/products', authenticateToken, async (req, res) => {
   try {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
-    const sales = await Sale.find(filter).sort({ date: -1 });
+    const products = await Product.find(filter).sort({ name: 1 });
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/BussnessApp/products', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
+  try {
+    const product = new Product(req.body);
+    await product.save();
+    res.status(201).json(product);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.put('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
+  try {
+    const product = await Product.findByIdAndUpdate(
+      req.params.id,
+      { ...req.body, updatedAt: Date.now() },
+      { new: true }
+    );
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+    res.json(product);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
+  try {
+    const product = await Product.findByIdAndDelete(req.params.id);
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+    res.json({ message: 'Product deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Sales Routes
+app.get('/BussnessApp/sales', authenticateToken, async (req, res) => {
+  try {
+    const { projectId } = req.query;
+    const filter = projectId ? { projectId } : {};
+    const sales = await Sale.find(filter)
+      .populate('productId', 'name unitPrice')
+      .populate('customerId', 'name phone email')
+      .populate('employeeId', 'username fullName')
+      .sort({ date: -1 });
     res.json(sales);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/BussnessApp/sales', async (req, res) => {
+app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
   try {
-    const sale = new Sale(req.body);
+    const { customerId, productId, quantity, unitPrice, discount } = req.body;
+
+    // Calculer le montant total
+    const amount = (quantity * unitPrice) - (discount || 0);
+
+    const sale = new Sale({
+      ...req.body,
+      amount,
+      employeeId: req.user.id // L'employé connecté
+    });
+
     await sale.save();
-    res.status(201).json(sale);
+
+    // Mettre à jour le client si présent
+    if (customerId) {
+      const customer = await Customer.findById(customerId);
+      if (customer) {
+        customer.totalPurchases += amount;
+        customer.loyaltyPoints += Math.floor(amount / 10); // 1 point par 10 unités monétaires
+        customer.lastPurchaseDate = new Date();
+
+        // Système de fidélité automatique
+        if (customer.loyaltyPoints >= 1000) {
+          customer.loyaltyLevel = 'platinum';
+          customer.discount = 15;
+        } else if (customer.loyaltyPoints >= 500) {
+          customer.loyaltyLevel = 'gold';
+          customer.discount = 10;
+        } else if (customer.loyaltyPoints >= 200) {
+          customer.loyaltyLevel = 'silver';
+          customer.discount = 5;
+        } else if (customer.loyaltyPoints >= 50) {
+          customer.loyaltyLevel = 'bronze';
+          customer.discount = 2;
+        }
+
+        customer.history.push({
+          date: new Date(),
+          amount,
+          description: req.body.description || 'Vente',
+          saleId: sale._id
+        });
+
+        await customer.save();
+      }
+    }
+
+    // Mettre à jour le stock si produit présent
+    if (productId) {
+      const stock = await Stock.findOne({ projectId: req.body.projectId, name: productId });
+      if (stock && stock.quantity >= quantity) {
+        stock.quantity -= quantity;
+        stock.updatedAt = Date.now();
+        await stock.save();
+      }
+    }
+
+    const populatedSale = await Sale.findById(sale._id)
+      .populate('productId', 'name unitPrice')
+      .populate('customerId', 'name phone')
+      .populate('employeeId', 'username fullName');
+
+    res.status(201).json(populatedSale);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
 // Expenses Routes
-app.get('/BussnessApp/expenses', async (req, res) => {
+app.get('/BussnessApp/expenses', authenticateToken, async (req, res) => {
   try {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
@@ -537,7 +676,7 @@ app.get('/BussnessApp/expenses', async (req, res) => {
   }
 });
 
-app.post('/BussnessApp/expenses', async (req, res) => {
+app.post('/BussnessApp/expenses', authenticateToken, async (req, res) => {
   try {
     const expense = new Expense(req.body);
     await expense.save();
@@ -548,7 +687,7 @@ app.post('/BussnessApp/expenses', async (req, res) => {
 });
 
 // Stock Routes
-app.get('/BussnessApp/stock', async (req, res) => {
+app.get('/BussnessApp/stock', authenticateToken, async (req, res) => {
   try {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
@@ -559,7 +698,7 @@ app.get('/BussnessApp/stock', async (req, res) => {
   }
 });
 
-app.post('/BussnessApp/stock', async (req, res) => {
+app.post('/BussnessApp/stock', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
   try {
     const stock = new Stock(req.body);
     await stock.save();
@@ -569,7 +708,7 @@ app.post('/BussnessApp/stock', async (req, res) => {
   }
 });
 
-app.put('/BussnessApp/stock/:id', async (req, res) => {
+app.put('/BussnessApp/stock/:id', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
   try {
     const stock = await Stock.findByIdAndUpdate(
       req.params.id,
@@ -586,7 +725,7 @@ app.put('/BussnessApp/stock/:id', async (req, res) => {
 });
 
 // Customers Routes
-app.get('/BussnessApp/customers', async (req, res) => {
+app.get('/BussnessApp/customers', authenticateToken, async (req, res) => {
   try {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
@@ -597,7 +736,7 @@ app.get('/BussnessApp/customers', async (req, res) => {
   }
 });
 
-app.post('/BussnessApp/customers', async (req, res) => {
+app.post('/BussnessApp/customers', authenticateToken, async (req, res) => {
   try {
     const customer = new Customer(req.body);
     await customer.save();
@@ -607,11 +746,11 @@ app.post('/BussnessApp/customers', async (req, res) => {
   }
 });
 
-app.put('/BussnessApp/customers/:id', async (req, res) => {
+app.put('/BussnessApp/customers/:id', authenticateToken, async (req, res) => {
   try {
     const customer = await Customer.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      { ...req.body, updatedAt: Date.now() },
       { new: true }
     );
     if (!customer) {
@@ -624,7 +763,7 @@ app.put('/BussnessApp/customers/:id', async (req, res) => {
 });
 
 // Users Routes
-app.get('/BussnessApp/users', async (req, res) => {
+app.get('/BussnessApp/users', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
   try {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
@@ -635,9 +774,32 @@ app.get('/BussnessApp/users', async (req, res) => {
   }
 });
 
-app.post('/BussnessApp/users', async (req, res) => {
+app.post('/BussnessApp/users', authenticateToken, checkRole('admin'), async (req, res) => {
   try {
-    const user = new User(req.body);
+    const { username, email, password, fullName, role, projectId } = req.body;
+
+    // Vérifier si l'utilisateur existe déjà
+    const existingUser = await User.findOne({ $or: [{ username }, { email }] });
+    if (existingUser) {
+      return res.status(400).json({
+        error: existingUser.username === username ?
+          'Ce nom d\'utilisateur existe déjà' :
+          'Cet email existe déjà'
+      });
+    }
+
+    // Hash du mot de passe
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = new User({
+      username,
+      email,
+      password: hashedPassword,
+      fullName,
+      role: role || 'cashier',
+      projectId
+    });
+
     await user.save();
     const userResponse = user.toObject();
     delete userResponse.password;
@@ -647,8 +809,143 @@ app.post('/BussnessApp/users', async (req, res) => {
   }
 });
 
+// Update user role (admin only)
+app.put('/BussnessApp/users/:id/role', authenticateToken, checkRole('admin'), async (req, res) => {
+  try {
+    const { role } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { role },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Deactivate/activate user (admin only)
+app.put('/BussnessApp/users/:id/status', authenticateToken, checkRole('admin'), async (req, res) => {
+  try {
+    const { isActive } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { isActive },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Simulation Business Plan Route
+app.post('/BussnessApp/simulation', authenticateToken, async (req, res) => {
+  try {
+    const {
+      productName,
+      unitPrice,
+      costPrice,
+      variableCosts = 0, // Coûts variables unitaires
+      initialInvestment = 0, // Investissements de départ
+      monthlyRent = 0,
+      monthlySalaries = 0,
+      monthlyMarketing = 0,
+      monthlySupplies = 0,
+      monthlySubscriptions = 0,
+      monthlyUtilities = 0,
+      otherMonthlyExpenses = 0,
+      estimatedMonthlySales = 0,
+      analysisPeriodMonths = 6
+    } = req.body;
+
+    // Calculs
+    const unitMargin = unitPrice - (costPrice + variableCosts);
+    const marginPercentage = ((unitMargin / unitPrice) * 100).toFixed(2);
+
+    const totalMonthlyFixed = monthlyRent + monthlySalaries + monthlyMarketing +
+                              monthlySupplies + monthlySubscriptions +
+                              monthlyUtilities + otherMonthlyExpenses;
+
+    // Point mort (Break-even point) = nombre de ventes pour couvrir les charges fixes
+    const breakEvenUnits = unitMargin > 0 ? Math.ceil(totalMonthlyFixed / unitMargin) : 0;
+    const breakEvenRevenue = breakEvenUnits * unitPrice;
+
+    // Prévisions
+    const monthlyRevenue = estimatedMonthlySales * unitPrice;
+    const monthlyCostOfGoods = estimatedMonthlySales * (costPrice + variableCosts);
+    const monthlyGrossProfit = monthlyRevenue - monthlyCostOfGoods;
+    const monthlyNetProfit = monthlyGrossProfit - totalMonthlyFixed;
+
+    // Prévisions sur la période d'analyse
+    const totalRevenue = monthlyRevenue * analysisPeriodMonths;
+    const totalProfit = monthlyNetProfit * analysisPeriodMonths;
+    const totalInvestmentRecovery = totalProfit - initialInvestment;
+    const monthsToRecoverInvestment = monthlyNetProfit > 0 ?
+      Math.ceil(initialInvestment / monthlyNetProfit) : -1;
+
+    // Projection mensuelle
+    const monthlyProjections = [];
+    let cumulativeProfit = -initialInvestment;
+
+    for (let month = 1; month <= analysisPeriodMonths; month++) {
+      cumulativeProfit += monthlyNetProfit;
+      monthlyProjections.push({
+        month,
+        revenue: monthlyRevenue,
+        expenses: monthlyCostOfGoods + totalMonthlyFixed,
+        netProfit: monthlyNetProfit,
+        cumulativeProfit: cumulativeProfit
+      });
+    }
+
+    res.json({
+      summary: {
+        productName,
+        unitPrice,
+        costPrice,
+        unitMargin,
+        marginPercentage: `${marginPercentage}%`,
+        initialInvestment,
+        totalMonthlyFixed
+      },
+      breakEven: {
+        unitsNeeded: breakEvenUnits,
+        revenueNeeded: breakEvenRevenue
+      },
+      monthlyForecasts: {
+        revenue: monthlyRevenue,
+        costOfGoods: monthlyCostOfGoods,
+        grossProfit: monthlyGrossProfit,
+        fixedExpenses: totalMonthlyFixed,
+        netProfit: monthlyNetProfit
+      },
+      periodAnalysis: {
+        analysisMonths: analysisPeriodMonths,
+        totalRevenue,
+        totalProfit,
+        totalInvestmentRecovery,
+        monthsToRecoverInvestment: monthsToRecoverInvestment > 0 ?
+          monthsToRecoverInvestment : 'Non rentable avec ces paramètres',
+        isViable: totalInvestmentRecovery > 0
+      },
+      projections: monthlyProjections
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // Dashboard Stats Route
-app.get('/BussnessApp/dashboard/:projectId', async (req, res) => {
+app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res) => {
   try {
     const { projectId } = req.params;
 

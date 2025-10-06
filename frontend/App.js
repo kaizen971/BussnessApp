@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { SimulationScreen } from './src/screens/SimulationScreen';
 import { SalesScreen } from './src/screens/SalesScreen';
@@ -13,6 +14,8 @@ import { ExpensesScreen } from './src/screens/ExpensesScreen';
 import { StockScreen } from './src/screens/StockScreen';
 import { CustomersScreen } from './src/screens/CustomersScreen';
 import { FeedbackScreen } from './src/screens/FeedbackScreen';
+import { ProductsScreen } from './src/screens/ProductsScreen';
+import { TeamScreen } from './src/screens/TeamScreen';
 import { colors } from './src/utils/colors';
 
 const Stack = createStackNavigator();
@@ -45,6 +48,11 @@ const MainStack = () => (
     }}
   >
     <Stack.Screen
+      name="Onboarding"
+      component={OnboardingScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
       name="Dashboard"
       component={DashboardScreen}
       options={{ title: 'Tableau de bord' }}
@@ -70,9 +78,19 @@ const MainStack = () => (
       options={{ title: 'Stock' }}
     />
     <Stack.Screen
+      name="Products"
+      component={ProductsScreen}
+      options={{ title: 'Produits', headerShown: false }}
+    />
+    <Stack.Screen
       name="Customers"
       component={CustomersScreen}
       options={{ title: 'Clients CRM' }}
+    />
+    <Stack.Screen
+      name="Team"
+      component={TeamScreen}
+      options={{ title: 'Équipe', headerShown: false }}
     />
     <Stack.Screen
       name="Feedback"
