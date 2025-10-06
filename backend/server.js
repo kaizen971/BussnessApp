@@ -1025,9 +1025,9 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
     const expenses = await Expense.find({ projectId });
     const stock = await Stock.find({ projectId });
 
-    const totalSales = sales.reduce((sum, sale) => sum + sale.amount, 0);
-    const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
-    const totalStock = stock.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+    const totalSales = (sales && Array.isArray(sales)) ? sales.reduce((sum, sale) => sum + sale.amount, 0) : 0;
+    const totalExpenses = (expenses && Array.isArray(expenses)) ? expenses.reduce((sum, expense) => sum + expense.amount, 0) : 0;
+    const totalStock = (stock && Array.isArray(stock)) ? stock.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0) : 0;
     const netProfit = totalSales - totalExpenses;
 
     res.json({

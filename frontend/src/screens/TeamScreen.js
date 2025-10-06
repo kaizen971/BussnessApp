@@ -229,18 +229,18 @@ export const TeamScreen = ({ navigation }) => {
 
       <View style={styles.statsContainer}>
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>{users.length}</Text>
+          <Text style={styles.statValue}>{(users && Array.isArray(users)) ? users.length : 0}</Text>
           <Text style={styles.statLabel}>Total</Text>
         </View>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>
-            {users.filter((u) => u.isActive).length}
+            {(users && Array.isArray(users)) ? users.filter((u) => u.isActive).length : 0}
           </Text>
           <Text style={styles.statLabel}>Actifs</Text>
         </View>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>
-            {users.filter((u) => u.role === 'admin').length}
+            {(users && Array.isArray(users)) ? users.filter((u) => u.role === 'admin').length : 0}
           </Text>
           <Text style={styles.statLabel}>Admins</Text>
         </View>

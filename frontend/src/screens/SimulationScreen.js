@@ -428,7 +428,7 @@ export const SimulationScreen = () => {
                 <Text style={styles.resultsTitle}>Évolution mois par mois</Text>
               </View>
 
-              {results.projections.map((projection, index) => (
+              {(results.projections && Array.isArray(results.projections)) && results.projections.map((projection, index) => (
                 <View key={index} style={styles.projectionItem}>
                   <Text style={styles.projectionMonth}>Mois {projection.month}</Text>
                   <View style={styles.projectionDetails}>

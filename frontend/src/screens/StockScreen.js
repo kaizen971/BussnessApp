@@ -152,8 +152,8 @@ export const StockScreen = () => {
     );
   };
 
-  const totalStockValue = stock.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-  const lowStockItems = stock.filter(item => item.minQuantity > 0 && item.quantity <= item.minQuantity);
+  const totalStockValue = (stock && Array.isArray(stock)) ? stock.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0) : 0;
+  const lowStockItems = (stock && Array.isArray(stock)) ? stock.filter(item => item.minQuantity > 0 && item.quantity <= item.minQuantity) : [];
 
   return (
     <View style={styles.container}>

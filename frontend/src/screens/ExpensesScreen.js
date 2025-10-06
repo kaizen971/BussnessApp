@@ -115,7 +115,7 @@ export const ExpensesScreen = () => {
     );
   };
 
-  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const totalExpenses = (expenses && Array.isArray(expenses)) ? expenses.reduce((sum, expense) => sum + expense.amount, 0) : 0;
 
   return (
     <View style={styles.container}>
