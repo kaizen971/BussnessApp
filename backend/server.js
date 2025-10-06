@@ -726,11 +726,28 @@ app.post('/BussnessApp/stock', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Le prix unitaire est requis' });
     }
 
+    // Validation des types numériques
+    const parsedQuantity = parseFloat(quantity);
+    const parsedUnitPrice = parseFloat(unitPrice);
+    const parsedMinQuantity = minQuantity ? parseFloat(minQuantity) : 0;
+
+    if (isNaN(parsedQuantity) || parsedQuantity < 0) {
+      return res.status(400).json({ error: 'La quantité doit être un nombre positif' });
+    }
+
+    if (isNaN(parsedUnitPrice) || parsedUnitPrice < 0) {
+      return res.status(400).json({ error: 'Le prix unitaire doit être un nombre positif' });
+    }
+
+    if (isNaN(parsedMinQuantity) || parsedMinQuantity < 0) {
+      return res.status(400).json({ error: 'La quantité minimale doit être un nombre positif' });
+    }
+
     const stock = new Stock({
       name: name.trim(),
-      quantity: parseFloat(quantity),
-      unitPrice: parseFloat(unitPrice),
-      minQuantity: minQuantity ? parseFloat(minQuantity) : 0,
+      quantity: parsedQuantity,
+      unitPrice: parsedUnitPrice,
+      minQuantity: parsedMinQuantity,
       projectId
     });
 
@@ -739,7 +756,26 @@ app.post('/BussnessApp/stock', authenticateToken, async (req, res) => {
     res.status(201).json({ data: stock });
   } catch (error) {
     console.error('Error creating stock:', error);
-    res.status(400).json({ error: error.message });
+
+    // Gestion spécifique des erreurs MongoDB
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        error: 'Erreur de validation',
+        details: Object.values(error.errors).map(e => e.message)
+      });
+    }
+
+    if (error.name === 'MongoServerError' || error.name === 'MongoError') {
+      return res.status(500).json({
+        error: 'Erreur de base de données',
+        message: 'Impossible de créer le stock. Vérifiez la connexion à la base de données.'
+      });
+    }
+
+    res.status(500).json({
+      error: 'Erreur lors de la création du stock',
+      message: error.message
+    });
   }
 });
 
@@ -1050,6 +1086,28 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// Global error handler - MUST be after all routes
+app.use((err, req, res, next) => {
+  console.error('Global error handler:', err);
+  res.status(500).json({
+    error: 'Une erreur serveur est survenue',
+    message: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit the process, just log the error
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  // Don't exit the process, just log the error
 });
 
 // Start server
