@@ -588,7 +588,7 @@ app.get('/BussnessApp/products', authenticateToken, async (req, res) => {
   try {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
-    const products = await Product.find(filter).sort({ name: 1 });
+    const products = await Product.find({}).sort({ name: 1 });
     res.json({ data: products });
   } catch (error) {
     res.status(500).json({ error: error.message });
