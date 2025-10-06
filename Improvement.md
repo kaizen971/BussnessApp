@@ -140,3 +140,55 @@ const [salesRes, productsRes, customersRes] = await Promise.all([
 - ✅ Vérifier que les clients s'affichent dans le sélecteur lors de la création d'une vente
 - ✅ Vérifier que seuls les produits du projet courant sont affichés
 - ✅ Tester la création d'une vente complète avec produit et client
+
+---
+
+## 2025-10-06 - Correction de la structure des données produits et clients dans la section vente
+
+### Problème identifié
+- Les produits et clients ne s'affichaient toujours pas dans les sélecteurs malgré la correction précédente
+- La structure de la réponse de l'API nécessitait un accès imbriqué: `response.data.data`
+- Le code utilisait `productsRes.data` au lieu de `productsRes?.data?.data`
+
+### Solution implémentée
+
+#### 1. Correction de l'accès aux données (SalesScreen.js:49-50)
+**Avant** :
+```javascript
+setSales(salesRes.data || []);
+setProducts(productsRes.data || []);
+setCustomers(customersRes.data || []);
+```
+
+**Après** :
+```javascript
+setSales(salesRes.data || []);
+setProducts(productsRes?.data?.data || []);
+setCustomers(customersRes?.data?.data || []);
+```
+
+#### 2. Utilisation du chaînage optionnel
+- Utilisation de `?.` pour éviter les erreurs si `data` est undefined
+- Protection contre les valeurs nulles ou undefined
+- Fallback sur un tableau vide `[]` si les données ne sont pas disponibles
+
+### Fonctionnalités vérifiées
+- ✅ Le sélecteur de produits affiche maintenant la liste des produits disponibles
+- ✅ Le sélecteur de clients affiche la liste des clients
+- ✅ Quand un produit est sélectionné, il reste visible dans le sélecteur avec `selectedValue`
+- ✅ Quand un client est sélectionné, il reste visible dans le sélecteur avec `selectedValue`
+- ✅ Le prix unitaire est automatiquement pré-rempli lors de la sélection d'un produit
+- ✅ La remise est automatiquement pré-remplie selon le niveau de fidélité du client
+
+### Fichiers modifiés
+- `/frontend/src/screens/SalesScreen.js` - Correction de l'accès aux données des produits et clients
+
+### Configuration du serveur
+- ✅ Nodemon installé comme dépendance de développement
+- ✅ Serveur backend déjà en cours d'exécution
+
+### Impact
+- Les utilisateurs peuvent maintenant voir et sélectionner les produits et clients lors de la création d'une vente
+- L'interface affiche correctement le produit/client sélectionné dans le Picker
+- Amélioration de l'expérience utilisateur avec le pré-remplissage automatique des champs
+- Application plus robuste grâce au chaînage optionnel

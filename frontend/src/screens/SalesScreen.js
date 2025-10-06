@@ -46,8 +46,8 @@ export const SalesScreen = () => {
         customersAPI.getAll(user?.projectId),
       ]);
       setSales(salesRes.data || []);
-      setProducts(productsRes.data || []);
-      setCustomers(customersRes.data || []);
+      setProducts(productsRes?.data?.data || []);
+      setCustomers(customersRes?.data?.data || []);
     } catch (error) {
       console.error('Error loading data:', error);
       Alert.alert('Erreur', 'Impossible de charger les données');
