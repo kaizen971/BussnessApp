@@ -462,11 +462,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   addButtonWrapper: {
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 8,
   },
   addButton: {
     width: 44,
@@ -488,11 +483,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
   },
   statValue: {
     fontSize: 22,
@@ -656,11 +646,6 @@ const styles = StyleSheet.create({
   },
   modalIconContainer: {
     marginRight: 14,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 6,
   },
   modalIcon: {
     width: 56,
@@ -747,11 +732,6 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 14,
     overflow: 'hidden',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 6,
   },
   saveButton: {
     paddingVertical: 16,
