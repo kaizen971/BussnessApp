@@ -1,39 +1,41 @@
 export const colors = {
-  primary: '#6366f1',
-  primaryDark: '#4f46e5',
-  primaryLight: '#818cf8',
+  // Thème noir et doré
+  primary: '#D4AF37',        // Or
+  primaryDark: '#B8941E',    // Or foncé
+  primaryLight: '#FFD700',   // Or clair
 
-  secondary: '#10b981',
-  secondaryDark: '#059669',
-  secondaryLight: '#34d399',
+  secondary: '#1A1A1A',      // Noir profond
+  secondaryDark: '#0A0A0A',  // Noir très foncé
+  secondaryLight: '#2D2D2D', // Gris anthracite
 
-  accent: '#f59e0b',
-  accentDark: '#d97706',
-  accentLight: '#fbbf24',
+  accent: '#DAA520',         // Or goldenrod
+  accentDark: '#C5910A',     // Or plus foncé
+  accentLight: '#FFE066',    // Or pâle
 
-  success: '#10b981',
-  warning: '#f59e0b',
-  error: '#ef4444',
-  info: '#3b82f6',
+  success: '#D4AF37',
+  warning: '#DAA520',
+  error: '#DC3545',
+  info: '#D4AF37',
 
-  background: '#f9fafb',
-  surface: '#ffffff',
-  surfaceLight: '#f3f4f6',
+  background: '#0D0D0D',     // Noir de fond
+  surface: '#1A1A1A',        // Surface noire
+  surfaceLight: '#2D2D2D',   // Surface gris foncé
 
-  text: '#1f2937',
-  textSecondary: '#6b7280',
-  textLight: '#9ca3af',
+  text: '#FFD700',           // Texte doré
+  textSecondary: '#D4AF37',  // Texte secondaire doré
+  textLight: '#B8941E',      // Texte clair doré
 
-  border: '#e5e7eb',
-  borderLight: '#f3f4f6',
+  border: '#3D3D3D',         // Bordure grise
+  borderLight: '#4D4D4D',    // Bordure grise claire
 
-  shadow: 'rgba(0, 0, 0, 0.1)',
-  overlay: 'rgba(0, 0, 0, 0.5)',
+  shadow: 'rgba(212, 175, 55, 0.2)',  // Ombre dorée
+  overlay: 'rgba(0, 0, 0, 0.8)',      // Overlay noir
 };
 
 export const gradients = {
-  primary: ['#6366f1', '#8b5cf6'],
-  secondary: ['#10b981', '#059669'],
-  accent: ['#f59e0b', '#ef4444'],
-  dark: ['#1f2937', '#111827'],
+  primary: ['#D4AF37', '#FFD700'],      // Gradient doré
+  secondary: ['#1A1A1A', '#0A0A0A'],    // Gradient noir
+  accent: ['#DAA520', '#D4AF37'],       // Gradient or goldenrod
+  dark: ['#0D0D0D', '#1A1A1A'],         // Gradient noir profond
+  gold: ['#B8941E', '#FFD700'],         // Gradient or complet
 };

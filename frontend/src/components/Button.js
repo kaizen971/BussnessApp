@@ -91,10 +91,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   primaryText: {
-    color: '#fff',
+    color: '#0D0D0D',
   },
   secondaryText: {
-    color: '#fff',
+    color: '#FFD700',
   },
   outlineText: {
     color: colors.primary,

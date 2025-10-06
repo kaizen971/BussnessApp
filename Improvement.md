@@ -1017,4 +1017,221 @@ export const simulationAPI = {
 
 ---
 
-_Dernière mise à jour : 2025-10-06 - 03:00_
+## 2025-10-06 - Implémentation du thème noir et doré
+
+### Contexte
+
+L'application utilisait un thème clair avec des couleurs principalement bleues et vertes. Pour améliorer l'esthétique et offrir une apparence plus premium, un thème noir et doré a été demandé.
+
+### Solutions implémentées
+
+#### 1. Refonte complète du fichier de couleurs (`frontend/src/utils/colors.js`)
+
+**Ancien thème** :
+- Primary : Bleu indigo (#6366f1)
+- Background : Blanc/Gris clair (#f9fafb)
+- Text : Gris foncé (#1f2937)
+
+**Nouveau thème noir et doré** :
+
+```javascript
+export const colors = {
+  // Thème noir et doré
+  primary: '#D4AF37',        // Or
+  primaryDark: '#B8941E',    // Or foncé
+  primaryLight: '#FFD700',   // Or clair
+
+  secondary: '#1A1A1A',      // Noir profond
+  secondaryDark: '#0A0A0A',  // Noir très foncé
+  secondaryLight: '#2D2D2D', // Gris anthracite
+
+  accent: '#DAA520',         // Or goldenrod
+  accentDark: '#C5910A',     // Or plus foncé
+  accentLight: '#FFE066',    // Or pâle
+
+  success: '#D4AF37',
+  warning: '#DAA520',
+  error: '#DC3545',
+  info: '#D4AF37',
+
+  background: '#0D0D0D',     // Noir de fond
+  surface: '#1A1A1A',        // Surface noire
+  surfaceLight: '#2D2D2D',   // Surface gris foncé
+
+  text: '#FFD700',           // Texte doré
+  textSecondary: '#D4AF37',  // Texte secondaire doré
+  textLight: '#B8941E',      // Texte clair doré
+
+  border: '#3D3D3D',         // Bordure grise
+  borderLight: '#4D4D4D',    // Bordure grise claire
+
+  shadow: 'rgba(212, 175, 55, 0.2)',  // Ombre dorée
+  overlay: 'rgba(0, 0, 0, 0.8)',      // Overlay noir
+};
+
+export const gradients = {
+  primary: ['#D4AF37', '#FFD700'],      // Gradient doré
+  secondary: ['#1A1A1A', '#0A0A0A'],    // Gradient noir
+  accent: ['#DAA520', '#D4AF37'],       // Gradient or goldenrod
+  dark: ['#0D0D0D', '#1A1A1A'],         // Gradient noir profond
+  gold: ['#B8941E', '#FFD700'],         // Gradient or complet
+};
+```
+
+**Avantages** :
+- ✅ Palette cohérente noir et doré
+- ✅ Plusieurs nuances d'or pour la hiérarchie visuelle
+- ✅ Arrière-plans noirs pour un look premium
+- ✅ Textes dorés pour un excellent contraste
+- ✅ Ombres et bordures adaptées au thème sombre
+- ✅ Nouveau gradient "gold" pour les effets spéciaux
+
+---
+
+#### 2. Ajustement du composant Button (`frontend/src/components/Button.js`)
+
+**Problème** : Le texte des boutons primaires était blanc (#fff), ce qui ne ressortait pas bien sur le fond doré.
+
+**Solution** :
+- Texte des boutons primaires : Noir (#0D0D0D) pour contraster avec le fond doré
+- Texte des boutons secondaires : Or (#FFD700) pour contraster avec le fond noir
+
+```javascript
+primaryText: {
+  color: '#0D0D0D',  // Texte noir sur bouton doré
+},
+secondaryText: {
+  color: '#FFD700',  // Texte doré sur bouton noir
+},
+```
+
+---
+
+### Application automatique du thème
+
+**Toutes les couleurs de l'application sont centralisées** dans `frontend/src/utils/colors.js` et importées dans tous les écrans et composants via :
+
+```javascript
+import { colors, gradients } from '../utils/colors';
+```
+
+**Écrans concernés** :
+- LoginScreen
+- RegisterScreen
+- OnboardingScreen
+- DashboardScreen
+- SimulationScreen
+- SalesScreen
+- ExpensesScreen
+- StockScreen
+- CustomersScreen
+- ProductsScreen
+- TeamScreen
+- FeedbackScreen
+
+**Composants concernés** :
+- Button
+- Input
+- Card
+
+**Impact** : Le changement dans `colors.js` se propage automatiquement à toute l'application sans modification supplémentaire nécessaire.
+
+---
+
+### Apparence visuelle
+
+**Éléments en or (#D4AF37 et variantes)** :
+- Boutons primaires (fond)
+- Textes principaux
+- Icônes importantes
+- Badges de statut
+- Ombres et lueurs
+
+**Éléments en noir (#0D0D0D et variantes)** :
+- Arrière-plans de l'application
+- Surfaces des cartes
+- Boutons secondaires (fond)
+- Headers et modals
+
+**Contrastes** :
+- Texte doré sur fond noir : excellent contraste
+- Texte noir sur fond doré : excellent contraste
+- Bordures grises (#3D3D3D) pour délimiter les zones
+
+---
+
+### Installations et lancement
+
+#### Installation de nodemon
+
+```bash
+npm install nodemon --save-dev
+```
+
+**Résultat** : 28 packages ajoutés, 0 vulnérabilités
+
+#### Lancement du serveur
+
+**Serveur déjà en cours d'exécution** :
+- Plusieurs processus `node server.js` détectés (PIDs multiples)
+- Port : 3003
+- Base de données MongoDB connectée
+
+**Commande disponible** :
+```bash
+cd /home/cheetoh/pi-agent/repo/BussnessApp/backend
+npm run dev  # Utilise nodemon pour le rechargement automatique
+```
+
+---
+
+### Tests effectués
+
+- ✅ Modification du fichier `colors.js` avec le thème noir et doré
+- ✅ Ajustement du composant `Button.js` pour le contraste
+- ✅ Installation de nodemon en dépendance de développement
+- ✅ Vérification du serveur backend (déjà lancé)
+- ⚠️ Tests visuels à effectuer via l'app mobile Expo
+
+---
+
+### Fichiers modifiés
+
+**Frontend** :
+1. `frontend/src/utils/colors.js` - Refonte complète de la palette de couleurs
+2. `frontend/src/components/Button.js` - Ajustement des couleurs de texte
+
+**Backend** :
+- Aucune modification (package.json déjà configuré avec nodemon)
+
+---
+
+### Recommandations futures
+
+1. **Tests visuels** :
+   - Tester tous les écrans sur mobile pour vérifier le rendu
+   - Vérifier la lisibilité sur différentes tailles d'écran
+   - Contrôle du contraste pour l'accessibilité
+
+2. **Ajustements potentiels** :
+   - Ajouter des animations de lueur dorée sur les boutons actifs
+   - Utiliser le gradient `gold` pour des effets premium
+   - Possibilité d'ajouter un mode clair/sombre toggle
+
+3. **Optimisations** :
+   - Vérifier les performances sur appareils bas de gamme
+   - Optimiser les ombres dorées pour réduire l'impact GPU
+
+---
+
+### Impact
+
+- 🎨 **Apparence premium** avec thème noir et doré
+- ✨ **Cohérence visuelle** totale sur toute l'application
+- 🌟 **Contraste optimal** pour la lisibilité
+- 🚀 **Changement centralisé** facilitant les futures modifications
+- 💎 **Image de marque** renforcée (luxe, élégance)
+
+---
+
+_Dernière mise à jour : 2025-10-06 - 04:00_
