@@ -374,3 +374,63 @@ quantityText: { /* Texte de quantité en gras et coloré */ }
 - **Accessibilité** : Boutons plus grands, meilleure visibilité
 - **Sécurité** : Confirmation avant actions destructives
 - **Fiabilité** : Gestion du chargement, pas de bugs audio
+
+---
+
+## 2025-10-07 : Suppression des ombres des boutons (Product Edition et Team)
+
+### Problème
+- Les boutons dans les écrans ProductsScreen et TeamScreen avaient des ombres (shadow) qui alourdissaient l'interface
+- Les ombres créaient un effet visuel trop prononcé et peu moderne
+- Besoin d'une interface plus épurée et minimaliste
+
+### Solution implémentée
+**Fichiers modifiés :**
+- `frontend/src/screens/ProductsScreen.js`
+- `frontend/src/screens/TeamScreen.js`
+
+#### Changements apportés :
+
+**ProductsScreen.js :**
+1. **addButtonWrapper** (lignes 404-405) :
+   - ❌ Supprimé : `shadowColor`, `shadowOffset`, `shadowOpacity`, `shadowRadius`, `elevation`
+
+2. **modalIconContainer** (lignes 518-520) :
+   - ❌ Supprimé : `shadowColor`, `shadowOffset`, `shadowOpacity`, `shadowRadius`, `elevation`
+
+3. **saveButtonWrapper** (lignes 599-603) :
+   - ❌ Supprimé : `shadowColor`, `shadowOffset`, `shadowOpacity`, `shadowRadius`, `elevation`
+
+**TeamScreen.js :**
+1. **addButtonWrapper** (lignes 464-465) :
+   - ❌ Supprimé : `shadowColor`, `shadowOffset`, `shadowOpacity`, `shadowRadius`, `elevation`
+
+2. **statCard** (lignes 479-486) :
+   - ❌ Supprimé : `shadowColor`, `shadowOffset`, `shadowOpacity`, `shadowRadius`, `elevation`
+
+3. **modalIconContainer** (lignes 647-649) :
+   - ❌ Supprimé : `shadowColor`, `shadowOffset`, `shadowOpacity`, `shadowRadius`, `elevation`
+
+4. **saveButtonWrapper** (lignes 731-735) :
+   - ❌ Supprimé : `shadowColor`, `shadowOffset`, `shadowOpacity`, `shadowRadius`, `elevation`
+
+### Résultat
+- Interface plus épurée et moderne
+- Suppression de l'effet d'ombre sur tous les boutons principaux
+- Design plus plat et minimaliste
+- Cohérence visuelle améliorée entre les écrans
+- Réduction des propriétés de style (code plus léger)
+
+### Impact
+- **Performance** : Légère amélioration (moins de rendu d'ombres)
+- **Design** : Interface plus clean et professionnelle
+- **Cohérence** : Style uniforme sans ombres excessives
+- **Accessibilité** : Meilleure lisibilité sans distractions visuelles
+
+### État
+✅ **Implémenté**
+- Ombres supprimées des boutons dans ProductsScreen.js
+- Ombres supprimées des boutons dans TeamScreen.js
+- Serveur backend déjà en cours d'exécution (port 3003)
+- Nodemon installé et configuré (v3.1.10)
+- Prêt pour les tests visuels
