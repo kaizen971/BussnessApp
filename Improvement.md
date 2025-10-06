@@ -522,4 +522,211 @@ npm start
 
 ---
 
-_Dernière mise à jour : 2025-10-06_
+## 2025-10-06 - Création des écrans frontend pour les nouvelles fonctionnalités
+
+### Nouveaux écrans créés
+
+#### 1. OnboardingScreen (`frontend/src/screens/OnboardingScreen.js`)
+
+**Description** : Écran de bienvenue permettant à l'utilisateur de choisir entre valider une idée ou suivre son business.
+
+**Fonctionnalités** :
+- ✅ Interface avec dégradé de couleurs (LinearGradient)
+- ✅ Logo et slogan : "Valide ton idée. Pilote ton business. Simplement."
+- ✅ Deux grosses cartes cliquables :
+  - "Valider une idée de business ou de produit" → Navigation vers Simulation
+  - "Suivre mon business en cours" → Navigation vers Dashboard
+- ✅ Icônes expressives (ampoule pour idée, graphique pour business)
+- ✅ Design moderne et intuitif
+- ✅ Responsive avec ScrollView
+
+**Localisation** : `frontend/src/screens/OnboardingScreen.js`
+
+---
+
+#### 2. ProductsScreen (`frontend/src/screens/ProductsScreen.js`)
+
+**Description** : Écran de gestion complète du catalogue produits/services.
+
+**Fonctionnalités** :
+- ✅ **Liste des produits** avec :
+  - Nom, description, catégorie
+  - Prix de vente et prix de revient affichés
+  - Calcul automatique de la marge en %
+  - Code couleur selon performance :
+    - Vert : marge > 30%
+    - Orange : marge > 15%
+    - Rouge : marge < 15%
+  - Actions d'édition et suppression
+
+- ✅ **Modal de création/modification** :
+  - Formulaire complet (nom, description, catégorie, prix)
+  - Champs obligatoires marqués avec *
+  - Validation des champs
+  - Prévisualisation de la marge en temps réel
+  - Encart visuel montrant la marge calculée
+
+- ✅ **Interface utilisateur** :
+  - Header avec titre et bouton d'ajout (+)
+  - Pull-to-refresh pour recharger la liste
+  - État vide avec message encourageant
+  - Confirmations avant suppression
+  - Messages de succès/erreur
+
+**API utilisées** :
+- GET `/products` : Charger la liste
+- POST `/products` : Créer un produit
+- PUT `/products/:id` : Modifier un produit
+- DELETE `/products/:id` : Supprimer un produit
+
+**Localisation** : `frontend/src/screens/ProductsScreen.js`
+
+---
+
+#### 3. TeamScreen (`frontend/src/screens/TeamScreen.js`)
+
+**Description** : Écran de gestion d'équipe avec contrôle des rôles et permissions.
+
+**Fonctionnalités** :
+- ✅ **Vue d'ensemble** :
+  - Statistiques en haut : Total utilisateurs, Actifs, Admins
+  - Design avec cartes colorées
+
+- ✅ **Liste des collaborateurs** :
+  - Avatar avec icône selon le rôle (bouclier = admin, étoile = manager, personne = caissier)
+  - Informations complètes (nom complet, username, email)
+  - Badge de statut (Actif/Inactif)
+  - Badge de rôle avec couleur distinctive
+  - Description détaillée des permissions du rôle
+  - Date de création du compte
+
+- ✅ **Actions de gestion** :
+  - Bouton Activer/Désactiver un compte
+  - Bouton Changer le rôle (sauf pour les admins)
+  - Dialogue de confirmation avec choix du nouveau rôle
+
+- ✅ **Modal de création** :
+  - Formulaire complet (nom complet, username, email, mot de passe)
+  - Sélecteur de rôle avec Picker natif
+  - Affichage dynamique des permissions selon le rôle choisi
+  - Encart informatif en bleu avec icône
+  - Validation des champs obligatoires
+
+- ✅ **Système de permissions** :
+  - **Admin** : "Accès complet: gestion des utilisateurs, produits, ventes, clients, et configuration"
+  - **Manager** : "Gestion des produits, ventes, clients et accès aux rapports"
+  - **Caissier** : "Ajout de ventes et consultation du catalogue"
+
+**API utilisées** :
+- GET `/users` : Charger la liste (admin/manager uniquement)
+- POST `/users` : Créer un utilisateur (admin uniquement)
+- PUT `/users/:id` : Modifier rôle ou statut (admin uniquement)
+
+**Localisation** : `frontend/src/screens/TeamScreen.js`
+
+**Codes couleur des rôles** :
+- Admin : Rouge (colors.error)
+- Manager : Orange (colors.warning)
+- Caissier : Bleu (colors.info)
+
+---
+
+### Mise à jour de la navigation (`frontend/App.js`)
+
+**Modifications apportées** :
+
+1. **Imports ajoutés** (lignes 9, 17-18) :
+   ```javascript
+   import { OnboardingScreen } from './src/screens/OnboardingScreen';
+   import { ProductsScreen } from './src/screens/ProductsScreen';
+   import { TeamScreen } from './src/screens/TeamScreen';
+   ```
+
+2. **Routes ajoutées dans MainStack** (lignes 50-99) :
+   ```javascript
+   <Stack.Screen
+     name="Onboarding"
+     component={OnboardingScreen}
+     options={{ headerShown: false }}
+   />
+   <Stack.Screen
+     name="Products"
+     component={ProductsScreen}
+     options={{ title: 'Produits', headerShown: false }}
+   />
+   <Stack.Screen
+     name="Team"
+     component={TeamScreen}
+     options={{ title: 'Équipe', headerShown: false }}
+   />
+   ```
+
+**Remarque** : Les écrans Products et Team ont `headerShown: false` car ils ont leurs propres headers personnalisés.
+
+---
+
+### Composants réutilisés
+
+Les nouveaux écrans utilisent les composants existants :
+- `Card` : Cartes avec ombres
+- `Button` : Boutons stylés
+- `Input` : Champs de saisie
+- `colors` : Palette de couleurs cohérente
+
+Cela assure une cohérence visuelle dans toute l'application.
+
+---
+
+### Résumé des fichiers créés lors de cette session
+
+**Frontend** :
+1. `frontend/src/screens/OnboardingScreen.js` - 130 lignes
+2. `frontend/src/screens/ProductsScreen.js` - 390 lignes
+3. `frontend/src/screens/TeamScreen.js` - 550 lignes
+
+**Frontend modifié** :
+1. `frontend/App.js` - Ajout de 3 imports et 3 routes
+
+**Backend** :
+- Aucune modification supplémentaire (déjà mis à jour précédemment)
+
+---
+
+### Fonctionnalités complètes implémentées aujourd'hui
+
+| Module | Backend | Frontend | Status |
+|--------|---------|----------|--------|
+| Écran d'onboarding | - | ✅ | ✅ Complet |
+| Gestion produits | ✅ | ✅ | ✅ Complet |
+| Gestion équipe | ✅ | ✅ | ✅ Complet |
+| Système de fidélité | ✅ | - | ⚠️ Backend seul |
+| Simulation business plan | ✅ | - | ⚠️ Backend seul |
+| Ventes améliorées | ✅ | - | ⚠️ Backend seul |
+
+### Recommandations pour la prochaine session
+
+1. **Améliorer SimulationScreen** :
+   - Ajouter tous les champs pour charges récurrentes
+   - Intégrer avec la route `/simulation`
+   - Afficher les résultats de manière visuelle
+
+2. **Améliorer SalesScreen** :
+   - Ajouter sélection de produit depuis le catalogue
+   - Ajouter sélection de client depuis le CRM
+   - Afficher automatiquement la remise fidélité du client
+   - Montrer l'employé connecté
+
+3. **Améliorer CustomersScreen** :
+   - Afficher le niveau de fidélité (badge bronze/silver/gold/platinum)
+   - Afficher les points de fidélité
+   - Afficher l'historique complet des achats
+   - Bouton pour voir le détail d'une vente
+
+4. **Améliorer DashboardScreen** :
+   - Lien rapide vers Products
+   - Lien rapide vers Team (si admin/manager)
+   - Graphiques de progression
+
+---
+
+_Dernière mise à jour : 2025-10-06 - 01:00_
