@@ -45,18 +45,24 @@ export const CustomersScreen = () => {
   };
 
   const handleSaveCustomer = async () => {
-    if (!formData.name) {
+    if (!formData.name || !formData.name.trim()) {
       Alert.alert('Erreur', 'Veuillez saisir un nom');
       return;
     }
 
     try {
+      const customerData = {
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+      };
+
       if (selectedCustomer) {
-        await customersAPI.update(selectedCustomer._id, formData);
+        await customersAPI.update(selectedCustomer._id, customerData);
         Alert.alert('Succès', 'Client modifié avec succès');
       } else {
         await customersAPI.create({
-          ...formData,
+          ...customerData,
           projectId: user?.projectId,
         });
         Alert.alert('Succès', 'Client ajouté avec succès');
@@ -67,7 +73,8 @@ export const CustomersScreen = () => {
       setModalVisible(false);
       loadCustomers();
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible de sauvegarder le client');
+      console.error('Error saving customer:', error);
+      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de sauvegarder le client');
     }
   };
 

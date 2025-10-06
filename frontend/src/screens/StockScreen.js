@@ -53,7 +53,7 @@ export const StockScreen = () => {
 
     try {
       const stockData = {
-        name: formData.name,
+        name: formData.name.trim(),
         quantity: parseFloat(formData.quantity),
         unitPrice: parseFloat(formData.unitPrice),
         minQuantity: parseFloat(formData.minQuantity) || 0,
@@ -75,7 +75,8 @@ export const StockScreen = () => {
       setModalVisible(false);
       loadStock();
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible de sauvegarder l\'article');
+      console.error('Error saving stock:', error);
+      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de sauvegarder l\'article');
     }
   };
 

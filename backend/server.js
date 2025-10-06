@@ -657,14 +657,8 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
     }
 
     // Mettre à jour le stock si produit présent
-    if (productId && projectId) {
-      const stock = await Stock.findOne({ projectId, name: productId });
-      if (stock && stock.quantity >= quantity) {
-        stock.quantity -= quantity;
-        stock.updatedAt = Date.now();
-        await stock.save();
-      }
-    }
+    // Note: Le stock n'est pas automatiquement géré car Stock et Product sont des entités séparées
+    // Le stock doit être géré manuellement par les utilisateurs
 
     const populatedSale = await Sale.findById(sale._id)
       .populate('productId', 'name unitPrice')
@@ -706,7 +700,7 @@ app.get('/BussnessApp/stock', authenticateToken, async (req, res) => {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
     const stock = await Stock.find(filter).sort({ name: 1 });
-    res.json(stock);
+    res.json({ data: stock });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -714,26 +708,63 @@ app.get('/BussnessApp/stock', authenticateToken, async (req, res) => {
 
 app.post('/BussnessApp/stock', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
   try {
-    const stock = new Stock(req.body);
+    const { name, quantity, unitPrice, minQuantity, projectId } = req.body;
+
+    // Validation des champs requis
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ error: 'Le nom de l\'article est requis' });
+    }
+
+    if (quantity === undefined || quantity === null || quantity === '') {
+      return res.status(400).json({ error: 'La quantité est requise' });
+    }
+
+    if (unitPrice === undefined || unitPrice === null || unitPrice === '') {
+      return res.status(400).json({ error: 'Le prix unitaire est requis' });
+    }
+
+    const stock = new Stock({
+      name: name.trim(),
+      quantity: parseFloat(quantity),
+      unitPrice: parseFloat(unitPrice),
+      minQuantity: minQuantity ? parseFloat(minQuantity) : 0,
+      projectId
+    });
+
     await stock.save();
-    res.status(201).json(stock);
+    res.status(201).json({ data: stock });
   } catch (error) {
+    console.error('Error creating stock:', error);
     res.status(400).json({ error: error.message });
   }
 });
 
 app.put('/BussnessApp/stock/:id', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
   try {
+    const { name, quantity, unitPrice, minQuantity } = req.body;
+
+    const updateData = {
+      updatedAt: Date.now()
+    };
+
+    if (name !== undefined) updateData.name = name.trim();
+    if (quantity !== undefined) updateData.quantity = parseFloat(quantity);
+    if (unitPrice !== undefined) updateData.unitPrice = parseFloat(unitPrice);
+    if (minQuantity !== undefined) updateData.minQuantity = parseFloat(minQuantity);
+
     const stock = await Stock.findByIdAndUpdate(
       req.params.id,
-      { ...req.body, updatedAt: Date.now() },
+      updateData,
       { new: true }
     );
+
     if (!stock) {
       return res.status(404).json({ error: 'Stock item not found' });
     }
-    res.json(stock);
+
+    res.json({ data: stock });
   } catch (error) {
+    console.error('Error updating stock:', error);
     res.status(400).json({ error: error.message });
   }
 });
@@ -752,26 +783,53 @@ app.get('/BussnessApp/customers', authenticateToken, async (req, res) => {
 
 app.post('/BussnessApp/customers', authenticateToken, async (req, res) => {
   try {
-    const customer = new Customer(req.body);
+    const { name, email, phone, projectId } = req.body;
+
+    // Validation du nom (requis)
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ error: 'Le nom du client est requis' });
+    }
+
+    const customer = new Customer({
+      name: name.trim(),
+      email: email ? email.trim() : undefined,
+      phone: phone ? phone.trim() : undefined,
+      projectId
+    });
+
     await customer.save();
     res.status(201).json({ data: customer });
   } catch (error) {
+    console.error('Error creating customer:', error);
     res.status(400).json({ error: error.message });
   }
 });
 
 app.put('/BussnessApp/customers/:id', authenticateToken, async (req, res) => {
   try {
+    const { name, email, phone } = req.body;
+
+    const updateData = {
+      updatedAt: Date.now()
+    };
+
+    if (name !== undefined) updateData.name = name.trim();
+    if (email !== undefined) updateData.email = email.trim();
+    if (phone !== undefined) updateData.phone = phone.trim();
+
     const customer = await Customer.findByIdAndUpdate(
       req.params.id,
-      { ...req.body, updatedAt: Date.now() },
+      updateData,
       { new: true }
     );
+
     if (!customer) {
       return res.status(404).json({ error: 'Customer not found' });
     }
-    res.json(customer);
+
+    res.json({ data: customer });
   } catch (error) {
+    console.error('Error updating customer:', error);
     res.status(400).json({ error: error.message });
   }
 });
