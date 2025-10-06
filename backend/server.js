@@ -534,7 +534,7 @@ app.get('/BussnessApp/products', authenticateToken, async (req, res) => {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
     const products = await Product.find(filter).sort({ name: 1 });
-    res.json(products);
+    res.json({ data: products });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -588,7 +588,7 @@ app.get('/BussnessApp/sales', authenticateToken, async (req, res) => {
       .populate('customerId', 'name phone email')
       .populate('employeeId', 'username fullName')
       .sort({ date: -1 });
-    res.json(sales);
+    res.json({ data: sales });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -596,13 +596,26 @@ app.get('/BussnessApp/sales', authenticateToken, async (req, res) => {
 
 app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
   try {
-    const { customerId, productId, quantity, unitPrice, discount } = req.body;
+    const { customerId, productId, quantity, unitPrice, discount, projectId } = req.body;
+
+    // Validation des champs requis
+    if (!productId || !quantity || !unitPrice) {
+      return res.status(400).json({
+        error: 'Produit, quantité et prix unitaire sont requis'
+      });
+    }
 
     // Calculer le montant total
     const amount = (quantity * unitPrice) - (discount || 0);
 
     const sale = new Sale({
-      ...req.body,
+      projectId,
+      productId,
+      customerId: customerId || undefined,
+      quantity,
+      unitPrice,
+      discount: discount || 0,
+      description: req.body.description,
       amount,
       employeeId: req.user.id // L'employé connecté
     });
@@ -644,8 +657,8 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
     }
 
     // Mettre à jour le stock si produit présent
-    if (productId) {
-      const stock = await Stock.findOne({ projectId: req.body.projectId, name: productId });
+    if (productId && projectId) {
+      const stock = await Stock.findOne({ projectId, name: productId });
       if (stock && stock.quantity >= quantity) {
         stock.quantity -= quantity;
         stock.updatedAt = Date.now();
@@ -658,8 +671,9 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
       .populate('customerId', 'name phone')
       .populate('employeeId', 'username fullName');
 
-    res.status(201).json(populatedSale);
+    res.status(201).json({ data: populatedSale });
   } catch (error) {
+    console.error('Error creating sale:', error);
     res.status(400).json({ error: error.message });
   }
 });
@@ -730,7 +744,7 @@ app.get('/BussnessApp/customers', authenticateToken, async (req, res) => {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
     const customers = await Customer.find(filter).sort({ name: 1 });
-    res.json(customers);
+    res.json({ data: customers });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

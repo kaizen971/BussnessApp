@@ -21,9 +21,9 @@ export const colors = {
   surface: '#1A1A1A',        // Surface noire
   surfaceLight: '#2D2D2D',   // Surface gris foncé
 
-  text: '#FFD700',           // Texte doré
+  text: '#F5F5F5',           // Texte blanc cassé pour la lisibilité
   textSecondary: '#D4AF37',  // Texte secondaire doré
-  textLight: '#B8941E',      // Texte clair doré
+  textLight: '#999999',      // Texte clair gris
 
   border: '#3D3D3D',         // Bordure grise
   borderLight: '#4D4D4D',    // Bordure grise claire

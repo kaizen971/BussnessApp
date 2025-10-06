@@ -45,7 +45,7 @@ export const SalesScreen = () => {
         productsAPI.getAll(),
         customersAPI.getAll(user?.projectId),
       ]);
-      setSales(salesRes.data);
+      setSales(salesRes.data || []);
       setProducts(productsRes.data || []);
       setCustomers(customersRes.data || []);
     } catch (error) {
@@ -118,7 +118,7 @@ export const SalesScreen = () => {
       <Card style={styles.saleItem}>
         <View style={styles.saleHeader}>
           <View style={styles.saleIcon}>
-            <Ionicons name="cash-outline" size={24} color={colors.success} />
+            <Ionicons name="cash-outline" size={24} color={colors.primary} />
           </View>
           <View style={styles.saleInfo}>
             <Text style={styles.saleAmount}>+{item.amount?.toFixed(2) || '0.00'} €</Text>
@@ -261,8 +261,8 @@ export const SalesScreen = () => {
               </View>
 
               {selectedCustomer && (
-                <View style={[styles.infoBox, { backgroundColor: colors.success + '10' }]}>
-                  <Ionicons name="star-outline" size={16} color={colors.success} />
+                <View style={[styles.infoBox, { backgroundColor: colors.primary + '10' }]}>
+                  <Ionicons name="star-outline" size={16} color={colors.primary} />
                   <Text style={styles.infoText}>
                     Fidélité: {selectedCustomer.loyaltyLevel || 'bronze'} |
                     {selectedCustomer.loyaltyPoints || 0} points |
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
   },
   totalCard: {
     alignItems: 'center',
-    backgroundColor: colors.success + '10',
+    backgroundColor: colors.primary + '10',
   },
   totalLabel: {
     fontSize: 14,
@@ -347,7 +347,7 @@ const styles = StyleSheet.create({
   totalAmount: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: colors.success,
+    color: colors.primary,
     marginBottom: 4,
   },
   totalCount: {
@@ -369,7 +369,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: colors.success + '20',
+    backgroundColor: colors.primary + '20',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
   saleAmount: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: colors.success,
+    color: colors.primary,
     marginBottom: 4,
   },
   saleProduct: {
@@ -427,10 +427,10 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.success,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.success,
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -506,7 +506,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   amountPreview: {
-    backgroundColor: colors.success + '10',
+    backgroundColor: colors.primary + '10',
     padding: 16,
     borderRadius: 12,
     marginTop: 8,
@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
   amountPreviewValue: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: colors.success,
+    color: colors.primary,
   },
   submitButton: {
     marginTop: 8,

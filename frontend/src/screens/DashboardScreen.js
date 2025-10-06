@@ -187,7 +187,7 @@ export const DashboardScreen = ({ navigation }) => {
         <QuickActionButton
           title="Feedback"
           icon="chatbubble-outline"
-          color={colors.secondary}
+          color={colors.primary}
           onPress={() => navigation.navigate('Feedback')}
         />
       </View>
