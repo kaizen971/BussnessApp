@@ -42,6 +42,14 @@ export const AuthProvider = ({ children }) => {
       const response = await authAPI.login(username, password);
       const { user: userData, token: userToken } = response.data;
 
+      // Log pour déboguer le projectId
+      console.log('Login successful - User data:', {
+        id: userData._id,
+        username: userData.username,
+        projectId: userData.projectId,
+        hasProjectId: !!userData.projectId
+      });
+
       await AsyncStorage.setItem('userToken', userToken);
       await AsyncStorage.setItem('userData', JSON.stringify(userData));
 

@@ -382,6 +382,15 @@ app.get('/BussnessApp/auth/me', authenticateToken, async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
+
+    // Log pour déboguer le projectId
+    console.log('Auth/me - User data:', {
+      id: user._id,
+      username: user.username,
+      projectId: user.projectId,
+      hasProjectId: !!user.projectId
+    });
+
     res.json(user);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -410,6 +419,52 @@ app.post('/BussnessApp/auth/change-password', authenticateToken, async (req, res
 
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Route utilitaire pour assigner un projectId par défaut aux utilisateurs (admin only)
+app.post('/BussnessApp/auth/assign-default-project', authenticateToken, checkRole('admin'), async (req, res) => {
+  try {
+    // Trouver ou créer un projet par défaut
+    let defaultProject = await Project.findOne({ name: 'Projet par défaut' });
+
+    if (!defaultProject) {
+      defaultProject = new Project({
+        name: 'Projet par défaut',
+        description: 'Projet créé automatiquement pour les utilisateurs sans projet',
+        category: 'general'
+      });
+      await defaultProject.save();
+      console.log('Default project created:', defaultProject._id);
+    }
+
+    // Trouver tous les utilisateurs sans projectId
+    const usersWithoutProject = await User.find({
+      $or: [
+        { projectId: null },
+        { projectId: { $exists: false } }
+      ]
+    });
+
+    console.log(`Found ${usersWithoutProject.length} users without projectId`);
+
+    // Assigner le projet par défaut à ces utilisateurs
+    const updatePromises = usersWithoutProject.map(user => {
+      user.projectId = defaultProject._id;
+      return user.save();
+    });
+
+    await Promise.all(updatePromises);
+
+    res.json({
+      message: 'Default project assigned successfully',
+      projectId: defaultProject._id,
+      usersUpdated: usersWithoutProject.length,
+      users: usersWithoutProject.map(u => ({ id: u._id, username: u.username }))
+    });
+  } catch (error) {
+    console.error('Error assigning default project:', error);
     res.status(500).json({ error: error.message });
   }
 });

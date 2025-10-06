@@ -35,6 +35,14 @@ export const SalesScreen = () => {
   });
 
   useEffect(() => {
+    // Log pour déboguer le projectId
+    console.log('SalesScreen - User data:', {
+      userId: user?._id,
+      username: user?.username,
+      projectId: user?.projectId,
+      hasProjectId: !!user?.projectId,
+      userObject: user
+    });
     loadData();
   }, []);
 
