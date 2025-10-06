@@ -754,7 +754,7 @@ app.post('/BussnessApp/customers', authenticateToken, async (req, res) => {
   try {
     const customer = new Customer(req.body);
     await customer.save();
-    res.status(201).json(customer);
+    res.status(201).json({ data: customer });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
