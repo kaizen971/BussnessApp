@@ -45,6 +45,67 @@ Le serveur backend est déjà en cours d'exécution (plusieurs instances détect
 
 ---
 
+## 2025-10-06 - Correction du bug "Cannot read properties" dans SalesScreen ligne 232
+
+### 🐛 Bug Corrigé
+
+#### 4. Erreur "Cannot read properties" lors du rendu des Pickers dans SalesScreen
+**Fichier:** `frontend/src/screens/SalesScreen.js`
+**Ligne:** 232-233 (Picker des produits) et 260-261 (Picker des clients)
+
+**Problème:**
+- Lorsque les données `products` ou `customers` étaient vides, undefined ou contenaient des objets incomplets, l'application crashait avec l'erreur "Cannot read properties of undefined"
+- Le code tentait d'accéder directement à `product.name`, `product.unitPrice`, `customer.name` et `customer.phone` sans vérifier l'existence des objets
+
+**Solution:**
+- **Ligne 233:** Ajout de vérifications `products && products.length > 0` avant le map
+- **Ligne 234-240:** Ajout d'une vérification conditionnelle `product && product._id` pour chaque produit
+- **Ligne 237:** Ajout de fallbacks avec l'opérateur `||` : `product.name || 'Produit'` et `product.unitPrice || '0'`
+- **Ligne 262:** Ajout de vérifications `customers && customers.length > 0` avant le map
+- **Ligne 263-269:** Ajout d'une vérification conditionnelle `customer && customer._id` pour chaque client
+- **Ligne 266:** Ajout de fallbacks : `customer.name || 'Client'` et `customer.phone || 'N/A'`
+
+**Code modifié:**
+```javascript
+// Avant (ligne 233-239):
+{products.map(product => (
+  <Picker.Item
+    key={product._id}
+    label={`${product.name} - ${product.unitPrice}€`}
+    value={product._id}
+  />
+))}
+
+// Après (ligne 233-241):
+{products && products.length > 0 && products.map(product => (
+  product && product._id ? (
+    <Picker.Item
+      key={product._id}
+      label={`${product.name || 'Produit'} - ${product.unitPrice || '0'}€`}
+      value={product._id}
+    />
+  ) : null
+))}
+```
+
+**Impact:**
+- Élimination totale des crashes liés aux données manquantes ou incomplètes dans les Pickers
+- L'application reste fonctionnelle même si l'API retourne des données incomplètes
+- Meilleure expérience utilisateur avec des valeurs par défaut affichées
+
+### 🔧 Infrastructure
+
+#### 5. Serveur redémarré avec nodemon
+**Action:**
+- Arrêt du processus utilisant le port 3003
+- Démarrage du serveur avec `npm run dev` (nodemon)
+- Serveur en cours d'exécution sur le port 3003
+- MongoDB connecté à 192.168.1.72
+
+**État:** ✅ Serveur opérationnel
+
+---
+
 ## Prochaines Améliorations Suggérées
 
 - [ ] Ajouter une gestion d'erreur globale pour intercepter tous les crashes

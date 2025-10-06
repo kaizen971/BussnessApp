@@ -230,12 +230,14 @@ export const SalesScreen = () => {
                   style={styles.picker}
                 >
                   <Picker.Item label="Sélectionner un produit..." value="" />
-                  {products.map(product => (
-                    <Picker.Item
-                      key={product._id}
-                      label={`${product.name} - ${product.unitPrice}€`}
-                      value={product._id}
-                    />
+                  {products && products.length > 0 && products.map(product => (
+                    product && product._id ? (
+                      <Picker.Item
+                        key={product._id}
+                        label={`${product.name || 'Produit'} - ${product.unitPrice || '0'}€`}
+                        value={product._id}
+                      />
+                    ) : null
                   ))}
                 </Picker>
               </View>
@@ -257,12 +259,14 @@ export const SalesScreen = () => {
                   style={styles.picker}
                 >
                   <Picker.Item label="Aucun client sélectionné" value="" />
-                  {customers.map(customer => (
-                    <Picker.Item
-                      key={customer._id}
-                      label={`${customer.name} - ${customer.phone}`}
-                      value={customer._id}
-                    />
+                  {customers && customers.length > 0 && customers.map(customer => (
+                    customer && customer._id ? (
+                      <Picker.Item
+                        key={customer._id}
+                        label={`${customer.name || 'Client'} - ${customer.phone || 'N/A'}`}
+                        value={customer._id}
+                      />
+                    ) : null
                   ))}
                 </Picker>
               </View>
