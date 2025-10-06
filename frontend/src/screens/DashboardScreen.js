@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,21 +7,38 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
+  Animated,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { Card } from '../components/Card';
+import { LoadingScreen } from '../components/LoadingScreen';
 import { dashboardAPI } from '../services/api';
-import { colors } from '../utils/colors';
+import { colors, gradients } from '../utils/colors';
 
 export const DashboardScreen = ({ navigation }) => {
   const { user, logout } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
 
   useEffect(() => {
     loadDashboardData();
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
 
   const loadDashboardData = async () => {
@@ -60,13 +77,20 @@ export const DashboardScreen = ({ navigation }) => {
 
   const StatCard = ({ title, value, icon, color, onPress }) => (
     <Card style={styles.statCard} onPress={onPress}>
-      <View style={[styles.statIcon, { backgroundColor: color + '20' }]}>
-        <Ionicons name={icon} size={28} color={color} />
-      </View>
-      <View style={styles.statContent}>
-        <Text style={styles.statValue}>{value}</Text>
-        <Text style={styles.statTitle}>{title}</Text>
-      </View>
+      <LinearGradient
+        colors={[color + '15', color + '05']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.statGradient}
+      >
+        <View style={[styles.statIcon, { backgroundColor: color + '25' }]}>
+          <Ionicons name={icon} size={28} color={color} />
+        </View>
+        <View style={styles.statContent}>
+          <Text style={styles.statValue}>{value}</Text>
+          <Text style={styles.statTitle}>{title}</Text>
+        </View>
+      </LinearGradient>
     </Card>
   );
 
@@ -80,29 +104,26 @@ export const DashboardScreen = ({ navigation }) => {
   );
 
   if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text>Chargement...</Text>
-      </View>
-    );
+    return <LoadingScreen />;
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    >
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Bonjour,</Text>
-          <Text style={styles.userName}>{user?.fullName || user?.username}</Text>
-          <Text style={styles.userRole}>{user?.role === 'admin' ? 'Administrateur' : user?.role === 'manager' ? 'Responsable' : 'Caissier'}</Text>
-        </View>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Ionicons name="log-out-outline" size={24} color={colors.error} />
-        </TouchableOpacity>
-      </View>
+    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      >
+        <Animated.View style={[styles.header, { transform: [{ translateY: slideAnim }] }]}>
+          <View>
+            <Text style={styles.greeting}>Bonjour,</Text>
+            <Text style={styles.userName}>{user?.fullName || user?.username}</Text>
+            <Text style={styles.userRole}>{user?.role === 'admin' ? 'Administrateur' : user?.role === 'manager' ? 'Responsable' : 'Caissier'}</Text>
+          </View>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <Ionicons name="log-out-outline" size={24} color={colors.error} />
+          </TouchableOpacity>
+        </Animated.View>
 
       {stats && (
         <>
@@ -193,7 +214,8 @@ export const DashboardScreen = ({ navigation }) => {
           onPress={() => navigation.navigate('Feedback')}
         />
       </View>
-    </ScrollView>
+      </ScrollView>
+    </Animated.View>
   );
 };
 
@@ -201,6 +223,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  scrollView: {
+    flex: 1,
   },
   contentContainer: {
     padding: 16,
@@ -220,17 +245,22 @@ const styles = StyleSheet.create({
   greeting: {
     fontSize: 16,
     color: colors.textSecondary,
+    fontWeight: '500',
   },
   userName: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 'bold',
     color: colors.text,
     marginTop: 4,
+    letterSpacing: 0.5,
   },
   userRole: {
     fontSize: 14,
     color: colors.primary,
-    marginTop: 2,
+    marginTop: 4,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   logoutButton: {
     padding: 8,
@@ -244,8 +274,15 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 0,
     minHeight: 100,
+    overflow: 'hidden',
+  },
+  statGradient: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
   },
   statIcon: {
     width: 56,
@@ -311,12 +348,17 @@ const styles = StyleSheet.create({
     width: '31%',
     aspectRatio: 1,
     backgroundColor: colors.surface,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.border,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   actionIcon: {
     width: 48,
