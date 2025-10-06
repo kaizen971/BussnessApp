@@ -35,7 +35,7 @@ export const CustomersScreen = () => {
   const loadCustomers = async () => {
     try {
       const response = await customersAPI.getAll(user?.projectId);
-      setCustomers(response.data);
+      setCustomers(response.data.data || response.data || []);
     } catch (error) {
       console.error('Error loading customers:', error);
       Alert.alert('Erreur', 'Impossible de charger les clients');
@@ -58,10 +58,10 @@ export const CustomersScreen = () => {
       };
 
       if (selectedCustomer) {
-        await customersAPI.update(selectedCustomer._id, customerData);
+        const response = await customersAPI.update(selectedCustomer._id, customerData);
         Alert.alert('Succès', 'Client modifié avec succès');
       } else {
-        await customersAPI.create({
+        const response = await customersAPI.create({
           ...customerData,
           projectId: user?.projectId,
         });
@@ -71,10 +71,14 @@ export const CustomersScreen = () => {
       setFormData({ name: '', email: '', phone: '' });
       setSelectedCustomer(null);
       setModalVisible(false);
-      loadCustomers();
+      await loadCustomers();
     } catch (error) {
       console.error('Error saving customer:', error);
-      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de sauvegarder le client');
+      const errorMessage = error.response?.data?.error || error.message || 'Impossible de sauvegarder le client';
+      const errorDetails = error.response?.status === 403
+        ? 'Vous n\'avez pas les permissions nécessaires pour créer un client'
+        : errorMessage;
+      Alert.alert('Erreur', errorDetails);
     }
   };
 

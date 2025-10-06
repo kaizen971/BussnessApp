@@ -36,7 +36,7 @@ export const StockScreen = () => {
   const loadStock = async () => {
     try {
       const response = await stockAPI.getAll(user?.projectId);
-      setStock(response.data);
+      setStock(response.data.data || response.data || []);
     } catch (error) {
       console.error('Error loading stock:', error);
       Alert.alert('Erreur', 'Impossible de charger le stock');
@@ -60,10 +60,10 @@ export const StockScreen = () => {
       };
 
       if (selectedItem) {
-        await stockAPI.update(selectedItem._id, stockData);
+        const response = await stockAPI.update(selectedItem._id, stockData);
         Alert.alert('Succès', 'Article modifié avec succès');
       } else {
-        await stockAPI.create({
+        const response = await stockAPI.create({
           ...stockData,
           projectId: user?.projectId,
         });
@@ -73,10 +73,14 @@ export const StockScreen = () => {
       setFormData({ name: '', quantity: '', unitPrice: '', minQuantity: '' });
       setSelectedItem(null);
       setModalVisible(false);
-      loadStock();
+      await loadStock();
     } catch (error) {
       console.error('Error saving stock:', error);
-      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de sauvegarder l\'article');
+      const errorMessage = error.response?.data?.error || error.message || 'Impossible de sauvegarder l\'article';
+      const errorDetails = error.response?.status === 403
+        ? 'Vous n\'avez pas les permissions nécessaires pour créer un article'
+        : errorMessage;
+      Alert.alert('Erreur', errorDetails);
     }
   };
 

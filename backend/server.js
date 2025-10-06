@@ -706,9 +706,12 @@ app.get('/BussnessApp/stock', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/BussnessApp/stock', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
+app.post('/BussnessApp/stock', authenticateToken, async (req, res) => {
   try {
     const { name, quantity, unitPrice, minQuantity, projectId } = req.body;
+
+    // Log pour débugger
+    console.log('Creating stock with data:', { name, quantity, unitPrice, minQuantity, projectId, userId: req.user?.id });
 
     // Validation des champs requis
     if (!name || name.trim() === '') {
@@ -732,6 +735,7 @@ app.post('/BussnessApp/stock', authenticateToken, checkRole('admin', 'manager'),
     });
 
     await stock.save();
+    console.log('Stock created successfully:', stock._id);
     res.status(201).json({ data: stock });
   } catch (error) {
     console.error('Error creating stock:', error);
@@ -739,7 +743,7 @@ app.post('/BussnessApp/stock', authenticateToken, checkRole('admin', 'manager'),
   }
 });
 
-app.put('/BussnessApp/stock/:id', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
+app.put('/BussnessApp/stock/:id', authenticateToken, async (req, res) => {
   try {
     const { name, quantity, unitPrice, minQuantity } = req.body;
 
@@ -785,6 +789,9 @@ app.post('/BussnessApp/customers', authenticateToken, async (req, res) => {
   try {
     const { name, email, phone, projectId } = req.body;
 
+    // Log pour débugger
+    console.log('Creating customer with data:', { name, email, phone, projectId, userId: req.user?.id });
+
     // Validation du nom (requis)
     if (!name || name.trim() === '') {
       return res.status(400).json({ error: 'Le nom du client est requis' });
@@ -798,6 +805,7 @@ app.post('/BussnessApp/customers', authenticateToken, async (req, res) => {
     });
 
     await customer.save();
+    console.log('Customer created successfully:', customer._id);
     res.status(201).json({ data: customer });
   } catch (error) {
     console.error('Error creating customer:', error);
