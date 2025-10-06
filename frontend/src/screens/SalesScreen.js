@@ -8,8 +8,8 @@ import {
   Alert,
   Modal,
   TouchableOpacity,
-  Picker,
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';

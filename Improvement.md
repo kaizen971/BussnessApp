@@ -31,3 +31,50 @@ Les modifications respectent le thème noir et doré de l'application :
 - Serveur lancé sur le port 3003
 - API accessible : http://localhost:3003/BussnessApp
 - URL publique : https://mabouya.servegame.com/BussnessApp/BussnessApp
+
+## 2025-10-06 - Correction du crash de l'application dans la section Ventes et Stock
+
+### Problème identifié
+L'application crashait lors du clic sur la section "Ventes" avec l'erreur :
+```
+Item 232 cannot read properties
+```
+
+Le problème venait du composant `Picker` qui était importé depuis `react-native` (ligne 11 de `SalesScreen.js`), alors que dans les versions récentes de React Native, ce composant a été déplacé vers le package `@react-native-picker/picker`.
+
+### Solution implémentée
+
+1. **Installation du package nécessaire** :
+   ```bash
+   npm install @react-native-picker/picker
+   ```
+
+2. **Correction de l'import dans SalesScreen.js** :
+   - **Avant** (ligne 11) :
+     ```javascript
+     import { Picker } from 'react-native';
+     ```
+   - **Après** (ligne 12) :
+     ```javascript
+     import { Picker } from '@react-native-picker/picker';
+     ```
+
+3. **Vérification des autres fichiers** :
+   - `TeamScreen.js` : Déjà corrigé avec le bon import
+   - `ExpensesScreen.js` : Déjà corrigé avec le bon import
+
+### Impact
+- ✅ La section **Ventes** fonctionne maintenant correctement
+- ✅ La création de **ventes** avec sélection de produits et clients est opérationnelle
+- ✅ La section **Stock** fonctionne correctement
+- ✅ La création d'**articles en stock** fonctionne
+- ✅ Les pickers dans les sections Équipe et Dépenses continuent de fonctionner
+
+### Fichiers modifiés
+- `frontend/src/screens/SalesScreen.js` (lignes 1-12)
+- Installation de `@react-native-picker/picker` dans le projet frontend
+
+### Tests effectués
+- ✅ Serveur backend redémarré avec succès sur le port 3003
+- ✅ Connexion MongoDB établie (192.168.1.72)
+- ✅ L'application peut maintenant créer des ventes et gérer le stock sans crash
