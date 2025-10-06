@@ -285,3 +285,126 @@ Pour vérifier que tout fonctionne correctement :
    - ✅ Modifier un client existant
    - ✅ Vérifier l'affichage des statistiques (achats, points)
    - ✅ Tester la validation du nom requis
+
+---
+
+## 06/10/2025 - Correction Products.find Undefined dans SalesScreen
+
+### Problème
+L'application crashait avec l'erreur **"products.find undefined"** dans `SalesScreen` lorsque les tableaux `products` ou `customers` étaient vides ou non chargés.
+
+### Causes Identifiées
+Plusieurs appels à la méthode `.find()` sur les tableaux `products` et `customers` sans vérification préalable de leur existence :
+
+1. **Ligne 162-163** : Variables `selectedProduct` et `selectedCustomer`
+2. **Ligne 63** : Dans `handleProductChange()`
+3. **Ligne 73** : Dans `handleCustomerChange()`
+4. **Ligne 117-118** : Dans `renderSaleItem()`
+
+### Solutions Implémentées
+
+#### 1. Protection des Variables Principales (lignes 162-163)
+
+**Avant :**
+```javascript
+const selectedProduct = products.find(p => p._id === formData.productId);
+const selectedCustomer = customers.find(c => c._id === formData.customerId);
+```
+
+**Après :**
+```javascript
+const selectedProduct = (products && Array.isArray(products)) ? products.find(p => p._id === formData.productId) : null;
+const selectedCustomer = (customers && Array.isArray(customers)) ? customers.find(c => c._id === formData.customerId) : null;
+```
+
+#### 2. Protection dans handleProductChange (lignes 63-66)
+
+**Avant :**
+```javascript
+const selectedProduct = products.find(p => p._id === productId);
+if (selectedProduct) {
+  setFormData(prev => ({ ...prev, unitPrice: selectedProduct.unitPrice.toString() }));
+}
+```
+
+**Après :**
+```javascript
+const selectedProduct = (products && Array.isArray(products)) ? products.find(p => p._id === productId) : null;
+if (selectedProduct && selectedProduct.unitPrice) {
+  setFormData(prev => ({ ...prev, unitPrice: selectedProduct.unitPrice.toString() }));
+}
+```
+
+#### 3. Protection dans handleCustomerChange (lignes 73-76)
+
+**Avant :**
+```javascript
+const selectedCustomer = customers.find(c => c._id === customerId);
+if (selectedCustomer && selectedCustomer.discount) {
+  setFormData(prev => ({ ...prev, discount: selectedCustomer.discount.toString() }));
+}
+```
+
+**Après :**
+```javascript
+const selectedCustomer = (customers && Array.isArray(customers)) ? customers.find(c => c._id === customerId) : null;
+if (selectedCustomer && selectedCustomer.discount) {
+  setFormData(prev => ({ ...prev, discount: selectedCustomer.discount.toString() }));
+}
+```
+
+#### 4. Protection dans renderSaleItem (lignes 117-118)
+
+**Avant :**
+```javascript
+const product = item.productId ? products.find(p => p._id === item.productId) : null;
+const customer = item.customerId ? customers.find(c => c._id === item.customerId) : null;
+```
+
+**Après :**
+```javascript
+const product = (item.productId && products && Array.isArray(products)) ? products.find(p => p._id === item.productId) : null;
+const customer = (item.customerId && customers && Array.isArray(customers)) ? customers.find(c => c._id === item.customerId) : null;
+```
+
+### Résultats
+
+- ✅ L'application ne crash plus avec l'erreur "products.find undefined"
+- ✅ Tous les appels à `.find()` sont protégés contre les tableaux undefined ou null
+- ✅ Gestion robuste des états de chargement initial
+- ✅ Affichage correct même quand les données ne sont pas encore chargées
+- ✅ Vérifications supplémentaires sur les propriétés des objets (ex: `selectedProduct.unitPrice`)
+
+### Fichiers Modifiés
+
+**frontend/src/screens/SalesScreen.js** (4 modifications)
+- Lignes 63-66 : Protection dans `handleProductChange()`
+- Lignes 73-76 : Protection dans `handleCustomerChange()`
+- Lignes 117-118 : Protection dans `renderSaleItem()`
+- Lignes 162-163 : Protection des variables `selectedProduct` et `selectedCustomer`
+
+### Impact
+
+- 🐛 **Stabilité:** Élimination des crashes liés aux données manquantes
+- 🔒 **Robustesse:** Gestion défensive de tous les cas edge
+- 👤 **UX:** Expérience utilisateur fluide même lors du chargement des données
+- ⚡ **Performance:** Pas d'impact négatif sur les performances
+- 📱 **Fiabilité:** L'écran des ventes fonctionne désormais dans tous les scénarios
+
+### Tests Recommandés
+
+1. **Scénario de chargement initial**
+   - ✅ Ouvrir l'écran Ventes avant que les données ne soient chargées
+   - ✅ Vérifier qu'aucun crash ne se produit
+
+2. **Scénario sans produits**
+   - ✅ Ouvrir l'écran Ventes quand aucun produit n'existe
+   - ✅ Vérifier que le formulaire reste utilisable
+
+3. **Scénario sans clients**
+   - ✅ Créer une vente sans sélectionner de client
+   - ✅ Vérifier que tout fonctionne normalement
+
+4. **Scénario normal**
+   - ✅ Créer une vente avec produit et client
+   - ✅ Vérifier le pré-remplissage automatique des prix et remises

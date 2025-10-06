@@ -60,8 +60,8 @@ export const SalesScreen = () => {
     setFormData(prev => ({ ...prev, productId }));
 
     // Pré-remplir le prix unitaire depuis le produit sélectionné
-    const selectedProduct = products.find(p => p._id === productId);
-    if (selectedProduct) {
+    const selectedProduct = (products && Array.isArray(products)) ? products.find(p => p._id === productId) : null;
+    if (selectedProduct && selectedProduct.unitPrice) {
       setFormData(prev => ({ ...prev, unitPrice: selectedProduct.unitPrice.toString() }));
     }
   };
@@ -70,7 +70,7 @@ export const SalesScreen = () => {
     setFormData(prev => ({ ...prev, customerId }));
 
     // Pré-remplir la remise depuis le niveau de fidélité du client
-    const selectedCustomer = customers.find(c => c._id === customerId);
+    const selectedCustomer = (customers && Array.isArray(customers)) ? customers.find(c => c._id === customerId) : null;
     if (selectedCustomer && selectedCustomer.discount) {
       setFormData(prev => ({ ...prev, discount: selectedCustomer.discount.toString() }));
     }
@@ -114,8 +114,8 @@ export const SalesScreen = () => {
     // Vérifier que item existe avant d'accéder à ses propriétés
     if (!item) return null;
 
-    const product = item.productId ? products.find(p => p._id === item.productId) : null;
-    const customer = item.customerId ? customers.find(c => c._id === item.customerId) : null;
+    const product = (item.productId && products && Array.isArray(products)) ? products.find(p => p._id === item.productId) : null;
+    const customer = (item.customerId && customers && Array.isArray(customers)) ? customers.find(c => c._id === item.customerId) : null;
 
     return (
       <Card style={styles.saleItem}>
@@ -159,8 +159,8 @@ export const SalesScreen = () => {
   };
 
   const totalSales = (sales && Array.isArray(sales)) ? sales.reduce((sum, sale) => sum + (sale.amount || 0), 0) : 0;
-  const selectedProduct = products.find(p => p._id === formData.productId);
-  const selectedCustomer = customers.find(c => c._id === formData.customerId);
+  const selectedProduct = (products && Array.isArray(products)) ? products.find(p => p._id === formData.productId) : null;
+  const selectedCustomer = (customers && Array.isArray(customers)) ? customers.find(c => c._id === formData.customerId) : null;
 
   // Calcul du montant prévu
   const estimatedAmount = formData.quantity && formData.unitPrice
