@@ -63,8 +63,10 @@ export const DashboardScreen = ({ navigation }) => {
       <View style={[styles.statIcon, { backgroundColor: color + '20' }]}>
         <Ionicons name={icon} size={28} color={color} />
       </View>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statTitle}>{title}</Text>
+      <View style={styles.statContent}>
+        <Text style={styles.statValue}>{value}</Text>
+        <Text style={styles.statTitle}>{title}</Text>
+      </View>
     </Card>
   );
 
@@ -240,8 +242,10 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: 20,
+    padding: 16,
+    minHeight: 100,
   },
   statIcon: {
     width: 56,
@@ -249,17 +253,22 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginRight: 12,
+  },
+  statContent: {
+    flex: 1,
+    justifyContent: 'center',
   },
   statValue: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     color: colors.text,
     marginBottom: 4,
   },
   statTitle: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textSecondary,
+    fontWeight: '500',
   },
   summaryCard: {
     marginBottom: 24,

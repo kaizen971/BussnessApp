@@ -111,8 +111,11 @@ export const SalesScreen = () => {
   };
 
   const renderSaleItem = ({ item }) => {
-    const product = products.find(p => p._id === item.productId);
-    const customer = customers.find(c => c._id === item.customerId);
+    // Vérifier que item existe avant d'accéder à ses propriétés
+    if (!item) return null;
+
+    const product = item.productId ? products.find(p => p._id === item.productId) : null;
+    const customer = item.customerId ? customers.find(c => c._id === item.customerId) : null;
 
     return (
       <Card style={styles.saleItem}>
@@ -122,9 +125,13 @@ export const SalesScreen = () => {
           </View>
           <View style={styles.saleInfo}>
             <Text style={styles.saleAmount}>+{item.amount?.toFixed(2) || '0.00'} €</Text>
-            {product && (
+            {product ? (
               <Text style={styles.saleProduct}>
-                {product.name} x{item.quantity}
+                {product.name} x{item.quantity || 1}
+              </Text>
+            ) : (
+              <Text style={styles.saleProduct}>
+                Produit x{item.quantity || 1}
               </Text>
             )}
             {customer && (

@@ -1,56 +1,54 @@
-# Améliorations de BussnessApp
+# Journal des Améliorations - BussnessApp
 
-## 2025-10-06 - Mise à jour du thème UI (Noir & Or)
+## 2025-10-06 - Correction de bugs et amélioration de l'UI
 
-### Objectif
-Améliorer l'interface utilisateur avec un thème dominant noir et des accents dorés (#D4AF37) pour un rendu plus élégant et professionnel.
+### 🐛 Bugs Corrigés
 
-### Modifications effectuées
+#### 1. Erreur "Cannot read properties undefined (reading 'item')" dans SalesScreen
+**Fichier:** `frontend/src/screens/SalesScreen.js`
+**Problème:** Lors de l'affichage de la liste des ventes, l'application crashait avec l'erreur "Cannot read properties of undefined (reading 'item')" car le code n'effectuait pas de vérifications sur l'existence des données avant d'y accéder.
 
-#### 1. **Fichier de couleurs** (`frontend/src/utils/colors.js`)
-- ✅ Amélioration de la lisibilité du texte principal
-  - Changement de `text: '#FFD700'` (or brillant) vers `text: '#F5F5F5'` (blanc cassé)
-  - Le texte principal est désormais plus lisible sur fond noir
-  - Conservation des couleurs dorées pour les accents secondaires
-- Les couleurs du thème restent :
-  - **Primary**: #D4AF37 (Or)
-  - **Background**: #0D0D0D (Noir profond)
-  - **Surface**: #1A1A1A (Noir de surface)
-  - **Text Secondary**: #D4AF37 (Doré pour les accents)
+**Solution:**
+- Ajout d'une vérification de nullité pour `item` avant d'accéder à ses propriétés (ligne 114-115)
+- Ajout de vérifications conditionnelles pour `productId` et `customerId` (lignes 117-118)
+- Ajout d'un fallback pour afficher "Produit" quand le produit n'est pas trouvé (lignes 128-136)
+- Ajout de valeurs par défaut pour `quantity` avec l'opérateur `||` (ligne 130)
 
-#### 2. **Composant Input** (`frontend/src/components/Input.js`)
-- ✅ Augmentation de la bordure de 1px à 2px pour un meilleur contraste visuel
-- Amélioration de la visibilité des champs de saisie
+**Impact:** Élimination des crashes lors de l'affichage de ventes avec des références de produits ou clients invalides ou manquants.
 
-#### 3. **Écran de ventes** (`frontend/src/screens/SalesScreen.js`)
-- ✅ Harmonisation des couleurs avec le thème or
-  - Icône de vente : success → primary (or)
-  - Carte total : success → primary (or)
-  - Montant total : success → primary (or)
-  - Montant des ventes : success → primary (or)
-  - Bouton FAB : success → primary (or)
-  - Prévisualisation du montant : success → primary (or)
-  - Badge client fidélité : success → primary (or)
+### 🎨 Améliorations UI
 
-#### 4. **Écran Dashboard** (`frontend/src/screens/DashboardScreen.js`)
-- ✅ Bouton d'action "Feedback" : secondary → primary (or)
-  - Harmonisation avec le reste de l'interface
+#### 2. Amélioration de la lisibilité des cartes statistiques dans DashboardScreen
+**Fichier:** `frontend/src/screens/DashboardScreen.js`
+**Problème:** Les cartes affichant les statistiques (Ventes, Dépenses, Bénéfice Net, Stock) dans la section home avaient une disposition verticale qui rendait la lecture difficile et le texte trop petit.
 
-### Résultats
-- **Cohérence visuelle** : Toute l'application utilise maintenant une palette noir/or cohérente
-- **Meilleure lisibilité** : Le texte blanc cassé (#F5F5F5) contraste mieux avec le fond noir
-- **Accents dorés** : L'or (#D4AF37) est utilisé pour attirer l'attention sur les éléments importants
-- **Thème élégant** : Le noir dominant avec des touches d'or donne un aspect premium à l'application
+**Solution:**
+- Modification du composant `StatCard` pour utiliser un layout horizontal (ligne 62-70)
+- Ajout d'un conteneur `statContent` pour regrouper la valeur et le titre
+- Ajustement du style `statCard` pour utiliser `flexDirection: 'row'` (ligne 244)
+- Augmentation de la taille de la police pour `statValue` de 20 à 22 (ligne 263)
+- Augmentation de la taille de la police pour `statTitle` de 12 à 13 (ligne 269)
+- Ajout d'une hauteur minimale de 100px pour les cartes (ligne 248)
+- Ajout d'un espacement `marginRight: 12` pour l'icône (ligne 256)
 
-### Installation et lancement
-- ✅ **Nodemon installé** : Permet le rechargement automatique du serveur lors des modifications
-- ✅ **Serveur lancé** : Le serveur backend fonctionne sur le port 3003
-  - URL locale : http://localhost:3003/BussnessApp
-  - URL publique : https://mabouya.servegame.com/BussnessApp/BussnessApp
-  - Base de données MongoDB connectée : 192.168.1.72
+**Impact:** Meilleure lisibilité des statistiques clés, disposition plus ergonomique et professionnelle.
 
-### Prochaines améliorations possibles
-- Ajouter des animations de transition pour les interactions
-- Implémenter un mode d'accessibilité avec contraste élevé
-- Ajouter des gradients dorés pour certains boutons importants
-- Créer des variations de thème (ex: or rose, or blanc)
+### 🔧 Infrastructure
+
+#### 3. Installation de nodemon
+**Action:** Installation de nodemon comme dépendance de développement dans le backend
+**Commande:** `npm install --save-dev nodemon`
+**Impact:** Permet le rechargement automatique du serveur lors des modifications du code pendant le développement.
+
+### ✅ État du Serveur
+Le serveur backend est déjà en cours d'exécution (plusieurs instances détectées).
+
+---
+
+## Prochaines Améliorations Suggérées
+
+- [ ] Ajouter une gestion d'erreur globale pour intercepter tous les crashes
+- [ ] Implémenter un système de logs pour tracer les erreurs
+- [ ] Ajouter des tests unitaires pour les composants SalesScreen et DashboardScreen
+- [ ] Optimiser les requêtes API pour réduire le temps de chargement
+- [ ] Ajouter un indicateur de chargement lors du fetch des données
