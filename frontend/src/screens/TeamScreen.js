@@ -8,8 +8,10 @@ import {
   Modal,
   Alert,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Picker } from '@react-native-picker/picker';
 import { colors } from '../utils/colors';
 import { Card } from '../components/Card';
@@ -214,37 +216,71 @@ export const TeamScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Gestion d'équipe</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => {
-            resetForm();
-            setModalVisible(true);
-          }}
-        >
-          <Ionicons name="person-add" size={24} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      <LinearGradient
+        colors={[colors.surface, colors.background]}
+        style={styles.header}
+      >
+        <View style={styles.headerContent}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.primary} />
+          </TouchableOpacity>
+          <View style={styles.titleContainer}>
+            <Text style={styles.title}>Gestion d'équipe</Text>
+            <Text style={styles.subtitle}>{users?.length || 0} membre(s)</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.addButtonWrapper}
+            onPress={() => {
+              resetForm();
+              setModalVisible(true);
+            }}
+          >
+            <LinearGradient
+              colors={[colors.primary, colors.primaryDark]}
+              style={styles.addButton}
+            >
+              <Ionicons name="person-add" size={28} color="#000" />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
 
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
+      <LinearGradient
+        colors={[colors.surface + '80', colors.background]}
+        style={styles.statsContainer}
+      >
+        <LinearGradient
+          colors={[colors.primary + '25', colors.primary + '10']}
+          style={styles.statCard}
+        >
+          <Ionicons name="people" size={28} color={colors.primary} />
           <Text style={styles.statValue}>{(users && Array.isArray(users)) ? users.length : 0}</Text>
           <Text style={styles.statLabel}>Total</Text>
-        </View>
-        <View style={styles.statCard}>
+        </LinearGradient>
+        <LinearGradient
+          colors={[colors.success + '25', colors.success + '10']}
+          style={styles.statCard}
+        >
+          <Ionicons name="checkmark-circle" size={28} color={colors.success} />
           <Text style={styles.statValue}>
             {(users && Array.isArray(users)) ? users.filter((u) => u.isActive).length : 0}
           </Text>
           <Text style={styles.statLabel}>Actifs</Text>
-        </View>
-        <View style={styles.statCard}>
+        </LinearGradient>
+        <LinearGradient
+          colors={[colors.warning + '25', colors.warning + '10']}
+          style={styles.statCard}
+        >
+          <Ionicons name="shield-checkmark" size={28} color={colors.warning} />
           <Text style={styles.statValue}>
             {(users && Array.isArray(users)) ? users.filter((u) => u.role === 'admin').length : 0}
           </Text>
           <Text style={styles.statLabel}>Admins</Text>
-        </View>
-      </View>
+        </LinearGradient>
+      </LinearGradient>
 
       <FlatList
         data={users}
@@ -264,15 +300,42 @@ export const TeamScreen = ({ navigation }) => {
 
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Nouveau collaborateur</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={28} color={colors.text} />
+          <LinearGradient
+            colors={[colors.surface, colors.background]}
+            style={styles.modalContent}
+          >
+            <View style={styles.modalHeaderContainer}>
+              <LinearGradient
+                colors={[colors.primary + '30', colors.primary + '10']}
+                style={styles.modalHeaderGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <View style={styles.modalIconContainer}>
+                  <LinearGradient
+                    colors={[colors.primary, colors.primaryDark]}
+                    style={styles.modalIcon}
+                  >
+                    <Ionicons name="person-add" size={28} color="#000" />
+                  </LinearGradient>
+                </View>
+                <View style={styles.modalTitleContainer}>
+                  <Text style={styles.modalTitle}>Nouveau collaborateur</Text>
+                  <Text style={styles.modalSubtitle}>Ajoutez un membre à l'équipe</Text>
+                </View>
+              </LinearGradient>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => setModalVisible(false)}
+              >
+                <Ionicons name="close-circle" size={32} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalForm}>
+            <ScrollView 
+              style={styles.modalForm}
+              showsVerticalScrollIndicator={false}
+            >
               <Input
                 placeholder="Nom complet *"
                 value={formData.fullName}
@@ -314,27 +377,43 @@ export const TeamScreen = ({ navigation }) => {
                 </Picker>
               </View>
 
-              <View style={styles.permissionsInfo}>
-                <Ionicons name="information-circle" size={20} color={colors.info} />
+              <LinearGradient
+                colors={[colors.primary + '20', colors.primary + '10']}
+                style={styles.permissionsInfo}
+              >
+                <Ionicons name="information-circle" size={24} color={colors.primary} />
                 <Text style={styles.permissionsText}>{getRolePermissions(formData.role)}</Text>
-              </View>
+              </LinearGradient>
             </ScrollView>
 
             <View style={styles.modalActions}>
-              <Button
-                title="Annuler"
+              <TouchableOpacity 
+                style={styles.cancelButton}
                 onPress={() => setModalVisible(false)}
-                variant="outline"
-                style={{ flex: 1, marginRight: 10 }}
-              />
-              <Button
-                title="Créer"
+              >
+                <Text style={styles.cancelButtonText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.saveButtonWrapper}
                 onPress={handleCreate}
-                loading={loading}
-                style={{ flex: 1 }}
-              />
+                disabled={loading}
+              >
+                <LinearGradient
+                  colors={[colors.primary, colors.primaryDark]}
+                  style={styles.saveButton}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#000" />
+                  ) : (
+                    <>
+                      <Ionicons name="person-add" size={20} color="#000" />
+                      <Text style={styles.saveButtonText}>Créer</Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
             </View>
-          </View>
+          </LinearGradient>
         </View>
       </Modal>
     </View>
@@ -347,50 +426,86 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.border + '50',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  titleContainer: {
+    flex: 1,
+    alignItems: 'center',
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: colors.text,
+    marginBottom: 2,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  addButtonWrapper: {
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 8,
   },
   addButton: {
-    backgroundColor: colors.primary,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },
   statsContainer: {
     flexDirection: 'row',
     padding: 20,
-    paddingBottom: 10,
-    backgroundColor: '#fff',
+    paddingBottom: 16,
+    gap: 10,
   },
   statCard: {
     flex: 1,
     alignItems: 'center',
-    padding: 15,
-    backgroundColor: colors.background,
-    borderRadius: 10,
-    marginHorizontal: 5,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 3,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
-    color: colors.primary,
+    color: colors.text,
+    marginTop: 6,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textSecondary,
-    marginTop: 5,
+    marginTop: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   list: {
     padding: 20,
@@ -516,28 +631,65 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '90%',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingBottom: 30,
+    maxHeight: '92%',
+    borderTopWidth: 2,
+    borderColor: colors.primary + '40',
   },
-  modalHeader: {
+  modalHeaderContainer: {
+    padding: 20,
+    paddingBottom: 16,
+  },
+  modalHeaderGradient: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  modalIconContainer: {
+    marginRight: 14,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  modalIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalTitleContainer: {
+    flex: 1,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    zIndex: 10,
   },
   modalForm: {
+    paddingHorizontal: 20,
     marginBottom: 20,
   },
   pickerContainer: {
@@ -550,25 +702,67 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   picker: {
-    backgroundColor: colors.background,
-    borderRadius: 10,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   permissionsInfo: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: colors.info + '10',
-    padding: 12,
-    borderRadius: 10,
-    marginTop: 5,
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
   },
   permissionsText: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.text,
-    marginLeft: 8,
-    lineHeight: 18,
+    marginLeft: 12,
+    lineHeight: 20,
   },
   modalActions: {
     flexDirection: 'row',
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  saveButtonWrapper: {
+    flex: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  saveButton: {
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000',
   },
 });

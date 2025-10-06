@@ -10,15 +10,19 @@ import {
   TouchableOpacity,
   Animated,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
 import { salesAPI, productsAPI, customersAPI } from '../services/api';
 import { colors } from '../utils/colors';
+
+const { width } = Dimensions.get('window');
 
 export const SalesScreen = () => {
   const { user } = useAuth();
@@ -56,7 +60,7 @@ export const SalesScreen = () => {
         productsAPI.getAll(user?.projectId),
         customersAPI.getAll(user?.projectId),
       ]);
-      setSales(salesRes.data || []);
+      setSales(salesRes.data?.data || []);
       setProducts(productsRes?.data?.data || []);
       setCustomers(customersRes?.data?.data || []);
     } catch (error) {
@@ -265,13 +269,29 @@ export const SalesScreen = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Card style={styles.totalCard}>
-          <Text style={styles.totalLabel}>Total des ventes</Text>
-          <Text style={styles.totalAmount}>{totalSales.toFixed(2)} €</Text>
-          <Text style={styles.totalCount}>{(sales && Array.isArray(sales)) ? sales.length : 0} vente(s)</Text>
-        </Card>
-      </View>
+      <LinearGradient
+        colors={[colors.surface, colors.background]}
+        style={styles.header}
+      >
+        <View style={styles.headerContent}>
+          <View style={styles.titleSection}>
+            <Text style={styles.headerTitle}>Ventes</Text>
+            <Text style={styles.headerSubtitle}>{(sales && Array.isArray(sales)) ? sales.length : 0} vente(s)</Text>
+          </View>
+        </View>
+        <LinearGradient
+          colors={[colors.primary + '25', colors.primary + '10']}
+          style={styles.totalCard}
+        >
+          <View style={styles.totalCardContent}>
+            <Ionicons name="wallet" size={32} color={colors.primary} />
+            <View style={styles.totalTextContainer}>
+              <Text style={styles.totalLabel}>Total des ventes</Text>
+              <Text style={styles.totalAmount}>{totalSales.toFixed(2)} €</Text>
+            </View>
+          </View>
+        </LinearGradient>
+      </LinearGradient>
 
       <FlatList
         data={sales}
@@ -288,10 +308,15 @@ export const SalesScreen = () => {
 
       <View style={styles.fabContainer}>
         <TouchableOpacity
-          style={styles.fab}
+          style={styles.fabWrapper}
           onPress={() => setModalVisible(true)}
         >
-          <Ionicons name="add" size={28} color="#fff" />
+          <LinearGradient
+            colors={[colors.primary, colors.primaryDark]}
+            style={styles.fab}
+          >
+            <Ionicons name="add" size={32} color="#000" />
+          </LinearGradient>
         </TouchableOpacity>
       </View>
 
@@ -302,21 +327,51 @@ export const SalesScreen = () => {
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Nouvelle vente</Text>
-                <TouchableOpacity onPress={() => setModalVisible(false)}>
-                  <Ionicons name="close" size={24} color={colors.text} />
-                </TouchableOpacity>
-              </View>
+          <LinearGradient
+            colors={[colors.surface, colors.background]}
+            style={styles.modalContent}
+          >
+            <View style={styles.modalHeaderContainer}>
+              <LinearGradient
+                colors={[colors.primary + '30', colors.primary + '10']}
+                style={styles.modalHeaderGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <View style={styles.modalIconContainer}>
+                  <LinearGradient
+                    colors={[colors.primary, colors.primaryDark]}
+                    style={styles.modalIcon}
+                  >
+                    <Ionicons name="cart" size={28} color="#000" />
+                  </LinearGradient>
+                </View>
+                <View style={styles.modalTitleContainer}>
+                  <Text style={styles.modalTitle}>Nouvelle vente</Text>
+                  <Text style={styles.modalSubtitle}>Ajoutez des produits au panier</Text>
+                </View>
+              </LinearGradient>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => setModalVisible(false)}
+              >
+                <Ionicons name="close-circle" size={32} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
 
-              <View style={styles.employeeInfo}>
-                <Ionicons name="person-circle-outline" size={20} color={colors.primary} />
+            <ScrollView 
+              style={styles.modalForm}
+              showsVerticalScrollIndicator={false}
+            >
+              <LinearGradient
+                colors={[colors.primary + '20', colors.primary + '10']}
+                style={styles.employeeInfo}
+              >
+                <Ionicons name="person-circle" size={24} color={colors.primary} />
                 <Text style={styles.employeeText}>
                   Vendeur: {user?.fullName || user?.username}
                 </Text>
-              </View>
+              </LinearGradient>
 
               {/* Sélection du client (optionnel) */}
               <Text style={styles.fieldLabel}>Client (optionnel)</Text>
@@ -348,14 +403,17 @@ export const SalesScreen = () => {
               </View>
 
               {selectedCustomer && (
-                <View style={[styles.infoBox, { backgroundColor: colors.primary + '10' }]}>
-                  <Ionicons name="star-outline" size={16} color={colors.primary} />
-                  <Text style={styles.infoText}>
-                    Fidélité: {selectedCustomer.loyaltyLevel || 'bronze'} |
-                    {selectedCustomer.loyaltyPoints || 0} points |
-                    Remise: {selectedCustomer.discount || 0}%
-                  </Text>
-                </View>
+                <LinearGradient
+                  colors={[colors.primary + '20', colors.primary + '10']}
+                  style={styles.infoBox}
+                >
+                  <Ionicons name="star" size={20} color={colors.primary} />
+                  <View style={styles.infoTextContainer}>
+                    <Text style={styles.infoText}>
+                      {selectedCustomer.loyaltyLevel || 'Bronze'} • {selectedCustomer.loyaltyPoints || 0} pts • {selectedCustomer.discount || 0}% remise
+                    </Text>
+                  </View>
+                </LinearGradient>
               )}
 
               {/* Sélection des produits */}
@@ -372,6 +430,7 @@ export const SalesScreen = () => {
                     transform: [{ scale: flashAnim }],
                   } : {};
 
+                  const inCart = cart.find(item => item.productId === product._id);
                   return (
                     <Animated.View key={product._id} style={animStyle}>
                       <TouchableOpacity
@@ -380,19 +439,24 @@ export const SalesScreen = () => {
                           isFlashing && styles.productCardFlashing
                         ]}
                         onPress={() => handleAddToCart(product._id)}
-                        activeOpacity={0.7}
+                        activeOpacity={0.8}
                       >
                         <View style={styles.productIconContainer}>
-                          <Ionicons name="cube" size={24} color={colors.primary} />
+                          <Ionicons name="cube" size={32} color={colors.primary} />
                         </View>
                         <Text style={styles.productName} numberOfLines={2}>
                           {product.name}
                         </Text>
-                        <Text style={styles.productPrice}>{product.unitPrice}€</Text>
-                        {cart.find(item => item.productId === product._id) && (
+                        <View style={styles.productPriceContainer}>
+                          <Text style={styles.productPrice}>{product.unitPrice}€</Text>
+                          {inCart && (
+                            <Ionicons name="checkmark-circle" size={18} color={colors.success} style={{ marginLeft: 6 }} />
+                          )}
+                        </View>
+                        {inCart && (
                           <View style={styles.productBadge}>
                             <Text style={styles.productBadgeText}>
-                              {cart.find(item => item.productId === product._id).quantity}
+                              {inCart.quantity}
                             </Text>
                           </View>
                         )}
@@ -452,30 +516,40 @@ export const SalesScreen = () => {
                     <Text style={styles.cartTotalValue}>{cartTotal.toFixed(2)} €</Text>
                   </View>
 
-                  <Button
-                    title={submitting ? 'Validation en cours...' : `Valider ${cart.length} vente(s)`}
+                  <TouchableOpacity 
+                    style={styles.validateButtonWrapper}
                     onPress={handleValidateCart}
-                    style={styles.submitButton}
                     disabled={submitting}
-                  />
+                  >
+                    <LinearGradient
+                      colors={[colors.primary, colors.primaryDark]}
+                      style={styles.validateButton}
+                    >
+                      {submitting ? (
+                        <ActivityIndicator color="#000" />
+                      ) : (
+                        <>
+                          <Ionicons name="checkmark-circle" size={22} color="#000" />
+                          <Text style={styles.validateButtonText}>
+                            Valider {cart.length} vente(s)
+                          </Text>
+                        </>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
 
-                  {submitting && (
-                    <View style={styles.loadingContainer}>
-                      <ActivityIndicator size="small" color={colors.primary} />
-                      <Text style={styles.loadingText}>Enregistrement des ventes...</Text>
-                    </View>
-                  )}
-
-                  <Button
-                    title="Vider le panier"
+                  <TouchableOpacity 
+                    style={styles.clearButton}
                     onPress={handleClearCart}
-                    style={[styles.submitButton, { backgroundColor: colors.danger }]}
                     disabled={submitting}
-                  />
+                  >
+                    <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                    <Text style={styles.clearButtonText}>Vider le panier</Text>
+                  </TouchableOpacity>
                 </>
               )}
             </ScrollView>
-          </View>
+          </LinearGradient>
         </View>
       </Modal>
     </View>
@@ -488,26 +562,58 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    padding: 16,
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '50',
   },
-  totalCard: {
+  headerContent: {
+    marginBottom: 16,
+  },
+  titleSection: {
     alignItems: 'center',
-    backgroundColor: colors.primary + '10',
   },
-  totalLabel: {
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  headerSubtitle: {
     fontSize: 14,
     color: colors.textSecondary,
-    marginBottom: 8,
+  },
+  totalCard: {
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  totalCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  totalTextContainer: {
+    flex: 1,
+  },
+  totalLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   totalAmount: {
     fontSize: 32,
     fontWeight: 'bold',
     color: colors.primary,
-    marginBottom: 4,
-  },
-  totalCount: {
-    fontSize: 12,
-    color: colors.textSecondary,
   },
   listContainer: {
     padding: 16,
@@ -578,56 +684,96 @@ const styles = StyleSheet.create({
     bottom: 24,
     right: 24,
   },
+  fabWrapper: {
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 10,
+  },
   fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: colors.overlay,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
-    maxHeight: '90%',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingBottom: 30,
+    maxHeight: '92%',
+    borderTopWidth: 2,
+    borderColor: colors.primary + '40',
   },
-  modalHeader: {
+  modalHeaderContainer: {
+    padding: 20,
+    paddingBottom: 16,
+  },
+  modalHeaderGradient: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  modalIconContainer: {
+    marginRight: 14,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  modalIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalTitleContainer: {
+    flex: 1,
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    zIndex: 10,
+  },
+  modalForm: {
+    paddingHorizontal: 20,
   },
   employeeInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.primary + '10',
-    padding: 12,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 16,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
   },
   employeeText: {
     fontSize: 14,
-    color: colors.primary,
+    color: colors.text,
     fontWeight: '600',
-    marginLeft: 8,
+    marginLeft: 12,
   },
   fieldLabel: {
     fontSize: 14,
@@ -648,17 +794,21 @@ const styles = StyleSheet.create({
   },
   infoBox: {
     flexDirection: 'row',
-    backgroundColor: colors.info + '10',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 12,
     alignItems: 'center',
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  infoTextContainer: {
+    flex: 1,
+    marginLeft: 12,
   },
   infoText: {
-    flex: 1,
-    fontSize: 12,
+    fontSize: 13,
     color: colors.text,
-    marginLeft: 6,
+    fontWeight: '500',
   },
   amountPreview: {
     backgroundColor: colors.primary + '10',
@@ -678,8 +828,44 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.primary,
   },
-  submitButton: {
-    marginTop: 8,
+  validateButtonWrapper: {
+    marginTop: 12,
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  validateButton: {
+    paddingVertical: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  validateButtonText: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  clearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: colors.danger + '15',
+    borderWidth: 1,
+    borderColor: colors.danger + '30',
+    gap: 8,
+  },
+  clearButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.danger,
   },
   selectedItemBadge: {
     flexDirection: 'row',
@@ -715,60 +901,83 @@ const styles = StyleSheet.create({
   productsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginHorizontal: -6,
+    marginHorizontal: -10,
   },
   productCard: {
-    width: '48%',
-    backgroundColor: colors.background,
-    borderRadius: 12,
+    width: (width - 60) / 2,
+    backgroundColor: colors.surface,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 12,
-    margin: '1%',
+    padding: 20,
+    margin: 10,
     alignItems: 'center',
     position: 'relative',
+    minHeight: 200,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
   },
   productCardFlashing: {
-    backgroundColor: colors.primary + '10',
+    backgroundColor: colors.primary + '15',
     borderColor: colors.primary,
     borderWidth: 2,
+    shadowOpacity: 0.3,
+    elevation: 6,
   },
   productIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: colors.primary + '20',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
   },
   productName: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: colors.text,
     textAlign: 'center',
-    marginBottom: 4,
-    minHeight: 34,
+    marginBottom: 10,
+    minHeight: 44,
+    lineHeight: 22,
+  },
+  productPriceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
   },
   productPrice: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: 'bold',
     color: colors.primary,
   },
   productBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 12,
+    right: 12,
     backgroundColor: colors.primary,
-    borderRadius: 12,
-    width: 24,
-    height: 24,
+    borderRadius: 16,
+    minWidth: 32,
+    height: 32,
+    paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.6,
+    shadowRadius: 5,
+    elevation: 6,
   },
   productBadgeText: {
-    color: '#fff',
-    fontSize: 12,
+    color: '#000',
+    fontSize: 14,
     fontWeight: 'bold',
   },
   cartItem: {
@@ -864,3 +1073,4 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
+

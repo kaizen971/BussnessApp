@@ -9,8 +9,10 @@ import {
   Modal,
   Alert,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../utils/colors';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -38,7 +40,8 @@ export const ProductsScreen = ({ navigation }) => {
     try {
       setLoading(true);
       const response = await api.get('/products');
-      setProducts(response.data);
+      console.log(response.data);
+      setProducts(response.data?.data);
     } catch (error) {
       Alert.alert('Erreur', 'Impossible de charger les produits');
     } finally {
@@ -175,18 +178,37 @@ export const ProductsScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Produits & Services</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => {
-            resetForm();
-            setModalVisible(true);
-          }}
-        >
-          <Ionicons name="add" size={24} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      <LinearGradient
+        colors={[colors.surface, colors.background]}
+        style={styles.header}
+      >
+        <View style={styles.headerContent}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.primary} />
+          </TouchableOpacity>
+          <View style={styles.titleContainer}>
+            <Text style={styles.title}>Produits & Services</Text>
+            <Text style={styles.subtitle}>{products?.length || 0} produit(s)</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.addButtonWrapper}
+            onPress={() => {
+              resetForm();
+              setModalVisible(true);
+            }}
+          >
+            <LinearGradient
+              colors={[colors.primary, colors.primaryDark]}
+              style={styles.addButton}
+            >
+              <Ionicons name="add" size={28} color="#000" />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
 
       <FlatList
         data={products}
@@ -206,17 +228,50 @@ export const ProductsScreen = ({ navigation }) => {
 
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {editingProduct ? 'Modifier le produit' : 'Nouveau produit'}
-              </Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={28} color={colors.text} />
+          <LinearGradient
+            colors={[colors.surface, colors.background]}
+            style={styles.modalContent}
+          >
+            <View style={styles.modalHeaderContainer}>
+              <LinearGradient
+                colors={[colors.primary + '30', colors.primary + '10']}
+                style={styles.modalHeaderGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <View style={styles.modalIconContainer}>
+                  <LinearGradient
+                    colors={[colors.primary, colors.primaryDark]}
+                    style={styles.modalIcon}
+                  >
+                    <Ionicons 
+                      name={editingProduct ? "create-outline" : "add-circle-outline"} 
+                      size={28} 
+                      color="#000" 
+                    />
+                  </LinearGradient>
+                </View>
+                <View style={styles.modalTitleContainer}>
+                  <Text style={styles.modalTitle}>
+                    {editingProduct ? 'Modifier le produit' : 'Nouveau produit'}
+                  </Text>
+                  <Text style={styles.modalSubtitle}>
+                    {editingProduct ? 'Modifiez les informations' : 'Ajoutez un nouveau produit'}
+                  </Text>
+                </View>
+              </LinearGradient>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => setModalVisible(false)}
+              >
+                <Ionicons name="close-circle" size={32} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalForm}>
+            <ScrollView 
+              style={styles.modalForm}
+              showsVerticalScrollIndicator={false}
+            >
               <Input
                 placeholder="Nom du produit *"
                 value={formData.name}
@@ -252,30 +307,53 @@ export const ProductsScreen = ({ navigation }) => {
               />
 
               {formData.unitPrice && formData.costPrice && (
-                <View style={styles.marginPreview}>
-                  <Text style={styles.marginLabel}>Marge prévue:</Text>
-                  <Text style={styles.marginValue}>
-                    {calculateMargin(parseFloat(formData.unitPrice), parseFloat(formData.costPrice))}%
-                  </Text>
-                </View>
+                <LinearGradient
+                  colors={[colors.primary + '20', colors.primary + '10']}
+                  style={styles.marginPreview}
+                >
+                  <View style={styles.marginPreviewContent}>
+                    <Ionicons name="trending-up" size={24} color={colors.primary} />
+                    <View style={styles.marginTextContainer}>
+                      <Text style={styles.marginLabel}>Marge prévue</Text>
+                      <Text style={styles.marginValue}>
+                        {calculateMargin(parseFloat(formData.unitPrice), parseFloat(formData.costPrice))}%
+                      </Text>
+                    </View>
+                  </View>
+                </LinearGradient>
               )}
             </ScrollView>
 
             <View style={styles.modalActions}>
-              <Button
-                title="Annuler"
+              <TouchableOpacity 
+                style={styles.cancelButton}
                 onPress={() => setModalVisible(false)}
-                variant="outline"
-                style={{ flex: 1, marginRight: 10 }}
-              />
-              <Button
-                title={editingProduct ? 'Modifier' : 'Créer'}
+              >
+                <Text style={styles.cancelButtonText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.saveButtonWrapper}
                 onPress={handleSave}
-                loading={loading}
-                style={{ flex: 1 }}
-              />
+                disabled={loading}
+              >
+                <LinearGradient
+                  colors={[colors.primary, colors.primaryDark]}
+                  style={styles.saveButton}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#000" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={20} color="#000" />
+                      <Text style={styles.saveButtonText}>
+                        {editingProduct ? 'Modifier' : 'Créer'}
+                      </Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
             </View>
-          </View>
+          </LinearGradient>
         </View>
       </Modal>
     </View>
@@ -288,24 +366,52 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.border + '50',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  titleContainer: {
+    flex: 1,
+    alignItems: 'center',
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: colors.text,
+    marginBottom: 2,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  addButtonWrapper: {
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 8,
   },
   addButton: {
-    backgroundColor: colors.primary,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -391,50 +497,135 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '90%',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingBottom: 30,
+    maxHeight: '92%',
+    borderTopWidth: 2,
+    borderColor: colors.primary + '40',
   },
-  modalHeader: {
+  modalHeaderContainer: {
+    padding: 20,
+    paddingBottom: 16,
+  },
+  modalHeaderGradient: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  modalIconContainer: {
+    marginRight: 14,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  modalIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalTitleContainer: {
+    flex: 1,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    zIndex: 10,
   },
   modalForm: {
+    paddingHorizontal: 20,
     marginBottom: 20,
   },
   marginPreview: {
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  marginPreviewContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 15,
-    backgroundColor: colors.primary + '10',
-    borderRadius: 10,
-    marginTop: 10,
+  },
+  marginTextContainer: {
+    flex: 1,
+    marginLeft: 12,
   },
   marginLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   marginValue: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: 'bold',
     color: colors.primary,
   },
   modalActions: {
     flexDirection: 'row',
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  saveButtonWrapper: {
+    flex: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  saveButton: {
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#000',
   },
 });
