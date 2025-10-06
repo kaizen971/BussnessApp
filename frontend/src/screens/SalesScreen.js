@@ -158,7 +158,7 @@ export const SalesScreen = () => {
     );
   };
 
-  const totalSales = sales.reduce((sum, sale) => sum + (sale.amount || 0), 0);
+  const totalSales = (sales && Array.isArray(sales)) ? sales.reduce((sum, sale) => sum + (sale.amount || 0), 0) : 0;
   const selectedProduct = products.find(p => p._id === formData.productId);
   const selectedCustomer = customers.find(c => c._id === formData.customerId);
 
@@ -173,7 +173,7 @@ export const SalesScreen = () => {
         <Card style={styles.totalCard}>
           <Text style={styles.totalLabel}>Total des ventes</Text>
           <Text style={styles.totalAmount}>{totalSales.toFixed(2)} €</Text>
-          <Text style={styles.totalCount}>{sales.length} vente(s)</Text>
+          <Text style={styles.totalCount}>{(sales && Array.isArray(sales)) ? sales.length : 0} vente(s)</Text>
         </Card>
       </View>
 

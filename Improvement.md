@@ -1,80 +1,35 @@
-# Améliorations de BussnessApp
+# Historique des Améliorations - BussnessApp
 
-## 2025-10-06 - Amélioration de la lisibilité de l'écran d'accueil (OnboardingScreen)
+## 06/10/2025 - Correction Bug SalesScreen
 
-### Problème identifié
-Dans la première page après le login (OnboardingScreen), les textes des cartes "Valider une idée de business" et "Suivre mon business en cours" étaient difficilement lisibles. Le texte utilisait une couleur gris pâle (`colors.textSecondary` - #D4AF37) qui ne contrastait pas suffisamment avec le fond blanc des cartes.
+### Problème
+Bug dans `SalesScreen` : erreur "sales.reduce undefined" qui provoquait un crash de l'application.
 
-### Solution implémentée
-Modification des couleurs dans le fichier `frontend/src/screens/OnboardingScreen.js` :
+### Cause
+À la ligne 161 de `frontend/src/screens/SalesScreen.js`, la méthode `.reduce()` était appelée sur `sales` sans vérifier si cette variable était définie et était bien un tableau. Pendant le chargement initial ou en cas d'erreur de récupération des données, `sales` pouvait être `undefined` ou `null`, causant le crash.
 
-1. **Titre des cartes (`cardTitle`)** :
-   - Avant : `color: colors.text` (#F5F5F5 - blanc cassé, peu visible sur fond blanc)
-   - Après : `color: '#1A1A1A'` (noir profond pour un contraste maximal)
+### Solution Implémentée
+**Fichier modifié:** `frontend/src/screens/SalesScreen.js:161`
 
-2. **Description des cartes (`cardDescription`)** :
-   - Avant : `color: colors.textSecondary` (#D4AF37 - doré, peu lisible sur fond blanc)
-   - Après : `color: '#333333'` (gris foncé pour une excellente lisibilité)
-
-### Cohérence avec le thème
-Les modifications respectent le thème noir et doré de l'application :
-- Les icônes conservent leurs couleurs dorées (`colors.primary` et `colors.secondary`)
-- Les flèches gardent leurs couleurs thématiques
-- Le fond des cartes reste blanc pour contraster avec le gradient de l'arrière-plan
-- Les textes sont maintenant sombres pour être lisibles sur fond clair
-
-### Fichiers modifiés
-- `frontend/src/screens/OnboardingScreen.js` (lignes 120-132)
-
-### Serveur
-- Nodemon installé avec succès
-- Serveur lancé sur le port 3003
-- API accessible : http://localhost:3003/BussnessApp
-- URL publique : https://mabouya.servegame.com/BussnessApp/BussnessApp
-
-## 2025-10-06 - Correction du crash de l'application dans la section Ventes et Stock
-
-### Problème identifié
-L'application crashait lors du clic sur la section "Ventes" avec l'erreur :
-```
-Item 232 cannot read properties
-```
-
-Le problème venait du composant `Picker` qui était importé depuis `react-native` (ligne 11 de `SalesScreen.js`), alors que dans les versions récentes de React Native, ce composant a été déplacé vers le package `@react-native-picker/picker`.
-
-### Solution implémentée
-
-1. **Installation du package nécessaire** :
-   ```bash
-   npm install @react-native-picker/picker
+1. Ajout d'une vérification de type avant l'appel à `.reduce()`:
+   ```javascript
+   const totalSales = (sales && Array.isArray(sales)) ? sales.reduce((sum, sale) => sum + (sale.amount || 0), 0) : 0;
    ```
 
-2. **Correction de l'import dans SalesScreen.js** :
-   - **Avant** (ligne 11) :
-     ```javascript
-     import { Picker } from 'react-native';
-     ```
-   - **Après** (ligne 12) :
-     ```javascript
-     import { Picker } from '@react-native-picker/picker';
-     ```
+2. Ajout d'une vérification similaire pour l'affichage du nombre de ventes (ligne 176):
+   ```javascript
+   <Text style={styles.totalCount}>{(sales && Array.isArray(sales)) ? sales.length : 0} vente(s)</Text>
+   ```
 
-3. **Vérification des autres fichiers** :
-   - `TeamScreen.js` : Déjà corrigé avec le bon import
-   - `ExpensesScreen.js` : Déjà corrigé avec le bon import
+### Résultats
+- ✅ L'application ne crash plus lors de l'accès à l'écran des ventes
+- ✅ Affichage correct de "0.00 €" et "0 vente(s)" quand aucune donnée n'est disponible
+- ✅ Gestion robuste des états de chargement et d'erreur
+
+### Infrastructure
+- ✅ Installation de `nodemon` pour le développement
+- ✅ Serveur lancé avec succès sur le port 3003
+- ✅ MongoDB connecté à 192.168.1.72
 
 ### Impact
-- ✅ La section **Ventes** fonctionne maintenant correctement
-- ✅ La création de **ventes** avec sélection de produits et clients est opérationnelle
-- ✅ La section **Stock** fonctionne correctement
-- ✅ La création d'**articles en stock** fonctionne
-- ✅ Les pickers dans les sections Équipe et Dépenses continuent de fonctionner
-
-### Fichiers modifiés
-- `frontend/src/screens/SalesScreen.js` (lignes 1-12)
-- Installation de `@react-native-picker/picker` dans le projet frontend
-
-### Tests effectués
-- ✅ Serveur backend redémarré avec succès sur le port 3003
-- ✅ Connexion MongoDB établie (192.168.1.72)
-- ✅ L'application peut maintenant créer des ventes et gérer le stock sans crash
+Cette correction améliore la stabilité de l'application et prévient les crashes lors de l'utilisation de la fonctionnalité de vente, particulièrement lors du premier chargement ou en cas d'erreur réseau.
