@@ -11,7 +11,6 @@ import {
   Animated,
   ActivityIndicator,
 } from 'react-native';
-import { Audio } from 'expo-av';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
@@ -47,10 +46,7 @@ export const SalesScreen = () => {
     });
     loadData();
     // Configuration audio pour iOS
-    Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-    });
+
   }, []);
 
   const loadData = async () => {
@@ -74,13 +70,7 @@ export const SalesScreen = () => {
   // Fonction pour jouer un son
   const playSound = async (soundType) => {
     try {
-      const { sound } = await Audio.Sound.createAsync(
-        soundType === 'add'
-          ? require('../assets/sounds/add.mp3')
-          : soundType === 'success'
-          ? require('../assets/sounds/success.mp3')
-          : require('../assets/sounds/error.mp3')
-      );
+
       await sound.playAsync();
       // Décharger le son après la lecture
       sound.setOnPlaybackStatusUpdate((status) => {

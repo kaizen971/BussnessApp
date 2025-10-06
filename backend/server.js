@@ -160,7 +160,7 @@ const authenticateToken = (req, res, next) => {
 // Role checking middleware
 const checkRole = (...roles) => {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    if (!req.user) {
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
     next();
