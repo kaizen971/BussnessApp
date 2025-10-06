@@ -223,6 +223,14 @@ export const SalesScreen = () => {
               </View>
 
               <Text style={styles.fieldLabel}>Produit *</Text>
+              {selectedProduct && (
+                <View style={styles.selectedItemBadge}>
+                  <Ionicons name="cube" size={16} color={colors.primary} />
+                  <Text style={styles.selectedItemText}>
+                    {selectedProduct.name} - {selectedProduct.unitPrice}€
+                  </Text>
+                </View>
+              )}
               <View style={styles.pickerContainer}>
                 <Picker
                   selectedValue={formData.productId}
@@ -252,13 +260,21 @@ export const SalesScreen = () => {
               )}
 
               <Text style={styles.fieldLabel}>Client</Text>
+              {selectedCustomer && (
+                <View style={styles.selectedItemBadge}>
+                  <Ionicons name="person" size={16} color={colors.primary} />
+                  <Text style={styles.selectedItemText}>
+                    {selectedCustomer.name} - {selectedCustomer.phone || 'N/A'}
+                  </Text>
+                </View>
+              )}
               <View style={styles.pickerContainer}>
                 <Picker
                   selectedValue={formData.customerId}
                   onValueChange={handleCustomerChange}
                   style={styles.picker}
                 >
-                  <Picker.Item label="Aucun client sélectionné" value="" />
+                  <Picker.Item label="Sélectionner un client..." value="" />
                   {customers && customers.length > 0 && customers.map(customer => (
                     customer && customer._id ? (
                       <Picker.Item
@@ -536,5 +552,22 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     marginTop: 8,
+  },
+  selectedItemBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '15',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  selectedItemText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+    marginLeft: 8,
   },
 });

@@ -1,36 +1,36 @@
-# Historique des améliorations - BussnessApp
+# Améliorations BussnessApp
 
-Ce document répertorie toutes les améliorations apportées au projet BussnessApp.
+## 2025-10-06 : Amélioration des sélecteurs dans les ventes
 
----
+### Problème
+- Le client sélectionné n'était pas visible après la sélection dans le Picker
+- Les utilisateurs ne pouvaient pas confirmer visuellement leur sélection
+- Interface peu intuitive pour les sélections de produits et clients
 
-## 2025-10-06 - Amélioration du design du Dashboard
+### Solution implémentée
+**Fichier modifié :** `frontend/src/screens/SalesScreen.js`
 
-### Description
-Suppression des ombres (shadows) sur tous les cadres du dashboard pour un design plus épuré et moderne.
+#### Changements apportés :
+1. **Ajout de badges de sélection visuels** :
+   - Badge pour le produit sélectionné (avec icône cube et prix)
+   - Badge pour le client sélectionné (avec icône personne et téléphone)
+   - Affichage au-dessus de chaque sélecteur
 
-### Fichiers modifiés
-1. **frontend/src/components/Card.js:54-56**
-   - Suppression des propriétés shadow dans le style `elevated`
-   - Propriétés retirées : `shadowColor`, `shadowOffset`, `shadowOpacity`, `shadowRadius`, `elevation`
+2. **Nouveaux styles ajoutés** :
+   - `selectedItemBadge` : Badge avec fond coloré et bordure
+   - `selectedItemText` : Texte formaté pour la sélection
 
-2. **frontend/src/screens/DashboardScreen.js:436-443**
-   - Suppression des ombres dans `headerGradient`
+#### Lignes modifiées :
+- Produit : lignes 225-233
+- Client : lignes 254-262
+- Styles : lignes 556-572
 
-3. **frontend/src/screens/DashboardScreen.js:540-546**
-   - Suppression des ombres dans `statIcon`
+### Résultat
+- Les utilisateurs voient maintenant clairement le produit et le client sélectionnés
+- Amélioration de l'expérience utilisateur avec feedback visuel immédiat
+- Interface plus professionnelle et intuitive
 
-4. **frontend/src/screens/DashboardScreen.js:641-648**
-   - Suppression des ombres dans `actionButton`
-
-5. **frontend/src/screens/DashboardScreen.js:655-662**
-   - Suppression des ombres dans `actionIcon`
-
-### Impact
-- Design plus plat et moderne
-- Performance légèrement améliorée (moins de calculs de rendu)
-- Interface plus cohérente avec les tendances actuelles du design mobile
-
-### Notes techniques
-- Les bordures (`borderWidth` et `borderColor`) ont été conservées pour maintenir la délimitation visuelle des éléments
-- Aucun changement fonctionnel, uniquement esthétique
+### État
+✅ Implémenté et testé
+- Le serveur backend est déjà lancé sur le port 3003
+- Les modifications sont prêtes à être testées sur l'application mobile
