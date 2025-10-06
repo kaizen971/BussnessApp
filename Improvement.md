@@ -372,3 +372,354 @@ setCustomers(customersRes?.data?.data || []);
 - ✅ Vérifier les boutons d'actions rapides avec gradients
 - ✅ Tester le scroll et le refresh
 - ✅ Vérifier les ombres et effets de profondeur sur différents appareils
+
+---
+
+## 2025-10-06 - Ajout de graphiques et bilan au dashboard
+
+### Problème identifié
+- Le dashboard manquait de visualisation graphique des données
+- Pas d'aperçu de l'évolution des ventes et dépenses dans le temps
+- Aucune vue d'ensemble des tendances mensuelles
+- Pas de répartition visuelle des dépenses par catégorie
+- Absence de classement des produits les plus vendus
+
+### Solutions implémentées
+
+#### 1. Enrichissement de l'API Dashboard avec données mensuelles et analytiques (server.js:1077-1145)
+
+**Données mensuelles ajoutées** :
+- Calcul automatique des ventes, dépenses et bénéfices des 6 derniers mois
+- Agrégation mensuelle pour visualisation temporelle
+- Format adapté pour les graphiques (month, sales, expenses, profit)
+
+```javascript
+// Calculer les données mensuelles pour les 6 derniers mois
+const now = new Date();
+const monthlyData = [];
+
+for (let i = 5; i >= 0; i--) {
+  const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+  const nextMonthDate = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+
+  const monthSales = sales.filter(sale => {
+    const saleDate = new Date(sale.date);
+    return saleDate >= monthDate && saleDate < nextMonthDate;
+  });
+
+  const monthExpenses = expenses.filter(expense => {
+    const expenseDate = new Date(expense.date);
+    return expenseDate >= monthDate && expenseDate < nextMonthDate;
+  });
+
+  const monthlySalesTotal = monthSales.reduce((sum, sale) => sum + sale.amount, 0);
+  const monthlyExpensesTotal = monthExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+
+  monthlyData.push({
+    month: monthDate.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' }),
+    sales: monthlySalesTotal,
+    expenses: monthlyExpensesTotal,
+    profit: monthlySalesTotal - monthlyExpensesTotal
+  });
+}
+```
+
+**Répartition des dépenses par catégorie** :
+- Calcul des totaux par catégorie (purchase, variable, fixed)
+- Données prêtes pour graphique en camembert
+
+```javascript
+// Données par catégorie de dépenses
+const expensesByCategory = {
+  purchase: expenses.filter(e => e.category === 'purchase').reduce((sum, e) => sum + e.amount, 0),
+  variable: expenses.filter(e => e.category === 'variable').reduce((sum, e) => sum + e.amount, 0),
+  fixed: expenses.filter(e => e.category === 'fixed').reduce((sum, e) => sum + e.amount, 0)
+};
+```
+
+**Top 5 des produits les plus vendus** :
+- Agrégation par produit avec quantités et revenus totaux
+- Tri par revenu décroissant
+- Limitation aux 5 meilleurs produits
+
+```javascript
+// Top produits vendus
+const productSales = {};
+for (const sale of sales) {
+  const productId = sale.productId?.toString();
+  if (productId) {
+    if (!productSales[productId]) {
+      productSales[productId] = {
+        quantity: 0,
+        revenue: 0,
+        productName: sale.productId?.name || 'Produit inconnu'
+      };
+    }
+    productSales[productId].quantity += sale.quantity;
+    productSales[productId].revenue += sale.amount;
+  }
+}
+
+const topProducts = Object.values(productSales)
+  .sort((a, b) => b.revenue - a.revenue)
+  .slice(0, 5);
+```
+
+**Nouvelle réponse API** :
+```javascript
+res.json({
+  totalSales,
+  totalExpenses,
+  totalStock,
+  netProfit,
+  salesCount: sales.length,
+  expensesCount: expenses.length,
+  stockItems: stock.length,
+  monthlyData,           // ← NOUVEAU
+  expensesByCategory,    // ← NOUVEAU
+  topProducts           // ← NOUVEAU
+});
+```
+
+#### 2. Installation de react-native-chart-kit et react-native-svg
+
+**Packages installés** :
+- `react-native-chart-kit` v6.12.0 - Bibliothèque de graphiques pour React Native
+- `react-native-svg` v15.13.0 - Dépendance requise pour le rendu des graphiques
+
+```bash
+npm install react-native-chart-kit react-native-svg
+```
+
+#### 3. Implémentation des graphiques dans le Dashboard (DashboardScreen.js)
+
+**Import des composants de graphiques** :
+```javascript
+import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
+import { Dimensions } from 'react-native';
+
+const screenWidth = Dimensions.get('window').width;
+```
+
+**Graphique linéaire : Ventes vs Dépenses (6 derniers mois)** :
+- Affiche l'évolution des ventes et dépenses sur 6 mois
+- Deux courbes avec couleurs distinctes (vert pour ventes, rouge pour dépenses)
+- Légende explicative
+- Courbes lissées avec effet Bézier
+- Points sur les courbes pour meilleure lecture
+
+```javascript
+<LineChart
+  data={{
+    labels: stats.monthlyData.map(d => d.month.split(' ')[0]),
+    datasets: [
+      {
+        data: stats.monthlyData.map(d => d.sales),
+        color: (opacity = 1) => colors.success,
+        strokeWidth: 3
+      },
+      {
+        data: stats.monthlyData.map(d => d.expenses),
+        color: (opacity = 1) => colors.error,
+        strokeWidth: 3
+      }
+    ],
+    legend: ['Ventes', 'Dépenses']
+  }}
+  width={screenWidth - 64}
+  height={220}
+  chartConfig={{...}}
+  bezier
+/>
+```
+
+**Graphique en barres : Bénéfices mensuels** :
+- Visualisation des profits/pertes par mois
+- Barres colorées selon la couleur primaire
+- Valeurs affichées au-dessus des barres
+- Permet d'identifier rapidement les mois rentables
+
+```javascript
+<BarChart
+  data={{
+    labels: stats.monthlyData.map(d => d.month.split(' ')[0]),
+    datasets: [{
+      data: stats.monthlyData.map(d => d.profit)
+    }]
+  }}
+  width={screenWidth - 64}
+  height={220}
+  chartConfig={{...}}
+  showValuesOnTopOfBars
+/>
+```
+
+**Graphique en camembert : Répartition des dépenses** :
+- Visualisation des dépenses par catégorie (Achats, Variables, Fixes)
+- Couleurs distinctes pour chaque catégorie
+- Pourcentages affichés automatiquement
+- Filtre les catégories avec montant 0
+
+```javascript
+<PieChart
+  data={[
+    {
+      name: 'Achats',
+      population: stats.expensesByCategory.purchase || 0,
+      color: colors.primary,
+      legendFontColor: colors.textSecondary,
+      legendFontSize: 13
+    },
+    {
+      name: 'Variables',
+      population: stats.expensesByCategory.variable || 0,
+      color: colors.accent,
+      legendFontColor: colors.textSecondary,
+      legendFontSize: 13
+    },
+    {
+      name: 'Fixes',
+      population: stats.expensesByCategory.fixed || 0,
+      color: colors.error,
+      legendFontColor: colors.textSecondary,
+      legendFontSize: 13
+    }
+  ].filter(item => item.population > 0)}
+  width={screenWidth - 64}
+  height={200}
+  accessor="population"
+  absolute
+/>
+```
+
+#### 4. Ajout de la section Top 5 Produits
+
+**Carte de classement des produits** :
+- Affiche les 5 produits les plus vendus par revenu
+- Badge numéroté avec couleur spéciale pour le #1
+- Quantité de ventes et revenu total pour chaque produit
+- Icône trophée pour symboliser le classement
+
+```javascript
+<Card style={styles.summaryCard}>
+  <View style={styles.summaryHeader}>
+    <Text style={styles.summaryTitle}>Top 5 Produits</Text>
+    <View style={styles.summaryIcon}>
+      <Ionicons name="trophy" size={24} color={colors.accent} />
+    </View>
+  </View>
+  <View style={styles.summaryDivider} />
+  {stats.topProducts.map((product, index) => (
+    <View key={index} style={styles.summaryRow}>
+      <View style={styles.summaryRowLeft}>
+        <View style={[styles.rankBadge, { backgroundColor: index === 0 ? colors.accent : colors.primary }]}>
+          <Text style={styles.rankText}>{index + 1}</Text>
+        </View>
+        <View style={styles.productInfo}>
+          <Text style={styles.productName}>{product.productName}</Text>
+          <Text style={styles.productQuantity}>{product.quantity} ventes</Text>
+        </View>
+      </View>
+      <Text style={styles.summaryValue}>{product.revenue.toFixed(2)} €</Text>
+    </View>
+  ))}
+</Card>
+```
+
+#### 5. Nouveaux styles ajoutés
+
+```javascript
+chartCard: {
+  marginBottom: 20,
+  padding: 16,
+  alignItems: 'center',
+},
+chartTitle: {
+  fontSize: 16,
+  fontWeight: 'bold',
+  color: colors.text,
+  marginBottom: 16,
+  alignSelf: 'flex-start',
+},
+chart: {
+  marginVertical: 8,
+  borderRadius: 16,
+},
+rankBadge: {
+  width: 28,
+  height: 28,
+  borderRadius: 14,
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginRight: 12,
+},
+rankText: {
+  fontSize: 14,
+  fontWeight: 'bold',
+  color: colors.background,
+},
+productInfo: {
+  flex: 1,
+},
+productName: {
+  fontSize: 14,
+  fontWeight: '600',
+  color: colors.text,
+  marginBottom: 2,
+},
+productQuantity: {
+  fontSize: 12,
+  color: colors.textLight,
+}
+```
+
+### Organisation du Dashboard enrichi
+
+**Nouvelle structure** :
+1. **Header** - Informations utilisateur et déconnexion
+2. **Statistiques financières** - 4 cartes KPI principales
+3. **Aperçu détaillé** - Compteurs de ventes/dépenses/stock
+4. **Évolution mensuelle** - Graphique linéaire Ventes vs Dépenses
+5. **Bénéfices mensuels** - Graphique en barres des profits
+6. **Répartition des dépenses** - Graphique en camembert par catégorie
+7. **Top 5 Produits** - Classement des produits les plus vendus
+8. **Actions rapides** - 6 boutons d'accès rapide
+
+### Fichiers modifiés
+- `/backend/server.js` - Enrichissement de l'endpoint dashboard avec analytics
+- `/frontend/package.json` - Ajout de react-native-chart-kit et react-native-svg
+- `/frontend/src/screens/DashboardScreen.js` - Implémentation des graphiques et Top 5
+
+### Impact utilisateur
+- 📊 **Visualisation améliorée** : Graphiques interactifs pour comprendre les tendances
+- 📈 **Analyse temporelle** : Évolution sur 6 mois pour identifier les patterns
+- 💰 **Suivi des bénéfices** : Visualisation rapide des mois rentables vs déficitaires
+- 🎯 **Répartition des coûts** : Compréhension immédiate des postes de dépenses
+- 🏆 **Performance produits** : Identification rapide des best-sellers
+- 🔄 **Refresh facile** : Pull-to-refresh pour actualiser toutes les données
+- 📱 **Design responsive** : Graphiques adaptés à la largeur d'écran
+
+### Tests effectués
+- ✅ Chargement des données mensuelles depuis l'API
+- ✅ Affichage du graphique linéaire Ventes vs Dépenses
+- ✅ Affichage du graphique en barres des bénéfices
+- ✅ Affichage du graphique en camembert des dépenses
+- ✅ Affichage du Top 5 des produits
+- ✅ Refresh des données fonctionne correctement
+- ✅ Nodemon détecte les changements et redémarre le serveur
+- ✅ Serveur backend stable et en cours d'exécution
+
+### Avantages business
+- **Prise de décision** : Données visuelles pour décisions stratégiques
+- **Tendances** : Identification rapide des périodes fortes/faibles
+- **Optimisation** : Repérage des produits à promouvoir
+- **Contrôle** : Surveillance des dépenses par catégorie
+- **Prévisions** : Base pour anticiper les résultats futurs
+
+### Recommandations futures
+1. Ajouter des filtres par période (1 mois, 3 mois, 6 mois, 1 an)
+2. Implémenter des graphiques pour les clients (fidélité, achats)
+3. Ajouter des alertes sur les tendances négatives
+4. Exporter les graphiques en PDF/Image
+5. Ajouter des comparaisons période sur période (YoY, MoM)
+6. Implémenter des prédictions basées sur l'historique

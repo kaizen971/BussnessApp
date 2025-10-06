@@ -1074,6 +1074,63 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
     const totalStock = (stock && Array.isArray(stock)) ? stock.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0) : 0;
     const netProfit = totalSales - totalExpenses;
 
+    // Calculer les données mensuelles pour les 6 derniers mois
+    const now = new Date();
+    const monthlyData = [];
+
+    for (let i = 5; i >= 0; i--) {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const nextMonthDate = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+
+      const monthSales = sales.filter(sale => {
+        const saleDate = new Date(sale.date);
+        return saleDate >= monthDate && saleDate < nextMonthDate;
+      });
+
+      const monthExpenses = expenses.filter(expense => {
+        const expenseDate = new Date(expense.date);
+        return expenseDate >= monthDate && expenseDate < nextMonthDate;
+      });
+
+      const monthlySalesTotal = monthSales.reduce((sum, sale) => sum + sale.amount, 0);
+      const monthlyExpensesTotal = monthExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+
+      monthlyData.push({
+        month: monthDate.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' }),
+        sales: monthlySalesTotal,
+        expenses: monthlyExpensesTotal,
+        profit: monthlySalesTotal - monthlyExpensesTotal
+      });
+    }
+
+    // Données par catégorie de dépenses
+    const expensesByCategory = {
+      purchase: expenses.filter(e => e.category === 'purchase').reduce((sum, e) => sum + e.amount, 0),
+      variable: expenses.filter(e => e.category === 'variable').reduce((sum, e) => sum + e.amount, 0),
+      fixed: expenses.filter(e => e.category === 'fixed').reduce((sum, e) => sum + e.amount, 0)
+    };
+
+    // Top produits vendus
+    const productSales = {};
+    for (const sale of sales) {
+      const productId = sale.productId?.toString();
+      if (productId) {
+        if (!productSales[productId]) {
+          productSales[productId] = {
+            quantity: 0,
+            revenue: 0,
+            productName: sale.productId?.name || 'Produit inconnu'
+          };
+        }
+        productSales[productId].quantity += sale.quantity;
+        productSales[productId].revenue += sale.amount;
+      }
+    }
+
+    const topProducts = Object.values(productSales)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+
     res.json({
       totalSales,
       totalExpenses,
@@ -1081,7 +1138,10 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
       netProfit,
       salesCount: sales.length,
       expensesCount: expenses.length,
-      stockItems: stock.length
+      stockItems: stock.length,
+      monthlyData,
+      expensesByCategory,
+      topProducts
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

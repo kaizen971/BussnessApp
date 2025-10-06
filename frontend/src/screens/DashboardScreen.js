@@ -8,14 +8,18 @@ import {
   TouchableOpacity,
   Alert,
   Animated,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import { useAuth } from '../contexts/AuthContext';
 import { Card } from '../components/Card';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { dashboardAPI } from '../services/api';
 import { colors, gradients } from '../utils/colors';
+
+const screenWidth = Dimensions.get('window').width;
 
 export const DashboardScreen = ({ navigation }) => {
   const { user, logout } = useAuth();
@@ -224,6 +228,143 @@ export const DashboardScreen = ({ navigation }) => {
               <Text style={styles.summaryValue}>{stats.stockItems || 0}</Text>
             </View>
           </Card>
+
+          {stats.monthlyData && stats.monthlyData.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>Évolution mensuelle</Text>
+              <Card style={styles.chartCard}>
+                <Text style={styles.chartTitle}>Ventes vs Dépenses (6 derniers mois)</Text>
+                <LineChart
+                  data={{
+                    labels: stats.monthlyData.map(d => d.month.split(' ')[0]),
+                    datasets: [
+                      {
+                        data: stats.monthlyData.map(d => d.sales),
+                        color: (opacity = 1) => colors.success,
+                        strokeWidth: 3
+                      },
+                      {
+                        data: stats.monthlyData.map(d => d.expenses),
+                        color: (opacity = 1) => colors.error,
+                        strokeWidth: 3
+                      }
+                    ],
+                    legend: ['Ventes', 'Dépenses']
+                  }}
+                  width={screenWidth - 64}
+                  height={220}
+                  chartConfig={{
+                    backgroundColor: colors.background,
+                    backgroundGradientFrom: colors.background,
+                    backgroundGradientTo: colors.background,
+                    decimalPlaces: 0,
+                    color: (opacity = 1) => colors.text + Math.round(opacity * 255).toString(16).padStart(2, '0'),
+                    labelColor: (opacity = 1) => colors.textSecondary,
+                    style: { borderRadius: 16 },
+                    propsForDots: {
+                      r: '6',
+                      strokeWidth: '2',
+                      stroke: colors.background
+                    }
+                  }}
+                  bezier
+                  style={styles.chart}
+                />
+              </Card>
+
+              <Card style={styles.chartCard}>
+                <Text style={styles.chartTitle}>Bénéfices mensuels</Text>
+                <BarChart
+                  data={{
+                    labels: stats.monthlyData.map(d => d.month.split(' ')[0]),
+                    datasets: [{
+                      data: stats.monthlyData.map(d => d.profit)
+                    }]
+                  }}
+                  width={screenWidth - 64}
+                  height={220}
+                  chartConfig={{
+                    backgroundColor: colors.background,
+                    backgroundGradientFrom: colors.background,
+                    backgroundGradientTo: colors.background,
+                    decimalPlaces: 0,
+                    color: (opacity = 1) => colors.primary + Math.round(opacity * 255).toString(16).padStart(2, '0'),
+                    labelColor: (opacity = 1) => colors.textSecondary,
+                    style: { borderRadius: 16 },
+                    barPercentage: 0.7
+                  }}
+                  style={styles.chart}
+                  showValuesOnTopOfBars
+                />
+              </Card>
+            </>
+          )}
+
+          {stats.expensesByCategory && (
+            <Card style={styles.chartCard}>
+              <Text style={styles.chartTitle}>Répartition des dépenses</Text>
+              <PieChart
+                data={[
+                  {
+                    name: 'Achats',
+                    population: stats.expensesByCategory.purchase || 0,
+                    color: colors.primary,
+                    legendFontColor: colors.textSecondary,
+                    legendFontSize: 13
+                  },
+                  {
+                    name: 'Variables',
+                    population: stats.expensesByCategory.variable || 0,
+                    color: colors.accent,
+                    legendFontColor: colors.textSecondary,
+                    legendFontSize: 13
+                  },
+                  {
+                    name: 'Fixes',
+                    population: stats.expensesByCategory.fixed || 0,
+                    color: colors.error,
+                    legendFontColor: colors.textSecondary,
+                    legendFontSize: 13
+                  }
+                ].filter(item => item.population > 0)}
+                width={screenWidth - 64}
+                height={200}
+                chartConfig={{
+                  color: (opacity = 1) => colors.text + Math.round(opacity * 255).toString(16).padStart(2, '0'),
+                }}
+                accessor="population"
+                backgroundColor="transparent"
+                paddingLeft="15"
+                absolute
+              />
+            </Card>
+          )}
+
+          {stats.topProducts && stats.topProducts.length > 0 && (
+            <Card style={styles.summaryCard}>
+              <View style={styles.summaryHeader}>
+                <Text style={styles.summaryTitle}>Top 5 Produits</Text>
+                <View style={styles.summaryIcon}>
+                  <Ionicons name="trophy" size={24} color={colors.accent} />
+                </View>
+              </View>
+              <View style={styles.summaryDivider} />
+              {stats.topProducts.map((product, index) => (
+                <View key={index} style={styles.summaryRow}>
+                  <View style={styles.summaryRowLeft}>
+                    <View style={[styles.rankBadge, { backgroundColor: index === 0 ? colors.accent : colors.primary }]}>
+                      <Text style={styles.rankText}>{index + 1}</Text>
+                    </View>
+                    <View style={styles.productInfo}>
+                      <Text style={styles.productName}>{product.productName}</Text>
+                      <Text style={styles.productQuantity}>{product.quantity} ventes</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.summaryValue}>{product.revenue.toFixed(2)} €</Text>
+                </View>
+              ))}
+            </Card>
+          )}
         </>
       )}
 
@@ -545,5 +686,47 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
     letterSpacing: 0.3,
+  },
+  chartCard: {
+    marginBottom: 20,
+    padding: 16,
+    alignItems: 'center',
+  },
+  chartTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 16,
+    alignSelf: 'flex-start',
+  },
+  chart: {
+    marginVertical: 8,
+    borderRadius: 16,
+  },
+  rankBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  rankText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.background,
+  },
+  productInfo: {
+    flex: 1,
+  },
+  productName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  productQuantity: {
+    fontSize: 12,
+    color: colors.textLight,
   },
 });
