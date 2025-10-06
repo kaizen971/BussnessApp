@@ -401,6 +401,18 @@ export const DashboardScreen = ({ navigation }) => {
           onPress={() => navigation.navigate('Customers')}
         />
         <QuickActionButton
+          title="Produits"
+          icon="pricetag-outline"
+          color={colors.warning}
+          onPress={() => navigation.navigate('Products')}
+        />
+        <QuickActionButton
+          title="Équipe"
+          icon="people"
+          color={colors.info}
+          onPress={() => navigation.navigate('Team')}
+        />
+        <QuickActionButton
           title="Feedback"
           icon="chatbubble-outline"
           color={colors.primary}
