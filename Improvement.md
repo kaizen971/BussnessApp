@@ -144,3 +144,100 @@ await api.post('/auth/assign-default-project');
 2. Lors de la création de nouveaux utilisateurs, toujours assigner un projectId
 3. Rendre le champ projectId obligatoire dans le schéma User à l'avenir
 4. Ajouter une validation côté frontend pour vérifier que le projectId existe avant d'utiliser les fonctionnalités
+
+---
+
+## 2025-10-06 : Refonte du système de vente avec panier et feedbacks sonores
+
+### Problème
+- L'ancienne interface de vente nécessitait de remplir un formulaire complet pour chaque vente
+- Impossible d'ajouter plusieurs produits facilement
+- Pas de feedback visuel ou sonore lors des actions
+- Processus long et répétitif pour vendre plusieurs produits
+
+### Solution implémentée
+**Fichier modifié :** `frontend/src/screens/SalesScreen.js`
+
+#### Changements majeurs :
+
+1. **Système de panier intelligent** :
+   - Cliquez sur un produit pour l'ajouter au panier
+   - Chaque clic supplémentaire augmente la quantité
+   - Visualisation en temps réel des produits dans le panier
+   - Badge sur chaque produit montrant la quantité ajoutée
+
+2. **Grille de produits interactive** :
+   - Affichage en grille (2 colonnes) de tous les produits disponibles
+   - Cartes cliquables avec icône, nom et prix
+   - Interface tactile optimisée pour mobile
+   - Feedback visuel immédiat avec badge de quantité
+
+3. **Gestion avancée du panier** :
+   - Modification de la quantité avec boutons +/- ou saisie directe
+   - Suppression individuelle de produits
+   - Calcul automatique du total
+   - Option pour vider tout le panier
+   - Bouton de validation pour enregistrer toutes les ventes en une fois
+
+4. **Feedbacks sonores** :
+   - Son "add" : bip agréable lors de l'ajout d'un produit au panier
+   - Son "success" : mélodie de succès lors de la validation
+   - Son "error" : son d'erreur en cas de problème
+   - Sons générés avec ffmpeg (fichiers légers MP3)
+
+5. **Sélection du client simplifiée** :
+   - Client optionnel (peut être vide)
+   - Sélection unique pour toutes les ventes du panier
+   - Badge visuel du client sélectionné
+   - Informations de fidélité affichées
+
+#### Nouveaux composants et états :
+- `cart` : State pour gérer le panier de ventes
+- `handleAddToCart()` : Ajoute/incrémente un produit dans le panier
+- `updateCartItemQuantity()` : Modifie la quantité d'un article
+- `removeFromCart()` : Retire un article du panier
+- `handleValidateCart()` : Valide et enregistre toutes les ventes
+- `playSound()` : Joue les feedbacks sonores
+
+#### Nouveaux styles ajoutés :
+- `sectionHeader`, `sectionTitle`, `sectionSubtitle`
+- `productsGrid`, `productCard`, `productIconContainer`
+- `productName`, `productPrice`, `productBadge`, `productBadgeText`
+- `cartItem`, `cartItemInfo`, `cartItemName`, `cartItemPrice`
+- `cartItemActions`, `quantityButton`, `quantityInput`, `deleteButton`
+- `cartTotal`, `cartTotalLabel`, `cartTotalValue`
+
+#### Fichiers audio créés :
+- `frontend/src/assets/sounds/add.mp3` : Son d'ajout au panier
+- `frontend/src/assets/sounds/success.mp3` : Son de validation réussie
+- `frontend/src/assets/sounds/error.mp3` : Son d'erreur
+
+### Résultat
+- Interface beaucoup plus rapide pour vendre plusieurs produits
+- Expérience utilisateur moderne avec feedbacks audio/visuels
+- Réduction du nombre d'étapes pour effectuer des ventes multiples
+- Interface intuitive type "point de vente"
+- Possibilité de vendre 10 produits différents en quelques secondes au lieu de plusieurs minutes
+
+### Exemple d'utilisation
+1. Ouvrir le modal de nouvelle vente
+2. (Optionnel) Sélectionner un client
+3. Cliquer sur les produits à vendre (chaque clic ajoute une quantité)
+4. Ajuster les quantités si nécessaire avec +/- ou saisie directe
+5. Vérifier le total du panier
+6. Cliquer sur "Valider X vente(s)"
+7. Toutes les ventes sont enregistrées d'un coup
+
+### État
+✅ Implémenté et fonctionnel
+- Nouveau système de panier opérationnel
+- Feedbacks sonores générés et intégrés
+- Serveur backend déjà en cours d'exécution avec nodemon
+- Interface prête pour les tests
+
+### Notes techniques
+- Utilisation de `expo-av` pour les sons
+- Configuration audio iOS pour jouer en mode silencieux
+- Création parallèle de toutes les ventes avec `Promise.all()`
+- Gestion optimisée de la mémoire avec déchargement automatique des sons
+- Graceful degradation : si les sons ne peuvent pas être joués, l'application continue de fonctionner

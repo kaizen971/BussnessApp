@@ -9,6 +9,7 @@ import {
   Modal,
   TouchableOpacity,
 } from 'react-native';
+import { Audio } from 'expo-av';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
@@ -25,13 +26,9 @@ export const SalesScreen = () => {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
+  const [cart, setCart] = useState([]); // Panier pour stocker les ventes avant validation
   const [formData, setFormData] = useState({
-    productId: '',
     customerId: '',
-    quantity: '1',
-    unitPrice: '',
-    discount: '0',
-    description: '',
   });
 
   useEffect(() => {
@@ -44,6 +41,11 @@ export const SalesScreen = () => {
       userObject: user
     });
     loadData();
+    // Configuration audio pour iOS
+    Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+    });
   }, []);
 
   const loadData = async () => {
@@ -64,57 +66,109 @@ export const SalesScreen = () => {
     }
   };
 
-  const handleProductChange = (productId) => {
-    setFormData(prev => ({ ...prev, productId }));
-
-    // Pré-remplir le prix unitaire depuis le produit sélectionné
-    const selectedProduct = (products && Array.isArray(products)) ? products.find(p => p._id === productId) : null;
-    if (selectedProduct && selectedProduct.unitPrice) {
-      setFormData(prev => ({ ...prev, unitPrice: selectedProduct.unitPrice.toString() }));
+  // Fonction pour jouer un son
+  const playSound = async (soundType) => {
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        soundType === 'add'
+          ? require('../assets/sounds/add.mp3')
+          : soundType === 'success'
+          ? require('../assets/sounds/success.mp3')
+          : require('../assets/sounds/error.mp3')
+      );
+      await sound.playAsync();
+      // Décharger le son après la lecture
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+    } catch (error) {
+      console.log('Error playing sound:', error);
+      // Ne pas bloquer l'application si le son ne peut pas être joué
     }
   };
 
-  const handleCustomerChange = (customerId) => {
-    setFormData(prev => ({ ...prev, customerId }));
+  // Ajouter un produit au panier
+  const handleAddToCart = (productId) => {
+    const product = products.find(p => p._id === productId);
+    if (!product) return;
 
-    // Pré-remplir la remise depuis le niveau de fidélité du client
-    const selectedCustomer = (customers && Array.isArray(customers)) ? customers.find(c => c._id === customerId) : null;
-    if (selectedCustomer && selectedCustomer.discount) {
-      setFormData(prev => ({ ...prev, discount: selectedCustomer.discount.toString() }));
+    const existingItem = cart.find(item => item.productId === productId);
+
+    if (existingItem) {
+      // Augmenter la quantité
+      setCart(cart.map(item =>
+        item.productId === productId
+          ? { ...item, quantity: item.quantity + 1 }
+          : item
+      ));
+    } else {
+      // Ajouter nouveau produit au panier
+      setCart([...cart, {
+        productId: product._id,
+        productName: product.name,
+        quantity: 1,
+        unitPrice: product.unitPrice,
+        discount: 0,
+      }]);
     }
+
+    playSound('add');
   };
 
-  const handleAddSale = async () => {
-    if (!formData.productId || !formData.quantity || !formData.unitPrice) {
-      Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires');
+  // Modifier la quantité d'un produit dans le panier
+  const updateCartItemQuantity = (productId, quantity) => {
+    if (quantity <= 0) {
+      removeFromCart(productId);
+      return;
+    }
+
+    setCart(cart.map(item =>
+      item.productId === productId
+        ? { ...item, quantity: parseInt(quantity) || 1 }
+        : item
+    ));
+  };
+
+  // Retirer un produit du panier
+  const removeFromCart = (productId) => {
+    setCart(cart.filter(item => item.productId !== productId));
+  };
+
+  // Valider toutes les ventes du panier
+  const handleValidateCart = async () => {
+    if (cart.length === 0) {
+      Alert.alert('Panier vide', 'Ajoutez des produits avant de valider');
       return;
     }
 
     try {
-      await salesAPI.create({
-        projectId: user?.projectId,
-        productId: formData.productId,
-        customerId: formData.customerId || undefined,
-        quantity: parseInt(formData.quantity),
-        unitPrice: parseFloat(formData.unitPrice),
-        discount: parseFloat(formData.discount) || 0,
-        description: formData.description,
-      });
+      // Créer toutes les ventes en parallèle
+      await Promise.all(
+        cart.map(item =>
+          salesAPI.create({
+            projectId: user?.projectId,
+            productId: item.productId,
+            customerId: formData.customerId || undefined,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            discount: item.discount || 0,
+            description: '',
+          })
+        )
+      );
 
-      setFormData({
-        productId: '',
-        customerId: '',
-        quantity: '1',
-        unitPrice: '',
-        discount: '0',
-        description: '',
-      });
+      playSound('success');
+      setCart([]);
+      setFormData({ customerId: '' });
       setModalVisible(false);
       loadData();
-      Alert.alert('Succès', 'Vente ajoutée avec succès');
+      Alert.alert('Succès', `${cart.length} vente(s) enregistrée(s) avec succès`);
     } catch (error) {
-      console.error('Error adding sale:', error);
-      Alert.alert('Erreur', error.response?.data?.error || 'Impossible d\'ajouter la vente');
+      console.error('Error adding sales:', error);
+      playSound('error');
+      Alert.alert('Erreur', error.response?.data?.error || 'Impossible d\'ajouter les ventes');
     }
   };
 
@@ -167,13 +221,12 @@ export const SalesScreen = () => {
   };
 
   const totalSales = (sales && Array.isArray(sales)) ? sales.reduce((sum, sale) => sum + (sale.amount || 0), 0) : 0;
-  const selectedProduct = (products && Array.isArray(products)) ? products.find(p => p._id === formData.productId) : null;
   const selectedCustomer = (customers && Array.isArray(customers)) ? customers.find(c => c._id === formData.customerId) : null;
 
-  // Calcul du montant prévu
-  const estimatedAmount = formData.quantity && formData.unitPrice
-    ? (parseInt(formData.quantity) * parseFloat(formData.unitPrice)) - (parseFloat(formData.discount) || 0)
-    : 0;
+  // Calcul du montant total du panier
+  const cartTotal = cart.reduce((sum, item) =>
+    sum + (item.quantity * item.unitPrice - (item.discount || 0)), 0
+  );
 
   return (
     <View style={styles.container}>
@@ -230,44 +283,8 @@ export const SalesScreen = () => {
                 </Text>
               </View>
 
-              <Text style={styles.fieldLabel}>Produit *</Text>
-              {selectedProduct && (
-                <View style={styles.selectedItemBadge}>
-                  <Ionicons name="cube" size={16} color={colors.primary} />
-                  <Text style={styles.selectedItemText}>
-                    {selectedProduct.name} - {selectedProduct.unitPrice}€
-                  </Text>
-                </View>
-              )}
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={formData.productId}
-                  onValueChange={handleProductChange}
-                  style={styles.picker}
-                >
-                  <Picker.Item label="Sélectionner un produit..." value="" />
-                  {products && products.length > 0 && products.map(product => (
-                    product && product._id ? (
-                      <Picker.Item
-                        key={product._id}
-                        label={`${product.name || 'Produit'} - ${product.unitPrice || '0'}€`}
-                        value={product._id}
-                      />
-                    ) : null
-                  ))}
-                </Picker>
-              </View>
-
-              {selectedProduct && (
-                <View style={styles.infoBox}>
-                  <Ionicons name="information-circle-outline" size={16} color={colors.info} />
-                  <Text style={styles.infoText}>
-                    Prix: {selectedProduct.unitPrice}€ | Catégorie: {selectedProduct.category || 'Aucune'}
-                  </Text>
-                </View>
-              )}
-
-              <Text style={styles.fieldLabel}>Client</Text>
+              {/* Sélection du client (optionnel) */}
+              <Text style={styles.fieldLabel}>Client (optionnel)</Text>
               {selectedCustomer && (
                 <View style={styles.selectedItemBadge}>
                   <Ionicons name="person" size={16} color={colors.primary} />
@@ -279,10 +296,10 @@ export const SalesScreen = () => {
               <View style={styles.pickerContainer}>
                 <Picker
                   selectedValue={formData.customerId}
-                  onValueChange={handleCustomerChange}
+                  onValueChange={(customerId) => setFormData({ customerId })}
                   style={styles.picker}
                 >
-                  <Picker.Item label="Sélectionner un client..." value="" />
+                  <Picker.Item label="Aucun client" value="" />
                   {customers && customers.length > 0 && customers.map(customer => (
                     customer && customer._id ? (
                       <Picker.Item
@@ -306,54 +323,103 @@ export const SalesScreen = () => {
                 </View>
               )}
 
-              <Input
-                label="Quantité *"
-                value={formData.quantity}
-                onChangeText={(value) => setFormData(prev => ({ ...prev, quantity: value }))}
-                placeholder="1"
-                keyboardType="numeric"
-                icon="layers-outline"
-              />
+              {/* Sélection des produits */}
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Produits</Text>
+                <Text style={styles.sectionSubtitle}>Cliquez sur un produit pour l'ajouter au panier</Text>
+              </View>
 
-              <Input
-                label="Prix unitaire *"
-                value={formData.unitPrice}
-                onChangeText={(value) => setFormData(prev => ({ ...prev, unitPrice: value }))}
-                placeholder="0.00"
-                keyboardType="numeric"
-                icon="cash-outline"
-              />
+              <View style={styles.productsGrid}>
+                {products && products.length > 0 ? products.map(product => (
+                  product && product._id ? (
+                    <TouchableOpacity
+                      key={product._id}
+                      style={styles.productCard}
+                      onPress={() => handleAddToCart(product._id)}
+                    >
+                      <View style={styles.productIconContainer}>
+                        <Ionicons name="cube" size={24} color={colors.primary} />
+                      </View>
+                      <Text style={styles.productName} numberOfLines={2}>
+                        {product.name}
+                      </Text>
+                      <Text style={styles.productPrice}>{product.unitPrice}€</Text>
+                      {cart.find(item => item.productId === product._id) && (
+                        <View style={styles.productBadge}>
+                          <Text style={styles.productBadgeText}>
+                            {cart.find(item => item.productId === product._id).quantity}
+                          </Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ) : null
+                )) : (
+                  <Text style={styles.emptyText}>Aucun produit disponible</Text>
+                )}
+              </View>
 
-              <Input
-                label="Remise (montant)"
-                value={formData.discount}
-                onChangeText={(value) => setFormData(prev => ({ ...prev, discount: value }))}
-                placeholder="0.00"
-                keyboardType="numeric"
-                icon="pricetag-outline"
-              />
+              {/* Panier */}
+              {cart.length > 0 && (
+                <>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Panier ({cart.length})</Text>
+                  </View>
 
-              <Input
-                label="Description"
-                value={formData.description}
-                onChangeText={(value) => setFormData(prev => ({ ...prev, description: value }))}
-                placeholder="Détails de la vente"
-                icon="document-text-outline"
-                multiline
-              />
+                  {cart.map((item) => (
+                    <View key={item.productId} style={styles.cartItem}>
+                      <View style={styles.cartItemInfo}>
+                        <Text style={styles.cartItemName}>{item.productName}</Text>
+                        <Text style={styles.cartItemPrice}>
+                          {item.unitPrice}€ x {item.quantity} = {(item.unitPrice * item.quantity).toFixed(2)}€
+                        </Text>
+                      </View>
+                      <View style={styles.cartItemActions}>
+                        <TouchableOpacity
+                          style={styles.quantityButton}
+                          onPress={() => updateCartItemQuantity(item.productId, item.quantity - 1)}
+                        >
+                          <Ionicons name="remove" size={18} color={colors.primary} />
+                        </TouchableOpacity>
+                        <Input
+                          value={item.quantity.toString()}
+                          onChangeText={(value) => updateCartItemQuantity(item.productId, value)}
+                          keyboardType="numeric"
+                          style={styles.quantityInput}
+                        />
+                        <TouchableOpacity
+                          style={styles.quantityButton}
+                          onPress={() => updateCartItemQuantity(item.productId, item.quantity + 1)}
+                        >
+                          <Ionicons name="add" size={18} color={colors.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.deleteButton}
+                          onPress={() => removeFromCart(item.productId)}
+                        >
+                          <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
 
-              {estimatedAmount > 0 && (
-                <View style={styles.amountPreview}>
-                  <Text style={styles.amountPreviewLabel}>Montant total estimé:</Text>
-                  <Text style={styles.amountPreviewValue}>{estimatedAmount.toFixed(2)} €</Text>
-                </View>
+                  <View style={styles.cartTotal}>
+                    <Text style={styles.cartTotalLabel}>Total du panier:</Text>
+                    <Text style={styles.cartTotalValue}>{cartTotal.toFixed(2)} €</Text>
+                  </View>
+
+                  <Button
+                    title={`Valider ${cart.length} vente(s)`}
+                    onPress={handleValidateCart}
+                    style={styles.submitButton}
+                  />
+
+                  <Button
+                    title="Vider le panier"
+                    onPress={() => setCart([])}
+                    style={[styles.submitButton, { backgroundColor: colors.danger }]}
+                  />
+                </>
               )}
-
-              <Button
-                title="Enregistrer la vente"
-                onPress={handleAddSale}
-                style={styles.submitButton}
-              />
             </ScrollView>
           </View>
         </View>
@@ -577,5 +643,140 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primary,
     marginLeft: 8,
+  },
+  sectionHeader: {
+    marginTop: 20,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  productsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -6,
+  },
+  productCard: {
+    width: '48%',
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    margin: '1%',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  productIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  productName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 4,
+    minHeight: 34,
+  },
+  productPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  productBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  productBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  cartItem: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    marginBottom: 8,
+  },
+  cartItemInfo: {
+    marginBottom: 8,
+  },
+  cartItemName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  cartItemPrice: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  cartItemActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  quantityButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quantityInput: {
+    flex: 1,
+    marginHorizontal: 8,
+    textAlign: 'center',
+  },
+  deleteButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.danger + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cartTotal: {
+    backgroundColor: colors.primary + '10',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 8,
+    marginBottom: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cartTotalLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  cartTotalValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.primary,
   },
 });
