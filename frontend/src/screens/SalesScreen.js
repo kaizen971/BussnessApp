@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   Alert,
   Modal,
   TouchableOpacity,
+  Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { Picker } from '@react-native-picker/picker';
@@ -30,6 +32,9 @@ export const SalesScreen = () => {
   const [formData, setFormData] = useState({
     customerId: '',
   });
+  const [flashingProduct, setFlashingProduct] = useState(null);
+  const flashAnim = useRef(new Animated.Value(1)).current;
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     // Log pour déboguer le projectId
@@ -89,7 +94,7 @@ export const SalesScreen = () => {
     }
   };
 
-  // Ajouter un produit au panier
+  // Ajouter un produit au panier avec animation
   const handleAddToCart = (productId) => {
     const product = products.find(p => p._id === productId);
     if (!product) return;
@@ -114,6 +119,23 @@ export const SalesScreen = () => {
       }]);
     }
 
+    // Animation visuelle et son
+    setFlashingProduct(productId);
+    Animated.sequence([
+      Animated.timing(flashAnim, {
+        toValue: 1.1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(flashAnim, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setFlashingProduct(null);
+    });
+
     playSound('add');
   };
 
@@ -134,6 +156,26 @@ export const SalesScreen = () => {
   // Retirer un produit du panier
   const removeFromCart = (productId) => {
     setCart(cart.filter(item => item.productId !== productId));
+    playSound('error');
+  };
+
+  // Vider le panier avec confirmation
+  const handleClearCart = () => {
+    Alert.alert(
+      'Vider le panier',
+      `Êtes-vous sûr de vouloir supprimer les ${cart.length} produit(s) du panier ?`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Vider',
+          style: 'destructive',
+          onPress: () => {
+            setCart([]);
+            playSound('error');
+          }
+        }
+      ]
+    );
   };
 
   // Valider toutes les ventes du panier
@@ -143,6 +185,7 @@ export const SalesScreen = () => {
       return;
     }
 
+    setSubmitting(true);
     try {
       // Créer toutes les ventes en parallèle
       await Promise.all(
@@ -163,12 +206,14 @@ export const SalesScreen = () => {
       setCart([]);
       setFormData({ customerId: '' });
       setModalVisible(false);
-      loadData();
+      await loadData();
       Alert.alert('Succès', `${cart.length} vente(s) enregistrée(s) avec succès`);
     } catch (error) {
       console.error('Error adding sales:', error);
       playSound('error');
       Alert.alert('Erreur', error.response?.data?.error || 'Impossible d\'ajouter les ventes');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -330,30 +375,41 @@ export const SalesScreen = () => {
               </View>
 
               <View style={styles.productsGrid}>
-                {products && products.length > 0 ? products.map(product => (
-                  product && product._id ? (
-                    <TouchableOpacity
-                      key={product._id}
-                      style={styles.productCard}
-                      onPress={() => handleAddToCart(product._id)}
-                    >
-                      <View style={styles.productIconContainer}>
-                        <Ionicons name="cube" size={24} color={colors.primary} />
-                      </View>
-                      <Text style={styles.productName} numberOfLines={2}>
-                        {product.name}
-                      </Text>
-                      <Text style={styles.productPrice}>{product.unitPrice}€</Text>
-                      {cart.find(item => item.productId === product._id) && (
-                        <View style={styles.productBadge}>
-                          <Text style={styles.productBadgeText}>
-                            {cart.find(item => item.productId === product._id).quantity}
-                          </Text>
+                {products && products.length > 0 ? products.map(product => {
+                  if (!product || !product._id) return null;
+                  const isFlashing = flashingProduct === product._id;
+                  const animStyle = isFlashing ? {
+                    transform: [{ scale: flashAnim }],
+                  } : {};
+
+                  return (
+                    <Animated.View key={product._id} style={animStyle}>
+                      <TouchableOpacity
+                        style={[
+                          styles.productCard,
+                          isFlashing && styles.productCardFlashing
+                        ]}
+                        onPress={() => handleAddToCart(product._id)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.productIconContainer}>
+                          <Ionicons name="cube" size={24} color={colors.primary} />
                         </View>
-                      )}
-                    </TouchableOpacity>
-                  ) : null
-                )) : (
+                        <Text style={styles.productName} numberOfLines={2}>
+                          {product.name}
+                        </Text>
+                        <Text style={styles.productPrice}>{product.unitPrice}€</Text>
+                        {cart.find(item => item.productId === product._id) && (
+                          <View style={styles.productBadge}>
+                            <Text style={styles.productBadgeText}>
+                              {cart.find(item => item.productId === product._id).quantity}
+                            </Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    </Animated.View>
+                  );
+                }) : (
                   <Text style={styles.emptyText}>Aucun produit disponible</Text>
                 )}
               </View>
@@ -374,29 +430,28 @@ export const SalesScreen = () => {
                         </Text>
                       </View>
                       <View style={styles.cartItemActions}>
-                        <TouchableOpacity
-                          style={styles.quantityButton}
-                          onPress={() => updateCartItemQuantity(item.productId, item.quantity - 1)}
-                        >
-                          <Ionicons name="remove" size={18} color={colors.primary} />
-                        </TouchableOpacity>
-                        <Input
-                          value={item.quantity.toString()}
-                          onChangeText={(value) => updateCartItemQuantity(item.productId, value)}
-                          keyboardType="numeric"
-                          style={styles.quantityInput}
-                        />
-                        <TouchableOpacity
-                          style={styles.quantityButton}
-                          onPress={() => updateCartItemQuantity(item.productId, item.quantity + 1)}
-                        >
-                          <Ionicons name="add" size={18} color={colors.primary} />
-                        </TouchableOpacity>
+                        <View style={styles.quantityControls}>
+                          <TouchableOpacity
+                            style={styles.quantityButton}
+                            onPress={() => updateCartItemQuantity(item.productId, item.quantity - 1)}
+                          >
+                            <Ionicons name="remove" size={20} color={colors.primary} />
+                          </TouchableOpacity>
+                          <View style={styles.quantityDisplay}>
+                            <Text style={styles.quantityText}>{item.quantity}</Text>
+                          </View>
+                          <TouchableOpacity
+                            style={styles.quantityButton}
+                            onPress={() => updateCartItemQuantity(item.productId, item.quantity + 1)}
+                          >
+                            <Ionicons name="add" size={20} color={colors.primary} />
+                          </TouchableOpacity>
+                        </View>
                         <TouchableOpacity
                           style={styles.deleteButton}
                           onPress={() => removeFromCart(item.productId)}
                         >
-                          <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                          <Ionicons name="trash-outline" size={20} color={colors.danger} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -408,15 +463,24 @@ export const SalesScreen = () => {
                   </View>
 
                   <Button
-                    title={`Valider ${cart.length} vente(s)`}
+                    title={submitting ? 'Validation en cours...' : `Valider ${cart.length} vente(s)`}
                     onPress={handleValidateCart}
                     style={styles.submitButton}
+                    disabled={submitting}
                   />
+
+                  {submitting && (
+                    <View style={styles.loadingContainer}>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                      <Text style={styles.loadingText}>Enregistrement des ventes...</Text>
+                    </View>
+                  )}
 
                   <Button
                     title="Vider le panier"
-                    onPress={() => setCart([])}
+                    onPress={handleClearCart}
                     style={[styles.submitButton, { backgroundColor: colors.danger }]}
+                    disabled={submitting}
                   />
                 </>
               )}
@@ -674,6 +738,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
   },
+  productCardFlashing: {
+    backgroundColor: colors.primary + '10',
+    borderColor: colors.primary,
+    borderWidth: 2,
+  },
   productIconContainer: {
     width: 48,
     height: 48,
@@ -738,6 +807,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  quantityControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '10',
+    borderRadius: 20,
+    padding: 4,
+  },
   quantityButton: {
     width: 36,
     height: 36,
@@ -746,18 +822,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  quantityInput: {
-    flex: 1,
-    marginHorizontal: 8,
-    textAlign: 'center',
+  quantityDisplay: {
+    minWidth: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  quantityText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.primary,
   },
   deleteButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.danger + '20',
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 8,
   },
   cartTotal: {
     backgroundColor: colors.primary + '10',
@@ -778,5 +861,16 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.primary,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: colors.primary,
+    marginLeft: 8,
   },
 });

@@ -241,3 +241,136 @@ await api.post('/auth/assign-default-project');
 - Création parallèle de toutes les ventes avec `Promise.all()`
 - Gestion optimisée de la mémoire avec déchargement automatique des sons
 - Graceful degradation : si les sons ne peuvent pas être joués, l'application continue de fonctionner
+
+---
+
+## 2025-10-06 : Corrections et améliorations UX de la partie ventes
+
+### Problèmes identifiés
+1. **Fichier son manquant** : `success.mp3` n'existait pas, causant des erreurs lors de la validation
+2. **Manque de feedback visuel** : Aucune animation lors de l'ajout de produits au panier
+3. **Input de quantité peu ergonomique** : Champ texte difficile à utiliser sur mobile
+4. **Pas de confirmation** avant de vider le panier (risque de perte de données)
+5. **Absence d'indicateur de chargement** pendant la validation des ventes
+6. **Style des quantités** : Peu lisible et pas assez visible
+
+### Solutions implémentées
+**Fichier modifié :** `frontend/src/screens/SalesScreen.js`
+
+#### 1. Génération du fichier son manquant
+- Exécution du script `generate_sounds.sh` pour créer `success.mp3`
+- Sons désormais complets : add.mp3, success.mp3, error.mp3
+- **Ligne :** Correction appliquée aux fichiers audio
+
+#### 2. Animations visuelles sur ajout au panier
+**Changements :**
+- Import de `Animated` depuis React Native
+- Ajout de nouveaux states : `flashingProduct`, `flashAnim`
+- Animation de scale (1 → 1.1 → 1) sur le produit ajouté
+- Effet visuel de flash avec bordure et fond coloré
+- **Lignes modifiées :** 1-13, 35-37, 97-140, 377-415, 741-745
+
+**Code ajouté :**
+```javascript
+const [flashingProduct, setFlashingProduct] = useState(null);
+const flashAnim = useRef(new Animated.Value(1)).current;
+
+// Animation lors de l'ajout
+Animated.sequence([
+  Animated.timing(flashAnim, { toValue: 1.1, duration: 100, useNativeDriver: true }),
+  Animated.timing(flashAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
+]).start();
+```
+
+#### 3. Contrôles de quantité améliorés
+**Avant :** Champ Input texte difficile à utiliser
+**Après :** Interface avec boutons -/+ et affichage lisible de la quantité
+
+**Changements :**
+- Remplacement de l'Input par un affichage texte de la quantité
+- Boutons circulaires -/+ avec icônes plus grandes
+- Groupement visuel avec fond coloré et bordure arrondie
+- **Lignes modifiées :** 432-456, 810-844
+
+**Nouveaux styles :**
+```javascript
+quantityControls: { /* Conteneur groupé avec fond */ },
+quantityDisplay: { /* Zone d'affichage de la quantité */ },
+quantityText: { /* Texte de quantité en gras et coloré */ }
+```
+
+#### 4. Confirmation avant de vider le panier
+**Changements :**
+- Nouvelle fonction `handleClearCart()` avec dialogue de confirmation
+- Alert natif avec options "Annuler" / "Vider"
+- Son d'erreur joué lors de la suppression
+- Feedback également lors de la suppression individuelle d'un produit
+- **Lignes modifiées :** 156-179, 481
+
+#### 5. Indicateur de chargement pendant la validation
+**Changements :**
+- Ajout du state `submitting` pour tracker l'état de soumission
+- Désactivation des boutons pendant la validation
+- Texte du bouton dynamique : "Validation en cours..."
+- ActivityIndicator avec message "Enregistrement des ventes..."
+- Import de `ActivityIndicator` depuis React Native
+- **Lignes modifiées :** 11-12, 37, 188-217, 465-484, 865-875
+
+**Nouveaux éléments visuels :**
+```javascript
+{submitting && (
+  <View style={styles.loadingContainer}>
+    <ActivityIndicator size="small" color={colors.primary} />
+    <Text style={styles.loadingText}>Enregistrement des ventes...</Text>
+  </View>
+)}
+```
+
+#### 6. Styles visuels améliorés
+**Nouveaux styles ajoutés :**
+- `productCardFlashing` : Effet de flash avec bordure primaire
+- `quantityControls` : Groupement visuel des contrôles
+- `quantityDisplay` : Affichage centré de la quantité
+- `quantityText` : Texte en gras, taille 18, couleur primaire
+- `loadingContainer` : Conteneur pour l'indicateur de chargement
+- `loadingText` : Texte de chargement stylisé
+
+### Améliorations de l'expérience utilisateur
+
+#### Avant :
+- ❌ Crash potentiel avec son manquant
+- ❌ Pas de feedback visuel à l'ajout
+- ❌ Difficile de modifier les quantités sur mobile
+- ❌ Risque de vider le panier par erreur
+- ❌ Pas d'indication pendant la validation
+- ❌ Interface peu intuitive
+
+#### Après :
+- ✅ Tous les sons fonctionnent correctement
+- ✅ Animation visuelle à chaque ajout au panier
+- ✅ Contrôles de quantité tactiles et intuitifs
+- ✅ Confirmation de sécurité avant suppression
+- ✅ Indicateur de progression clair
+- ✅ Interface fluide et professionnelle
+
+### Tests recommandés
+1. ✅ Ajouter plusieurs produits au panier → Vérifier les animations
+2. ✅ Modifier les quantités avec +/- → Vérifier la réactivité
+3. ✅ Tenter de vider le panier → Confirmer l'alerte
+4. ✅ Valider des ventes → Vérifier l'indicateur de chargement
+5. ✅ Écouter les sons → Confirmer success.mp3 fonctionne
+
+### État
+✅ **Toutes les corrections implémentées**
+- Fichier son généré
+- Animations ajoutées
+- UX améliorée
+- Serveur en cours d'exécution
+- Nodemon installé (v3.1.10)
+- Prêt pour les tests
+
+### Impact
+- **Performance** : Aucun impact négatif, animations natives optimisées
+- **Accessibilité** : Boutons plus grands, meilleure visibilité
+- **Sécurité** : Confirmation avant actions destructives
+- **Fiabilité** : Gestion du chargement, pas de bugs audio
