@@ -42,7 +42,7 @@ export const SalesScreen = () => {
     try {
       const [salesRes, productsRes, customersRes] = await Promise.all([
         salesAPI.getAll(user?.projectId),
-        productsAPI.getAll(),
+        productsAPI.getAll(user?.projectId),
         customersAPI.getAll(user?.projectId),
       ]);
       setSales(salesRes.data || []);

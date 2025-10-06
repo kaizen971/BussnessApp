@@ -109,7 +109,7 @@ export const feedbackAPI = {
 
 // Products API
 export const productsAPI = {
-  getAll: () => api.get('/products'),
+  getAll: (projectId) => api.get('/products', { params: { projectId } }),
   create: (data) => api.post('/products', data),
   update: (id, data) => api.put(`/products/${id}`, data),
   delete: (id) => api.delete(`/products/${id}`),

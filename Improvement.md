@@ -77,3 +77,66 @@ process.on('uncaughtException', (error) => {
 2. Ajouter des tests unitaires pour valider le comportement des routes
 3. Implémenter un système de logging plus avancé (Winston, Morgan)
 4. Ajouter une surveillance de la santé du serveur (health check endpoint)
+
+---
+
+## 2025-10-06 - Correction de l'affichage des produits et clients dans le sélecteur de vente
+
+### Problème identifié
+- Lors de la création d'une vente, les sélecteurs de produits et clients restaient vides
+- Les produits n'étaient pas filtrés par projectId contrairement aux autres entités
+- L'API `productsAPI.getAll()` ne prenait pas en compte le projectId du projet courant
+
+### Solution implémentée
+
+#### 1. Ajout du paramètre projectId à l'API Products (frontend/src/services/api.js:112)
+**Avant** :
+```javascript
+export const productsAPI = {
+  getAll: () => api.get('/products'),
+  // ...
+};
+```
+
+**Après** :
+```javascript
+export const productsAPI = {
+  getAll: (projectId) => api.get('/products', { params: { projectId } }),
+  // ...
+};
+```
+
+#### 2. Passage du projectId lors du chargement des produits (frontend/src/screens/SalesScreen.js:45)
+**Avant** :
+```javascript
+const [salesRes, productsRes, customersRes] = await Promise.all([
+  salesAPI.getAll(user?.projectId),
+  productsAPI.getAll(),  // ❌ Pas de projectId
+  customersAPI.getAll(user?.projectId),
+]);
+```
+
+**Après** :
+```javascript
+const [salesRes, productsRes, customersRes] = await Promise.all([
+  salesAPI.getAll(user?.projectId),
+  productsAPI.getAll(user?.projectId),  // ✅ Avec projectId
+  customersAPI.getAll(user?.projectId),
+]);
+```
+
+### Fichiers modifiés
+- `/frontend/src/services/api.js` - Ajout du paramètre projectId à productsAPI.getAll()
+- `/frontend/src/screens/SalesScreen.js` - Passage du projectId lors du chargement des données
+
+### Impact
+- Les produits sont maintenant correctement filtrés par projet
+- Les sélecteurs affichent les produits et clients du projet courant
+- Cohérence avec le reste de l'application (tous les appels API utilisent projectId)
+- L'utilisateur peut maintenant créer des ventes avec les bonnes données
+
+### Tests recommandés
+- ✅ Vérifier que les produits s'affichent dans le sélecteur lors de la création d'une vente
+- ✅ Vérifier que les clients s'affichent dans le sélecteur lors de la création d'une vente
+- ✅ Vérifier que seuls les produits du projet courant sont affichés
+- ✅ Tester la création d'une vente complète avec produit et client
