@@ -78,11 +78,31 @@ const ExpenseSchema = new mongoose.Schema({
 
 const StockSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
+  productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' }, // Lien avec un produit (optionnel)
   name: { type: String, required: true },
   quantity: { type: Number, required: true },
   unitPrice: { type: Number, required: true },
   minQuantity: { type: Number, default: 0 },
+  sku: String, // Code SKU pour identifier le produit
+  location: String, // Emplacement physique dans l'entrepôt
   updatedAt: { type: Date, default: Date.now }
+});
+
+// Schema pour tracer les mouvements de stock
+const StockMovementSchema = new mongoose.Schema({
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
+  stockId: { type: mongoose.Schema.Types.ObjectId, ref: 'Stock', required: true },
+  productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+  type: { type: String, enum: ['in', 'out', 'adjustment', 'sale', 'return'], required: true },
+  quantity: { type: Number, required: true }, // Positif pour entrées, négatif pour sorties
+  previousQuantity: { type: Number, required: true },
+  newQuantity: { type: Number, required: true },
+  unitPrice: { type: Number },
+  reason: String, // Raison du mouvement (achat, vente, ajustement inventaire, etc.)
+  saleId: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale' }, // Lien avec vente si applicable
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Qui a effectué le mouvement
+  notes: String,
+  createdAt: { type: Date, default: Date.now }
 });
 
 const CustomerSchema = new mongoose.Schema({
@@ -132,6 +152,7 @@ const Product = mongoose.model('Product', ProductSchema);
 const Sale = mongoose.model('Sale', SaleSchema);
 const Expense = mongoose.model('Expense', ExpenseSchema);
 const Stock = mongoose.model('Stock', StockSchema);
+const StockMovement = mongoose.model('StockMovement', StockMovementSchema);
 const Customer = mongoose.model('Customer', CustomerSchema);
 const User = mongoose.model('User', UserSchema);
 const Feedback = mongoose.model('Feedback', FeedbackSchema);
@@ -589,7 +610,28 @@ app.get('/BussnessApp/products', authenticateToken, async (req, res) => {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
     const products = await Product.find({}).sort({ name: 1 });
-    res.json({ data: products });
+
+    // NOUVEAU : Enrichir les produits avec les informations de stock
+    const productsWithStock = await Promise.all(products.map(async (product) => {
+      const stockItem = await Stock.findOne({
+        $or: [
+          { productId: product._id },
+          { name: product.name }
+        ]
+      });
+
+      return {
+        ...product.toObject(),
+        stock: stockItem ? {
+          quantity: stockItem.quantity,
+          minQuantity: stockItem.minQuantity,
+          isLowStock: stockItem.minQuantity > 0 && stockItem.quantity <= stockItem.minQuantity,
+          stockId: stockItem._id
+        } : null
+      };
+    }));
+
+    res.json({ data: productsWithStock });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -711,9 +753,50 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
       }
     }
 
-    // Mettre à jour le stock si produit présent
-    // Note: Le stock n'est pas automatiquement géré car Stock et Product sont des entités séparées
-    // Le stock doit être géré manuellement par les utilisateurs
+    // NOUVEAU : Gestion automatique du stock
+    // Chercher un article de stock lié à ce produit
+    const stockItem = await Stock.findOne({
+      projectId,
+      $or: [
+        { productId: productId },
+        { name: { $regex: new RegExp(productId, 'i') } } // Fallback par nom si pas de lien direct
+      ]
+    });
+
+    if (stockItem) {
+      const previousQuantity = stockItem.quantity;
+      const newQuantity = previousQuantity - quantity;
+
+      // Vérifier si le stock est suffisant
+      if (newQuantity < 0) {
+        console.warn(`Stock insuffisant pour ${stockItem.name}. Stock actuel: ${previousQuantity}, demandé: ${quantity}`);
+        // On continue quand même la vente mais on log un warning
+      }
+
+      // Mettre à jour le stock
+      stockItem.quantity = Math.max(0, newQuantity); // Ne pas descendre en dessous de 0
+      stockItem.updatedAt = Date.now();
+      await stockItem.save();
+
+      // Enregistrer le mouvement de stock
+      const movement = new StockMovement({
+        projectId,
+        stockId: stockItem._id,
+        productId,
+        type: 'sale',
+        quantity: -quantity, // Négatif pour une sortie
+        previousQuantity,
+        newQuantity: stockItem.quantity,
+        unitPrice,
+        reason: 'Vente',
+        saleId: sale._id,
+        userId: req.user.id,
+        notes: req.body.description
+      });
+      await movement.save();
+
+      console.log(`Stock mis à jour: ${stockItem.name} - ${previousQuantity} → ${stockItem.quantity}`);
+    }
 
     const populatedSale = await Sale.findById(sale._id)
       .populate('productId', 'name unitPrice')
@@ -836,8 +919,14 @@ app.post('/BussnessApp/stock', authenticateToken, async (req, res) => {
 
 app.put('/BussnessApp/stock/:id', authenticateToken, async (req, res) => {
   try {
-    const { name, quantity, unitPrice, minQuantity } = req.body;
+    const { name, quantity, unitPrice, minQuantity, productId } = req.body;
 
+    const stock = await Stock.findById(req.params.id);
+    if (!stock) {
+      return res.status(404).json({ error: 'Stock item not found' });
+    }
+
+    const previousQuantity = stock.quantity;
     const updateData = {
       updatedAt: Date.now()
     };
@@ -846,20 +935,245 @@ app.put('/BussnessApp/stock/:id', authenticateToken, async (req, res) => {
     if (quantity !== undefined) updateData.quantity = parseFloat(quantity);
     if (unitPrice !== undefined) updateData.unitPrice = parseFloat(unitPrice);
     if (minQuantity !== undefined) updateData.minQuantity = parseFloat(minQuantity);
+    if (productId !== undefined) updateData.productId = productId;
 
-    const stock = await Stock.findByIdAndUpdate(
+    const updatedStock = await Stock.findByIdAndUpdate(
       req.params.id,
       updateData,
       { new: true }
     );
 
-    if (!stock) {
-      return res.status(404).json({ error: 'Stock item not found' });
+    // Enregistrer le mouvement si la quantité a changé
+    if (quantity !== undefined && parseFloat(quantity) !== previousQuantity) {
+      const newQuantity = parseFloat(quantity);
+      const movement = new StockMovement({
+        projectId: stock.projectId,
+        stockId: stock._id,
+        productId: stock.productId,
+        type: 'adjustment',
+        quantity: newQuantity - previousQuantity,
+        previousQuantity,
+        newQuantity,
+        unitPrice: stock.unitPrice,
+        reason: 'Ajustement manuel',
+        userId: req.user.id,
+        notes: 'Modification du stock'
+      });
+      await movement.save();
     }
 
-    res.json({ data: stock });
+    res.json({ data: updatedStock });
   } catch (error) {
     console.error('Error updating stock:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// NOUVEAUX ENDPOINTS POUR LA GESTION DU STOCK
+
+// Obtenir l'historique des mouvements de stock
+app.get('/BussnessApp/stock/:id/movements', authenticateToken, async (req, res) => {
+  try {
+    const movements = await StockMovement.find({ stockId: req.params.id })
+      .populate('userId', 'username fullName')
+      .populate('productId', 'name')
+      .populate('saleId')
+      .sort({ createdAt: -1 });
+
+    res.json({ data: movements });
+  } catch (error) {
+    console.error('Error loading stock movements:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Obtenir tous les mouvements de stock d'un projet
+app.get('/BussnessApp/stock-movements', authenticateToken, async (req, res) => {
+  try {
+    const { projectId, type, startDate, endDate } = req.query;
+    const filter = {};
+
+    if (projectId) filter.projectId = projectId;
+    if (type) filter.type = type;
+    if (startDate || endDate) {
+      filter.createdAt = {};
+      if (startDate) filter.createdAt.$gte = new Date(startDate);
+      if (endDate) filter.createdAt.$lte = new Date(endDate);
+    }
+
+    const movements = await StockMovement.find(filter)
+      .populate('stockId', 'name sku')
+      .populate('productId', 'name')
+      .populate('userId', 'username fullName')
+      .populate('saleId')
+      .sort({ createdAt: -1 });
+
+    res.json({ data: movements });
+  } catch (error) {
+    console.error('Error loading stock movements:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Ajouter un mouvement de stock manuel (entrée/sortie)
+app.post('/BussnessApp/stock-movements', authenticateToken, async (req, res) => {
+  try {
+    const { stockId, type, quantity, reason, notes } = req.body;
+
+    if (!stockId || !type || !quantity) {
+      return res.status(400).json({ error: 'stockId, type et quantity sont requis' });
+    }
+
+    const stock = await Stock.findById(stockId);
+    if (!stock) {
+      return res.status(404).json({ error: 'Article de stock non trouvé' });
+    }
+
+    const previousQuantity = stock.quantity;
+    const quantityChange = type === 'in' ? Math.abs(quantity) : -Math.abs(quantity);
+    const newQuantity = Math.max(0, previousQuantity + quantityChange);
+
+    // Mettre à jour le stock
+    stock.quantity = newQuantity;
+    stock.updatedAt = Date.now();
+    await stock.save();
+
+    // Créer le mouvement
+    const movement = new StockMovement({
+      projectId: stock.projectId,
+      stockId: stock._id,
+      productId: stock.productId,
+      type,
+      quantity: quantityChange,
+      previousQuantity,
+      newQuantity,
+      unitPrice: stock.unitPrice,
+      reason: reason || (type === 'in' ? 'Approvisionnement' : 'Sortie manuelle'),
+      userId: req.user.id,
+      notes
+    });
+    await movement.save();
+
+    const populatedMovement = await StockMovement.findById(movement._id)
+      .populate('stockId', 'name sku')
+      .populate('userId', 'username fullName');
+
+    res.status(201).json({ data: populatedMovement });
+  } catch (error) {
+    console.error('Error creating stock movement:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Statistiques de stock
+app.get('/BussnessApp/stock-stats/:projectId', authenticateToken, async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    const stock = await Stock.find({ projectId });
+    const movements = await StockMovement.find({ projectId });
+
+    // Valeur totale du stock
+    const totalValue = stock.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+
+    // Articles en stock bas
+    const lowStockItems = stock.filter(item => item.minQuantity > 0 && item.quantity <= item.minQuantity);
+
+    // Mouvements récents (7 derniers jours)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const recentMovements = movements.filter(m => new Date(m.createdAt) >= sevenDaysAgo);
+
+    // Produits les plus vendus (via mouvements de type 'sale')
+    const salesMovements = movements.filter(m => m.type === 'sale');
+    const productSales = {};
+
+    for (const movement of salesMovements) {
+      const productId = movement.productId?.toString();
+      if (productId) {
+        if (!productSales[productId]) {
+          productSales[productId] = {
+            productId,
+            totalQuantity: 0,
+            movements: 0
+          };
+        }
+        productSales[productId].totalQuantity += Math.abs(movement.quantity);
+        productSales[productId].movements += 1;
+      }
+    }
+
+    const topProducts = Object.values(productSales)
+      .sort((a, b) => b.totalQuantity - a.totalQuantity)
+      .slice(0, 5);
+
+    // Rotation du stock (mouvements par rapport au stock disponible)
+    const stockTurnover = stock.map(item => {
+      const itemMovements = movements.filter(m =>
+        m.stockId?.toString() === item._id.toString() &&
+        m.type === 'sale'
+      );
+      const totalSold = itemMovements.reduce((sum, m) => sum + Math.abs(m.quantity), 0);
+      const turnoverRate = item.quantity > 0 ? (totalSold / item.quantity).toFixed(2) : 0;
+
+      return {
+        name: item.name,
+        currentQuantity: item.quantity,
+        totalSold,
+        turnoverRate: parseFloat(turnoverRate)
+      };
+    }).sort((a, b) => b.turnoverRate - a.turnoverRate).slice(0, 10);
+
+    res.json({
+      totalStockValue: totalValue,
+      totalItems: stock.length,
+      lowStockItemsCount: lowStockItems.length,
+      lowStockItems: lowStockItems.map(item => ({
+        id: item._id,
+        name: item.name,
+        quantity: item.quantity,
+        minQuantity: item.minQuantity
+      })),
+      recentMovementsCount: recentMovements.length,
+      topProducts,
+      stockTurnover
+    });
+  } catch (error) {
+    console.error('Error loading stock stats:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Lier un produit à un article de stock
+app.post('/BussnessApp/stock/:stockId/link-product', authenticateToken, async (req, res) => {
+  try {
+    const { stockId } = req.params;
+    const { productId } = req.body;
+
+    if (!productId) {
+      return res.status(400).json({ error: 'productId est requis' });
+    }
+
+    const stock = await Stock.findById(stockId);
+    if (!stock) {
+      return res.status(404).json({ error: 'Article de stock non trouvé' });
+    }
+
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({ error: 'Produit non trouvé' });
+    }
+
+    stock.productId = productId;
+    stock.updatedAt = Date.now();
+    await stock.save();
+
+    res.json({
+      data: stock,
+      message: `Stock "${stock.name}" lié au produit "${product.name}"`
+    });
+  } catch (error) {
+    console.error('Error linking product to stock:', error);
     res.status(400).json({ error: error.message });
   }
 });

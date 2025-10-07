@@ -136,15 +136,41 @@ export const ProductsScreen = ({ navigation }) => {
     const margin = calculateMargin(item.unitPrice, item.costPrice);
     const marginColor = margin > 30 ? colors.success : margin > 15 ? colors.warning : colors.error;
 
+    // Informations de stock
+    const hasStock = item.stock !== null && item.stock !== undefined;
+    const stockQuantity = hasStock ? item.stock.quantity : 0;
+    const isLowStock = hasStock && item.stock.isLowStock;
+    const stockColor = isLowStock ? colors.error : (stockQuantity > 0 ? colors.success : colors.textSecondary);
+
     return (
       <Card style={styles.productCard}>
         <View style={styles.productHeader}>
           <View style={styles.productInfo}>
-            <Text style={styles.productName}>{item.name}</Text>
+            <View style={styles.nameRow}>
+              <Text style={styles.productName}>{item.name}</Text>
+              {hasStock && (
+                <View style={[styles.stockBadge, { backgroundColor: stockColor + '20', borderColor: stockColor }]}>
+                  <Ionicons
+                    name={isLowStock ? "alert-circle" : "cube"}
+                    size={14}
+                    color={stockColor}
+                  />
+                  <Text style={[styles.stockBadgeText, { color: stockColor }]}>
+                    {stockQuantity}
+                  </Text>
+                </View>
+              )}
+            </View>
             {item.description && <Text style={styles.productDescription}>{item.description}</Text>}
             {item.category && (
               <View style={styles.categoryBadge}>
                 <Text style={styles.categoryText}>{item.category}</Text>
+              </View>
+            )}
+            {isLowStock && (
+              <View style={styles.warningBadge}>
+                <Ionicons name="warning" size={12} color={colors.error} />
+                <Text style={styles.warningText}>Stock bas</Text>
               </View>
             )}
           </View>
@@ -171,6 +197,14 @@ export const ProductsScreen = ({ navigation }) => {
             <Text style={styles.priceLabel}>Marge:</Text>
             <Text style={[styles.priceValue, { color: marginColor }]}>{margin}%</Text>
           </View>
+          {hasStock && (
+            <View style={styles.priceRow}>
+              <Text style={styles.priceLabel}>En stock:</Text>
+              <Text style={[styles.priceValue, { color: stockColor, fontWeight: 'bold' }]}>
+                {stockQuantity} unité(s)
+              </Text>
+            </View>
+          )}
         </View>
       </Card>
     );
@@ -447,6 +481,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.primary,
     fontWeight: '600',
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 5,
+  },
+  stockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 4,
+  },
+  stockBadgeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  warningBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.error + '15',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    gap: 4,
+  },
+  warningText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.error,
   },
   productActions: {
     flexDirection: 'row',
