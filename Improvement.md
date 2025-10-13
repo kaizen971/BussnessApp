@@ -331,3 +331,140 @@ Le backend était déjà préparé pour la gestion multi-projets :
 - [ ] Archivage de projets inactifs
 
 ---
+
+## 2025-10-13 - Migration vers Expo SDK 53.0.0
+
+### Objectif
+Corriger toutes les librairies pour qu'elles soient compatibles avec Expo SDK 53.0.0 afin d'assurer la stabilité et la compatibilité du projet.
+
+### Problème résolu
+Le projet utilisait Expo SDK 54, qui n'était pas la version demandée. Plusieurs dépendances étaient incompatibles entre elles et avec le SDK requis.
+
+### Solution implémentée
+Migration complète de toutes les dépendances frontend vers Expo SDK 53.0.0 avec les versions recommandées par Expo.
+
+### Changements techniques
+
+#### Frontend (React Native / Expo)
+
+**Package.json - Versions mises à jour :**
+
+| Dépendance | Avant | Après |
+|-----------|-------|-------|
+| `expo` | ~54.0.12 | ~53.0.0 (installé: 53.0.23) |
+| `react` | 19.1.0 | 19.0.0 |
+| `react-native` | 0.81.4 | 0.79.5 |
+| `@expo/vector-icons` | ^15.0.2 | ^14.0.4 |
+| `@react-native-async-storage/async-storage` | ^2.2.0 | 2.1.2 |
+| `@react-native-picker/picker` | ^2.11.2 | 2.11.1 |
+| `@react-navigation/bottom-tabs` | ^7.4.8 | ^7.2.0 |
+| `@react-navigation/native` | ^7.1.18 | ^7.1.0 |
+| `@react-navigation/stack` | ^7.4.9 | ^7.2.0 |
+| `expo-av` | ~14.0.0 | ~15.1.7 |
+| `expo-font` | - | ^14.0.9 (ajouté) |
+| `expo-linear-gradient` | ^15.0.7 | ~14.1.5 |
+| `expo-status-bar` | ~3.0.8 | ~2.2.3 |
+| `react-native-gesture-handler` | ^2.28.0 | ~2.24.0 |
+| `react-native-reanimated` | ^3.16.4 | ~3.17.4 |
+| `react-native-safe-area-context` | ^5.6.1 | 5.4.0 |
+| `react-native-screens` | ^4.16.0 | ~4.11.1 |
+| `react-native-svg` | ^15.13.0 | 15.11.2 |
+
+**Dépendances inchangées :**
+- `axios` : ^1.12.2
+- `react-native-chart-kit` : ^6.12.0
+
+#### Backend (Node.js)
+
+**Modifications :**
+- Installation de `nodemon` en devDependency (^3.1.10)
+- Vérification que le serveur est opérationnel
+
+### Actions techniques réalisées
+
+1. ✅ **Analyse des dépendances** : Lecture et compréhension de l'architecture
+2. ✅ **Identification des incompatibilités** : Détection du SDK 54 vs SDK 53 requis
+3. ✅ **Mise à jour du package.json** : Modification des versions vers SDK 53
+4. ✅ **Nettoyage** : Suppression de `node_modules`, `yarn.lock` et `package-lock.json`
+5. ✅ **Installation** : `npm install --legacy-peer-deps` pour résoudre les conflits de peer dependencies
+6. ✅ **Correction des dépendances manquantes** : Ajout de `expo-font` (peer dependency de `@expo/vector-icons`)
+7. ✅ **Vérification backend** : Installation de nodemon et vérification du serveur
+8. ✅ **Documentation** : Mise à jour de ce fichier Improvement.md
+
+### Commandes utilisées
+
+```bash
+# Frontend
+cd frontend
+rm -rf node_modules package-lock.json yarn.lock
+npm install --legacy-peer-deps
+npm install expo-font --legacy-peer-deps
+
+# Backend
+cd backend
+npm install
+npm install --save-dev nodemon
+
+# Vérifications
+npm list expo react react-native --depth=0
+npx expo-doctor
+```
+
+### Résultats de la migration
+
+**État final des versions :**
+- ✅ Expo SDK : 53.0.23
+- ✅ React : 19.0.0
+- ✅ React Native : 0.79.5
+- ✅ Toutes les dépendances Expo alignées sur SDK 53
+- ✅ Nodemon installé dans le backend
+- ✅ Serveur backend opérationnel
+
+### Avantages
+- ✅ **Compatibilité SDK 53** : Toutes les librairies sont maintenant compatibles avec Expo SDK 53.0.0
+- ✅ **Stabilité** : Versions recommandées par Expo pour une meilleure stabilité
+- ✅ **Peer dependencies** : Résolution des dépendances manquantes (expo-font)
+- ✅ **Backend prêt** : Nodemon installé pour le développement
+- ✅ **Documentation complète** : Traçabilité des changements effectués
+
+### Problèmes résolus
+
+1. **Expo SDK 54 → 53** : Migration complète du SDK
+2. **Peer dependency manquante** : Ajout de `expo-font` requis par `@expo/vector-icons`
+3. **Conflits de versions** : Utilisation de `--legacy-peer-deps` pour gérer les incompatibilités
+4. **Lock files multiples** : Suppression de yarn.lock pour éviter les conflits
+5. **Nodemon manquant** : Installation dans le backend
+
+### Points d'attention
+
+⚠️ **react-native-chart-kit** :
+- Marqué comme "Unmaintained" par React Native Directory
+- Non testé sur New Architecture
+- Recommandation : Envisager une alternative maintenue à l'avenir
+
+⚠️ **Legacy peer deps** :
+- Le projet utilise `--legacy-peer-deps` pour npm install
+- Nécessaire pour résoudre certains conflits de peer dependencies
+- À surveiller lors des futures mises à jour
+
+### Fichiers modifiés
+- `frontend/package.json` : Mise à jour de toutes les versions vers SDK 53
+- `backend/package.json` : Ajout de nodemon (automatique via npm install)
+
+### Tests recommandés
+- [ ] Tester le démarrage de l'application avec `npm start`
+- [ ] Vérifier toutes les fonctionnalités principales (navigation, formulaires, etc.)
+- [ ] Tester sur iOS et Android
+- [ ] Vérifier que les animations (reanimated) fonctionnent correctement
+- [ ] Tester les fonctionnalités audio/vidéo (expo-av)
+- [ ] Vérifier les gradients (expo-linear-gradient)
+- [ ] Tester le stockage local (async-storage)
+- [ ] Vérifier que le backend fonctionne avec nodemon (`npm run dev`)
+
+### Évolutions futures possibles
+- [ ] Migrer vers Expo SDK 54 ou supérieur quand la stabilité sera confirmée
+- [ ] Remplacer `react-native-chart-kit` par une alternative maintenue (ex: react-native-chart-kit-extended, react-native-gifted-charts)
+- [ ] Mettre en place un système de CI/CD pour détecter les incompatibilités de versions
+- [ ] Créer un script pour faciliter les futures migrations de SDK
+
+---
