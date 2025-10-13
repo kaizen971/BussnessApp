@@ -174,3 +174,160 @@ Le backend était déjà préparé pour accepter un `productId` dans le schéma 
 - [ ] Tester le message d'erreur quand aucun produit n'existe
 
 ---
+
+## 2025-10-13 - Gestion multi-projets pour administrateurs
+
+### Problème résolu
+L'application ne permettait pas à un administrateur de gérer plusieurs projets (business) distincts. Chaque administrateur était limité à un seul projet, sans possibilité de différencier les clients, produits, stocks, ventes et dépenses par projet.
+
+### Solution implémentée
+Implémentation d'un système complet de gestion multi-projets permettant à un administrateur de créer, gérer et basculer entre plusieurs projets, chacun avec ses propres données isolées.
+
+### Changements techniques
+
+#### Backend (`backend/server.js`)
+Le backend était déjà préparé pour la gestion multi-projets :
+- Tous les schémas (Product, Sale, Expense, Stock, Customer, etc.) possèdent déjà un champ `projectId`
+- Les routes API acceptent déjà le paramètre `projectId` dans les requêtes
+- La route `/auth/login` renvoie déjà le `projectId` de l'utilisateur dans le token JWT
+- Aucune modification backend n'était nécessaire
+
+#### Frontend
+
+##### 1. AuthContext (`frontend/src/contexts/AuthContext.js`)
+**Nouveaux états ajoutés** :
+- `selectedProjectId`: ID du projet actuellement sélectionné
+- `availableProjects`: Liste des projets disponibles pour l'utilisateur
+
+**Nouvelles fonctions** :
+- `selectProject(projectId)`: Change le projet actif et le persiste dans AsyncStorage
+- `loadAvailableProjects(projects)`: Charge la liste des projets disponibles
+
+**Modifications** :
+- `loadStoredAuth()`: Charge maintenant le `selectedProjectId` depuis le storage
+- `logout()`: Nettoie également le `selectedProjectId` et `availableProjects`
+- Le contexte expose maintenant `selectedProjectId`, `selectProject`, `availableProjects` et `loadAvailableProjects`
+
+##### 2. Nouvel écran ProjectsScreen (`frontend/src/screens/ProjectsScreen.js`)
+**Fonctionnalités** :
+- Liste tous les projets disponibles
+- Affiche le projet actuellement sélectionné avec un badge "Projet actif"
+- Permet de sélectionner un projet en cliquant dessus
+- Pour les admins/managers : création de nouveaux projets
+- Pour les admins/managers : édition des projets existants
+- Pour les admins uniquement : suppression de projets
+
+**Interface** :
+- Header avec gradient et bouton de retour
+- Cartes de projets avec icône, nom, description et catégorie
+- Badge visuel pour le projet actif
+- Modal de création/édition de projet avec formulaire complet
+- Boutons d'action (éditer, supprimer) selon les permissions
+
+##### 3. DashboardScreen (`frontend/src/screens/DashboardScreen.js`)
+**Modifications** :
+- Import de `selectedProjectId` et `availableProjects` depuis le contexte
+- `loadDashboardData()` utilise maintenant `selectedProjectId` ou `user.projectId` en fallback
+- Ajout d'un `useEffect` qui recharge les données quand le projet change
+- Ajout d'un bouton dans le header pour accéder à l'écran des projets
+- Affichage d'une carte d'information montrant le projet actuellement sélectionné
+- Bouton pour changer de projet rapidement depuis le dashboard
+
+##### 4. Navigation (`frontend/App.js`)
+- Import de `ProjectsScreen`
+- Ajout de la route `Projects` dans le `MainStack`
+- Configuration `headerShown: false` pour une expérience personnalisée
+
+### Architecture de la solution
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Administrator                            │
+├─────────────────────────────────────────────────────────────┤
+│  Business 1          │  Business 2          │  Business 3   │
+│  ├─ Clients 1        │  ├─ Clients 2        │  ├─ Clients 3 │
+│  ├─ Produits 1       │  ├─ Produits 2       │  ├─ Produits 3│
+│  ├─ Stock 1          │  ├─ Stock 2          │  ├─ Stock 3   │
+│  ├─ Ventes 1         │  ├─ Ventes 2         │  ├─ Ventes 3  │
+│  └─ Dépenses 1       │  └─ Dépenses 2       │  └─ Dépenses 3│
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Flux de données
+
+1. **Connexion** :
+   - L'utilisateur se connecte
+   - Le backend renvoie le `projectId` par défaut de l'utilisateur
+   - Le frontend le stocke dans `selectedProjectId`
+
+2. **Sélection de projet** :
+   - L'utilisateur accède à l'écran Projets
+   - Il sélectionne un projet
+   - Le `selectedProjectId` est mis à jour
+   - Toutes les vues se rechargent avec les données du nouveau projet
+
+3. **Requêtes API** :
+   - Toutes les requêtes API incluent le `projectId` en paramètre
+   - Le backend filtre les données selon le `projectId`
+   - Les données sont isolées par projet
+
+### Avantages
+- ✅ **Isolation complète** : Chaque projet a ses propres données (clients, produits, ventes, etc.)
+- ✅ **Gestion centralisée** : Un seul compte administrateur peut gérer plusieurs business
+- ✅ **Basculement facile** : Changement de projet en un clic depuis le dashboard
+- ✅ **Permissions respectées** : Seuls les admins et managers peuvent créer/modifier des projets
+- ✅ **Persistance** : Le projet sélectionné est sauvegardé et restauré au redémarrage de l'app
+- ✅ **Interface intuitive** : Badge visuel et icônes pour identifier le projet actif
+- ✅ **Évolutivité** : Architecture prête pour ajouter de nouveaux projets sans limite
+- ✅ **Cohérence** : Le backend était déjà préparé, seul le frontend a été adapté
+
+### Workflow utilisateur
+
+1. **Pour un administrateur** :
+   - Se connecte à l'application
+   - Voit son projet par défaut sur le dashboard
+   - Clique sur l'icône "briefcase" ou sur la carte d'information du projet
+   - Accède à la liste de tous ses projets
+   - Peut créer un nouveau projet avec le bouton "+"
+   - Peut sélectionner un autre projet en cliquant dessus
+   - Toutes les données affichées correspondent maintenant au projet sélectionné
+
+2. **Pour un manager/caissier** :
+   - Se connecte à l'application
+   - Voit la liste des projets auxquels il a accès
+   - Peut basculer entre les projets autorisés
+   - Ne peut pas créer ou supprimer de projets (selon les permissions)
+
+### Fichiers créés
+- `frontend/src/screens/ProjectsScreen.js` : Écran de gestion des projets
+
+### Fichiers modifiés
+- `frontend/src/contexts/AuthContext.js` : Gestion du projet sélectionné
+- `frontend/src/screens/DashboardScreen.js` : Affichage du projet actif et bouton de changement
+- `frontend/App.js` : Ajout de la route Projects
+
+### API utilisées
+- `GET /BussnessApp/projects` : Récupérer tous les projets
+- `POST /BussnessApp/projects` : Créer un nouveau projet
+- `PUT /BussnessApp/projects/:id` : Modifier un projet
+- `DELETE /BussnessApp/projects/:id` : Supprimer un projet
+- Toutes les autres API acceptent déjà le paramètre `?projectId=xxx`
+
+### Tests recommandés
+- [ ] Connexion et vérification que le projet par défaut est bien chargé
+- [ ] Création d'un nouveau projet
+- [ ] Basculement entre plusieurs projets
+- [ ] Vérification que les données changent bien selon le projet sélectionné
+- [ ] Test des permissions (admin, manager, caissier)
+- [ ] Édition et suppression de projets
+- [ ] Vérification de la persistance du projet sélectionné après redémarrage
+- [ ] Test avec plusieurs utilisateurs ayant accès à différents projets
+
+### Évolutions futures possibles
+- [ ] Ajout de permissions granulaires par projet (qui peut voir quel projet)
+- [ ] Statistiques comparatives entre plusieurs projets
+- [ ] Export de données par projet
+- [ ] Templates de projets (dupliquer un projet avec ses configurations)
+- [ ] Archivage de projets inactifs
+
+---

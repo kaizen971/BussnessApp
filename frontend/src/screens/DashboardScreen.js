@@ -22,7 +22,7 @@ import { colors, gradients } from '../utils/colors';
 const screenWidth = Dimensions.get('window').width;
 
 export const DashboardScreen = ({ navigation }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, selectedProjectId, availableProjects } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -45,14 +45,22 @@ export const DashboardScreen = ({ navigation }) => {
     ]).start();
   }, []);
 
+  useEffect(() => {
+    if (selectedProjectId) {
+      loadDashboardData();
+    }
+  }, [selectedProjectId]);
+
   const loadDashboardData = async () => {
-    if (!user?.projectId) {
+    const projectId = selectedProjectId || user?.projectId;
+
+    if (!projectId) {
       setLoading(false);
       return;
     }
 
     try {
-      const response = await dashboardAPI.getStats(user.projectId);
+      const response = await dashboardAPI.getStats(projectId);
       setStats(response.data);
     } catch (error) {
       console.error('Error loading dashboard:', error);
@@ -153,13 +161,34 @@ export const DashboardScreen = ({ navigation }) => {
                 </View>
               </View>
             </View>
-            <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-              <View style={styles.logoutIconContainer}>
-                <Ionicons name="log-out-outline" size={22} color={colors.error} />
-              </View>
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              <TouchableOpacity onPress={() => navigation.navigate('Projects')} style={styles.projectButton}>
+                <View style={styles.projectIconContainer}>
+                  <Ionicons name="briefcase-outline" size={20} color={colors.background} />
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+                <View style={styles.logoutIconContainer}>
+                  <Ionicons name="log-out-outline" size={22} color={colors.error} />
+                </View>
+              </TouchableOpacity>
+            </View>
           </LinearGradient>
         </Animated.View>
+
+        {availableProjects.length > 0 && selectedProjectId && (
+          <Card style={styles.projectInfoCard}>
+            <View style={styles.projectInfoContent}>
+              <Ionicons name="briefcase" size={20} color={colors.primary} />
+              <Text style={styles.projectInfoText}>
+                Projet: {availableProjects.find(p => p._id === selectedProjectId)?.name || 'Non sélectionné'}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate('Projects')}>
+              <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          </Card>
+        )}
 
       {stats && (
         <>
@@ -509,6 +538,21 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  projectButton: {
+    padding: 4,
+  },
+  projectIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.background + '40',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   logoutButton: {
     padding: 4,
   },
@@ -519,6 +563,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background + '40',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  projectInfoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    marginBottom: 16,
+    backgroundColor: colors.primary + '10',
+  },
+  projectInfoContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  projectInfoText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
   },
   sectionTitle: {
     fontSize: 20,

@@ -16,6 +16,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [availableProjects, setAvailableProjects] = useState([]);
 
   useEffect(() => {
     loadStoredAuth();
@@ -25,10 +27,19 @@ export const AuthProvider = ({ children }) => {
     try {
       const storedToken = await AsyncStorage.getItem('userToken');
       const storedUser = await AsyncStorage.getItem('userData');
+      const storedProjectId = await AsyncStorage.getItem('selectedProjectId');
 
       if (storedToken && storedUser) {
         setToken(storedToken);
-        setUser(JSON.parse(storedUser));
+        const userData = JSON.parse(storedUser);
+        setUser(userData);
+
+        // Charger le projectId sélectionné ou utiliser celui de l'utilisateur
+        if (storedProjectId) {
+          setSelectedProjectId(storedProjectId);
+        } else if (userData.projectId) {
+          setSelectedProjectId(userData.projectId);
+        }
       }
     } catch (error) {
       console.error('Error loading auth:', error);
@@ -107,8 +118,11 @@ export const AuthProvider = ({ children }) => {
     try {
       await AsyncStorage.removeItem('userToken');
       await AsyncStorage.removeItem('userData');
+      await AsyncStorage.removeItem('selectedProjectId');
       setToken(null);
       setUser(null);
+      setSelectedProjectId(null);
+      setAvailableProjects([]);
     } catch (error) {
       console.error('Error logging out:', error);
     }
@@ -118,6 +132,15 @@ export const AuthProvider = ({ children }) => {
     const updatedUser = { ...user, ...updatedData };
     await AsyncStorage.setItem('userData', JSON.stringify(updatedUser));
     setUser(updatedUser);
+  };
+
+  const selectProject = async (projectId) => {
+    await AsyncStorage.setItem('selectedProjectId', projectId);
+    setSelectedProjectId(projectId);
+  };
+
+  const loadAvailableProjects = async (projects) => {
+    setAvailableProjects(projects);
   };
 
   const value = {
@@ -131,6 +154,10 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated: !!token,
     isAdmin: user?.role === 'admin',
     isManager: user?.role === 'manager' || user?.role === 'admin',
+    selectedProjectId,
+    selectProject,
+    availableProjects,
+    loadAvailableProjects,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

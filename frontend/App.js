@@ -16,6 +16,7 @@ import { CustomersScreen } from './src/screens/CustomersScreen';
 import { FeedbackScreen } from './src/screens/FeedbackScreen';
 import { ProductsScreen } from './src/screens/ProductsScreen';
 import { TeamScreen } from './src/screens/TeamScreen';
+import { ProjectsScreen } from './src/screens/ProjectsScreen';
 import { colors } from './src/utils/colors';
 
 const Stack = createStackNavigator();
@@ -96,6 +97,11 @@ const MainStack = () => (
       name="Feedback"
       component={FeedbackScreen}
       options={{ title: 'Feedback' }}
+    />
+    <Stack.Screen
+      name="Projects"
+      component={ProjectsScreen}
+      options={{ title: 'Projets', headerShown: false }}
     />
   </Stack.Navigator>
 );
