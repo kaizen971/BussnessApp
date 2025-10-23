@@ -156,7 +156,7 @@ export const DashboardScreen = ({ navigation }) => {
                 <View style={styles.roleContainer}>
                   <Ionicons name="shield-checkmark" size={14} color={colors.primary} />
                   <Text style={styles.userRole}>
-                    {user?.role === 'admin' ? 'Administrateur' : user?.role === 'manager' ? 'Responsable' : 'Caissier'}
+                    {user?.role === 'admin' ? 'Administrateur' : user?.role === 'responsable' ? 'Responsable' : 'Caissier'}
                   </Text>
                 </View>
               </View>

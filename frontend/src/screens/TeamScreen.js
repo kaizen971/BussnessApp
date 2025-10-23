@@ -18,8 +18,11 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import api from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+import { usersAPI } from '../services/api';
 
 export const TeamScreen = ({ navigation }) => {
+  const { user } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -38,7 +41,7 @@ export const TeamScreen = ({ navigation }) => {
   const loadUsers = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/users');
+      const response = await usersAPI.getAll(user?.projectId);
       setUsers(response.data);
     } catch (error) {
       Alert.alert('Erreur', 'Impossible de charger les collaborateurs');

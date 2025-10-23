@@ -60,6 +60,7 @@ export const SalesScreen = () => {
         productsAPI.getAll(user?.projectId),
         customersAPI.getAll(user?.projectId),
       ]);
+      console.log(productsRes.data)
       setSales(salesRes.data?.data || []);
       setProducts(productsRes?.data?.data || []);
       setCustomers(customersRes?.data?.data || []);

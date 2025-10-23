@@ -18,8 +18,11 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import api from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+
 
 export const ProductsScreen = ({ navigation }) => {
+  const { user, setSelectedProjectId } = useAuth();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -33,13 +36,20 @@ export const ProductsScreen = ({ navigation }) => {
   });
 
   useEffect(() => {
+    console.log('ProductsScreen - User data:', {
+      userId: user?._id,
+      username: user?.username,
+      projectId: user?.projectId,
+      hasProjectId: !!user?.projectId,
+      userObject: user
+    });
     loadProducts();
   }, []);
 
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/products');
+      const response = await api.get('/products', { params: { projectId: user?.projectId } } );
       console.log(response.data);
       setProducts(response.data?.data);
     } catch (error) {
@@ -61,12 +71,13 @@ export const ProductsScreen = ({ navigation }) => {
         ...formData,
         unitPrice: parseFloat(formData.unitPrice),
         costPrice: parseFloat(formData.costPrice),
+        projectId: user?.projectId,
       };
 
       if (editingProduct) {
-        await api.put(`/products/${editingProduct._id}`, productData);
+        await api.put(`/products/${editingProduct._id}`, productData, { params: { projectId: user?.projectId } });
       } else {
-        await api.post('/products', productData);
+        await api.post('/products', productData, { params: { projectId: user?.projectId } });
       }
 
       setModalVisible(false);
@@ -88,6 +99,7 @@ export const ProductsScreen = ({ navigation }) => {
       unitPrice: product.unitPrice.toString(),
       costPrice: product.costPrice.toString(),
       category: product.category || '',
+      projectId: user?.projectId,
     });
     setModalVisible(true);
   };

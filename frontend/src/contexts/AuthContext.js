@@ -33,11 +33,13 @@ export const AuthProvider = ({ children }) => {
         setToken(storedToken);
         const userData = JSON.parse(storedUser);
         setUser(userData);
-
+        console.log(storedProjectId);
         // Charger le projectId sélectionné ou utiliser celui de l'utilisateur
         if (storedProjectId) {
+          console.log('storedProjectId', storedProjectId);
           setSelectedProjectId(storedProjectId);
         } else if (userData.projectId) {
+          console.log('userData.projectId', userData.projectId);
           setSelectedProjectId(userData.projectId);
         }
       }
@@ -137,6 +139,11 @@ export const AuthProvider = ({ children }) => {
   const selectProject = async (projectId) => {
     await AsyncStorage.setItem('selectedProjectId', projectId);
     setSelectedProjectId(projectId);
+    //update projectId in user data
+    await AsyncStorage.setItem('userData', JSON.stringify({ ...user, projectId }));
+    console.log('updatedUser', projectId);
+    setUser({ ...user, projectId });
+
   };
 
   const loadAvailableProjects = async (projects) => {
@@ -152,8 +159,8 @@ export const AuthProvider = ({ children }) => {
     logout,
     updateUser,
     isAuthenticated: !!token,
-    isAdmin: user?.role === 'admin',
-    isManager: user?.role === 'manager' || user?.role === 'admin',
+    isAdmin: user?.role === 'admin' || user?.role === 'responsable',
+    isManager: user?.role === 'manager' || user?.role === 'admin' || user?.role === 'responsable',
     selectedProjectId,
     selectProject,
     availableProjects,
