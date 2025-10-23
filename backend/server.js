@@ -37,6 +37,7 @@ const ProjectSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: String,
   category: String,
+  ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Propriétaire du business
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
@@ -130,8 +131,9 @@ const UserSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  role: { type: String, enum: ['admin', 'manager', 'cashier'], default: 'cashier' },
-  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
+  role: { type: String, enum: ['admin', 'responsable', 'manager', 'cashier'], default: 'cashier' },
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' }, // Projet actif (pour compatibilité)
+  projectIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Project' }], // Liste des projets pour un responsable
   fullName: String,
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
@@ -273,21 +275,42 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // IMPORTANT: Lors de l'inscription, l'utilisateur devient automatiquement "responsable"
+    // et non "cashier". Chaque responsable peut gérer plusieurs projets de business.
+    const userRole = role || 'responsable';
+
     // Create user
     const user = new User({
       username: username.trim(),
       email: email.trim().toLowerCase(),
       password: hashedPassword,
       fullName: fullName.trim(),
-      role: role || 'cashier',
-      projectId
+      role: userRole,
+      projectId,
+      projectIds: [] // Initialisé vide, sera rempli après création du projet
     });
 
     await user.save();
 
+    // Créer automatiquement un projet par défaut pour le nouveau responsable
+    const defaultProject = new Project({
+      name: `Business de ${fullName.trim()}`,
+      description: 'Mon premier projet sur BussnessApp',
+      category: 'general',
+      ownerId: user._id
+    });
+    await defaultProject.save();
+
+    // Assigner ce projet au nouvel utilisateur (projectId = projet actif, projectIds = liste de tous ses projets)
+    user.projectId = defaultProject._id;
+    user.projectIds = [defaultProject._id];
+    await user.save();
+
+    console.log(`Nouveau responsable créé: ${user.username} avec projet: ${defaultProject.name}`);
+
     // Generate token
     const token = jwt.sign(
-      { id: user._id, username: user.username, role: user.role },
+      { id: user._id, username: user.username, role: user.role, projectId: user.projectId },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -454,7 +477,8 @@ app.post('/BussnessApp/auth/assign-default-project', authenticateToken, checkRol
       defaultProject = new Project({
         name: 'Projet par défaut',
         description: 'Projet créé automatiquement pour les utilisateurs sans projet',
-        category: 'general'
+        category: 'general',
+        ownerId: req.user.id  // L'admin qui exécute cette route devient propriétaire
       });
       await defaultProject.save();
       console.log('Default project created:', defaultProject._id);
@@ -486,6 +510,45 @@ app.post('/BussnessApp/auth/assign-default-project', authenticateToken, checkRol
     });
   } catch (error) {
     console.error('Error assigning default project:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Route de migration pour assigner un ownerId aux projets existants
+app.post('/BussnessApp/projects/migrate-owner', authenticateToken, checkRole('admin'), async (req, res) => {
+  try {
+    // Trouver tous les projets sans ownerId
+    const projectsWithoutOwner = await Project.find({
+      $or: [
+        { ownerId: null },
+        { ownerId: { $exists: false } }
+      ]
+    });
+
+    console.log(`Found ${projectsWithoutOwner.length} projects without ownerId`);
+
+    if (projectsWithoutOwner.length === 0) {
+      return res.json({
+        message: 'All projects already have an owner',
+        projectsUpdated: 0
+      });
+    }
+
+    // Assigner l'admin actuel comme propriétaire de tous ces projets
+    const updatePromises = projectsWithoutOwner.map(project => {
+      project.ownerId = req.user.id;
+      return project.save();
+    });
+
+    await Promise.all(updatePromises);
+
+    res.json({
+      message: 'Projects migrated successfully',
+      projectsUpdated: projectsWithoutOwner.length,
+      projects: projectsWithoutOwner.map(p => ({ id: p._id, name: p.name }))
+    });
+  } catch (error) {
+    console.error('Error migrating projects:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -527,8 +590,8 @@ app.post('/BussnessApp/feedback', authenticateToken, async (req, res) => {
   }
 });
 
-// Update feedback status (admin/manager only)
-app.put('/BussnessApp/feedback/:id', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
+// Update feedback status (admin/manager/responsable only)
+app.put('/BussnessApp/feedback/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const feedback = await Feedback.findByIdAndUpdate(
       req.params.id,
@@ -547,17 +610,46 @@ app.put('/BussnessApp/feedback/:id', authenticateToken, checkRole('admin', 'mana
 // Projects Routes
 app.get('/BussnessApp/projects', authenticateToken, async (req, res) => {
   try {
-    const projects = await Project.find().sort({ createdAt: -1 });
+    // Filtrer les projets par propriétaire : chaque responsable ne voit que ses propres business
+    // Les caissiers ne voient que le projet auquel ils sont assignés
+    const filter = (req.user.role === 'admin' || req.user.role === 'manager' || req.user.role === 'responsable')
+      ? { ownerId: req.user.id }  // Responsables/Admins voient seulement leurs projets
+      : { _id: req.user.projectId };  // Caissiers voient seulement leur projet assigné
+
+    const projects = await Project.find(filter).sort({ createdAt: -1 });
     res.json(projects);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/BussnessApp/projects', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
+app.post('/BussnessApp/projects', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
-    const project = new Project(req.body);
+    // Assigner automatiquement l'utilisateur comme propriétaire du projet
+    const project = new Project({
+      ...req.body,
+      ownerId: req.user.id  // L'utilisateur connecté devient propriétaire
+    });
     await project.save();
+
+    // Ajouter ce projet à la liste des projets du responsable
+    const user = await User.findById(req.user.id);
+
+    // Si c'est le premier projet de l'utilisateur, l'assigner comme projet actif
+    if (!user.projectId) {
+      user.projectId = project._id;
+    }
+
+    // Ajouter à la liste des projets si pas déjà présent
+    if (!user.projectIds) {
+      user.projectIds = [];
+    }
+    if (!user.projectIds.includes(project._id)) {
+      user.projectIds.push(project._id);
+    }
+
+    await user.save();
+
     res.status(201).json(project);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -570,34 +662,63 @@ app.get('/BussnessApp/projects/:id', authenticateToken, async (req, res) => {
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
+
+    // Vérifier que l'utilisateur a accès à ce projet
+    // Responsables/Admins ne peuvent accéder qu'à leurs propres projets
+    if ((req.user.role === 'admin' || req.user.role === 'manager' || req.user.role === 'responsable') &&
+        project.ownerId.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'Access denied to this project' });
+    }
+
+    // Les caissiers ne peuvent accéder qu'au projet qui leur est assigné
+    if (req.user.role === 'cashier' &&
+        (!req.user.projectId || project._id.toString() !== req.user.projectId.toString())) {
+      return res.status(403).json({ error: 'Access denied to this project' });
+    }
+
     res.json(project);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.put('/BussnessApp/projects/:id', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
+app.put('/BussnessApp/projects/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
-    const project = await Project.findByIdAndUpdate(
-      req.params.id,
-      { ...req.body, updatedAt: Date.now() },
-      { new: true }
-    );
-    if (!project) {
+    const existingProject = await Project.findById(req.params.id);
+    if (!existingProject) {
       return res.status(404).json({ error: 'Project not found' });
     }
+
+    // Vérifier que l'utilisateur est le propriétaire
+    if ((req.user.role === 'admin' || req.user.role === 'manager' || req.user.role === 'responsable') &&
+        existingProject.ownerId.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'You can only update your own projects' });
+    }
+
+    const project = await Project.findByIdAndUpdate(
+      req.params.id,
+      { ...req.body, ownerId: existingProject.ownerId, updatedAt: Date.now() }, // Préserver le ownerId
+      { new: true }
+    );
     res.json(project);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
-app.delete('/BussnessApp/projects/:id', authenticateToken, checkRole('admin'), async (req, res) => {
+app.delete('/BussnessApp/projects/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
-    const project = await Project.findByIdAndDelete(req.params.id);
+    const project = await Project.findById(req.params.id);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
+
+    // Vérifier que l'utilisateur est le propriétaire
+    if (project.ownerId.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'You can only delete your own projects' });
+    }
+
+    await Project.findByIdAndDelete(req.params.id);
     res.json({ message: 'Project deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -637,7 +758,7 @@ app.get('/BussnessApp/products', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/BussnessApp/products', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
+app.post('/BussnessApp/products', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const product = new Product(req.body);
     await product.save();
@@ -647,7 +768,7 @@ app.post('/BussnessApp/products', authenticateToken, checkRole('admin', 'manager
   }
 });
 
-app.put('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
+app.put('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const product = await Product.findByIdAndUpdate(
       req.params.id,
@@ -663,7 +784,7 @@ app.put('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'mana
   }
 });
 
-app.delete('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
+app.delete('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const product = await Product.findByIdAndDelete(req.params.id);
     if (!product) {
@@ -1248,7 +1369,7 @@ app.put('/BussnessApp/customers/:id', authenticateToken, async (req, res) => {
 });
 
 // Users Routes
-app.get('/BussnessApp/users', authenticateToken, checkRole('admin', 'manager'), async (req, res) => {
+app.get('/BussnessApp/users', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
