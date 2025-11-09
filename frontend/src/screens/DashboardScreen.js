@@ -11,10 +11,16 @@ import {
   Dimensions,
   Modal,
   PanResponder,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useAuth } from '../contexts/AuthContext';
 import { Card } from '../components/Card';
 import { LoadingScreen } from '../components/LoadingScreen';
@@ -30,9 +36,16 @@ export const DashboardScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statsModalVisible, setStatsModalVisible] = useState(false);
+  const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1)); // Début de l'année
+  const [endDate, setEndDate] = useState(new Date()); // Aujourd'hui
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const modalSlideAnim = useRef(new Animated.Value(0)).current;
+  const exportModalSlideAnim = useRef(new Animated.Value(0)).current;
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   console.log(user)
@@ -113,6 +126,97 @@ export const DashboardScreen = ({ navigation }) => {
     }).start(() => {
       setStatsModalVisible(false);
     });
+  };
+
+  const openExportModal = () => {
+    setExportModalVisible(true);
+    Animated.spring(exportModalSlideAnim, {
+      toValue: 1,
+      tension: 50,
+      friction: 8,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeExportModal = () => {
+    Animated.timing(exportModalSlideAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      setExportModalVisible(false);
+    });
+  };
+
+  const handleExportExcel = async () => {
+    const projectId = selectedProjectId || user?.projectId;
+    
+    if (!projectId) {
+      Alert.alert('Erreur', 'Aucun projet sélectionné');
+      return;
+    }
+
+    try {
+      setExportLoading(true);
+      
+      // Définir le chemin du fichier
+      const fileName = `export_${projectId}_${Date.now()}.xlsx`;
+      const fileUri = FileSystem.documentDirectory + fileName;
+
+      // Télécharger directement le fichier Excel avec FileSystem
+      const downloadResult = await FileSystem.downloadAsync(
+        `https://mabouya.servegame.com/BussnessApp/BussnessApp/export-excel/${projectId}`,
+        fileUri,
+        {
+          headers: {
+            'Authorization': `Bearer ${await AsyncStorage.getItem('userToken')}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString()
+          }),
+          method: 'POST',
+        }
+      );
+
+      if (downloadResult.status === 200) {
+        // Partager le fichier
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(downloadResult.uri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            dialogTitle: 'Exporter les données',
+            UTI: 'com.microsoft.excel.xlsx'
+          });
+          Alert.alert('Succès', 'Export Excel créé avec succès !');
+        } else {
+          Alert.alert('Succès', `Fichier sauvegardé : ${downloadResult.uri}`);
+        }
+        
+        closeExportModal();
+      } else {
+        throw new Error('Échec du téléchargement');
+      }
+    } catch (error) {
+      console.error('Erreur export Excel:', error);
+      Alert.alert('Erreur', 'Impossible de générer l\'export Excel. Vérifiez votre connexion et réessayez.');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const onChangeStartDate = (event, selectedDate) => {
+    setShowStartDatePicker(false);
+    if (selectedDate) {
+      setStartDate(selectedDate);
+    }
+  };
+
+  const onChangeEndDate = (event, selectedDate) => {
+    setShowEndDatePicker(false);
+    if (selectedDate) {
+      setEndDate(selectedDate);
+    }
   };
 
   const StatCard = ({ title, value, icon, color, onPress, subtitle }) => (
@@ -296,18 +400,18 @@ export const DashboardScreen = ({ navigation }) => {
           color={colors.success}
           onPress={() => navigation.navigate('Commissions')}
         />
-        {isAdmin && <QuickActionButton
-          title="Import Excel"
-          icon="cloud-upload-outline"
-          color={colors.accent}
-          onPress={() => navigation.navigate('Import')}
-        />}
         <QuickActionButton
           title="Feedback"
           icon="chatbubble-outline"
           color={colors.primary}
           onPress={() => navigation.navigate('Feedback')}
         />
+        {isAdmin && <QuickActionButton
+          title="Export Excel"
+          icon="cloud-download-outline"
+          color={colors.accent}
+          onPress={openExportModal}
+        />}
       </View>
       </ScrollView>
 
@@ -558,6 +662,176 @@ export const DashboardScreen = ({ navigation }) => {
                   )}
                 </>
               )}
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      {/* Modal Export Excel */}
+      <Modal
+        visible={exportModalVisible}
+        transparent={true}
+        animationType="none"
+        onRequestClose={closeExportModal}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalBackdrop} 
+            activeOpacity={1} 
+            onPress={closeExportModal}
+          />
+          <Animated.View 
+            style={[
+              styles.exportModalContainer,
+              {
+                transform: [
+                  {
+                    translateY: exportModalSlideAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [600, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={styles.modalHandle}>
+              <View style={styles.modalHandleLine} />
+            </View>
+            
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>📊 Export Excel</Text>
+              <TouchableOpacity onPress={closeExportModal} style={styles.closeButton}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView 
+              style={styles.exportModalContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.exportDescription}>
+                Sélectionnez la période pour exporter toutes les données : ventes, dépenses, stocks, salaires, employés, commissions, bilan et clients.
+              </Text>
+
+              <Card style={styles.dateCard}>
+                <View style={styles.dateRow}>
+                  <Text style={styles.dateLabel}>Date de début :</Text>
+                  <TouchableOpacity 
+                    style={styles.dateButton}
+                    onPress={() => setShowStartDatePicker(true)}
+                  >
+                    <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+                    <Text style={styles.dateText}>
+                      {startDate.toLocaleDateString('fr-FR')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {showStartDatePicker && (
+                  <DateTimePicker
+                    value={startDate}
+                    mode="date"
+                    display="default"
+                    onChange={onChangeStartDate}
+                    maximumDate={endDate}
+                  />
+                )}
+              </Card>
+
+              <Card style={styles.dateCard}>
+                <View style={styles.dateRow}>
+                  <Text style={styles.dateLabel}>Date de fin :</Text>
+                  <TouchableOpacity 
+                    style={styles.dateButton}
+                    onPress={() => setShowEndDatePicker(true)}
+                  >
+                    <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+                    <Text style={styles.dateText}>
+                      {endDate.toLocaleDateString('fr-FR')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {showEndDatePicker && (
+                  <DateTimePicker
+                    value={endDate}
+                    mode="date"
+                    display="default"
+                    onChange={onChangeEndDate}
+                    minimumDate={startDate}
+                    maximumDate={new Date()}
+                  />
+                )}
+              </Card>
+
+              <Card style={styles.infoCard}>
+                <View style={styles.infoHeader}>
+                  <Ionicons name="information-circle" size={24} color={colors.info} />
+                  <Text style={styles.infoTitle}>Contenu de l'export</Text>
+                </View>
+                <Text style={styles.infoText}>Le fichier Excel contiendra les feuilles suivantes :</Text>
+                <View style={styles.infoList}>
+                  <View style={styles.infoItem}>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                    <Text style={styles.infoItemText}>Ventes</Text>
+                  </View>
+                  <View style={styles.infoItem}>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                    <Text style={styles.infoItemText}>Dépenses</Text>
+                  </View>
+                  <View style={styles.infoItem}>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                    <Text style={styles.infoItemText}>Stocks</Text>
+                  </View>
+                  <View style={styles.infoItem}>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                    <Text style={styles.infoItemText}>Employés</Text>
+                  </View>
+                  <View style={styles.infoItem}>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                    <Text style={styles.infoItemText}>Commissions</Text>
+                  </View>
+                  <View style={styles.infoItem}>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                    <Text style={styles.infoItemText}>Salaires</Text>
+                  </View>
+                  <View style={styles.infoItem}>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                    <Text style={styles.infoItemText}>Clients</Text>
+                  </View>
+                  <View style={styles.infoItem}>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                    <Text style={styles.infoItemText}>Bilan</Text>
+                  </View>
+                </View>
+              </Card>
+
+              <TouchableOpacity 
+                style={[styles.exportButton, exportLoading && styles.exportButtonDisabled]}
+                onPress={handleExportExcel}
+                disabled={exportLoading}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={exportLoading ? [colors.textSecondary, colors.textLight] : [colors.success, colors.primary]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.exportButtonGradient}
+                >
+                  {exportLoading ? (
+                    <>
+                      <ActivityIndicator color={colors.background} size="small" />
+                      <Text style={styles.exportButtonText}>Génération en cours...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="cloud-download" size={24} color={colors.background} />
+                      <Text style={styles.exportButtonText}>Générer l'export Excel</Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
             </ScrollView>
           </Animated.View>
         </View>
@@ -1001,6 +1275,115 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 16,
     marginTop: 12,
+    letterSpacing: 0.3,
+  },
+  exportModalContainer: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    maxHeight: '85%',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  exportModalContent: {
+    padding: 16,
+  },
+  exportDescription: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 20,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  dateCard: {
+    marginBottom: 16,
+    padding: 16,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dateLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '15',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 8,
+  },
+  dateText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  infoCard: {
+    marginBottom: 20,
+    padding: 16,
+    backgroundColor: colors.info + '10',
+  },
+  infoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
+  infoTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  infoText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 12,
+  },
+  infoList: {
+    gap: 8,
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  infoItemText: {
+    fontSize: 13,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  exportButton: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginBottom: 24,
+    elevation: 4,
+    shadowColor: colors.success,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  exportButtonDisabled: {
+    opacity: 0.6,
+  },
+  exportButtonGradient: {
+    padding: 18,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  exportButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.background,
     letterSpacing: 0.3,
   },
 });

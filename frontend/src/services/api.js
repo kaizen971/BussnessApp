@@ -125,4 +125,25 @@ export const simulationAPI = {
   calculate: (data) => api.post('/simulation', data),
 };
 
+// Export API
+export const exportAPI = {
+  exportToExcel: async (projectId, startDate, endDate) => {
+    try {
+      const response = await api.post(`/export-excel/${projectId}`, 
+        { startDate, endDate },
+        { 
+          responseType: 'blob',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        }
+      );
+      return response;
+    } catch (error) {
+      console.error('Export error:', error);
+      throw error;
+    }
+  },
+};
+
 export default api;

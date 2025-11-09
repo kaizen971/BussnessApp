@@ -5,10 +5,6 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const multer = require('multer');
-const xlsx = require('xlsx');
-const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const PORT = 3003;
@@ -20,24 +16,6 @@ app.set('trust proxy', 1);
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-
-// Configuration de Multer pour l'upload de fichiers
-const upload = multer({
-  dest: 'uploads/',
-  limits: { fileSize: 10 * 1024 * 1024 }, // Limite à 10MB
-  fileFilter: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (ext !== '.xlsx' && ext !== '.xls') {
-      return cb(new Error('Seuls les fichiers Excel sont acceptés (.xlsx, .xls)'));
-    }
-    cb(null, true);
-  }
-});
-
-// Créer le dossier uploads s'il n'existe pas
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
-}
 
 // MongoDB Connection
 const connectDB = async () => {
@@ -2204,365 +2182,200 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
   }
 });
 
-// ============= IMPORT EXCEL ROUTE =============
-
-// Import Excel - Import complet des données depuis un fichier Excel
-app.post('/BussnessApp/import-excel', authenticateToken, upload.single('file'), async (req, res) => {
-  let filePath = null;
-  
+// Export Excel Route
+app.post('/BussnessApp/export-excel/:projectId', authenticateToken, async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'Aucun fichier fourni' });
-    }
+    const { projectId } = req.params;
+    const { startDate, endDate } = req.body;
 
-    filePath = req.file.path;
-    const { projectId } = req.body;
+    // Validation des dates
+    const start = startDate ? new Date(startDate) : new Date(0);
+    const end = endDate ? new Date(endDate) : new Date();
 
-    if (!projectId) {
-      return res.status(400).json({ error: 'projectId est requis' });
-    }
+    // Import du module xlsx
+    const XLSX = require('xlsx');
 
-    console.log('Début de l\'import Excel pour le projet:', projectId);
-    console.log('Fichier:', req.file.originalname);
+    // Récupération de toutes les données avec filtrage par date
+    const [sales, expenses, stocks, customers, employees, commissions, schedules] = await Promise.all([
+      Sale.find({
+        projectId,
+        date: { $gte: start, $lte: end }
+      }).populate('productId').populate('customerId').populate('employeeId'),
+      Expense.find({
+        projectId,
+        date: { $gte: start, $lte: end }
+      }),
+      Stock.find({ projectId }).populate('productId'),
+      Customer.find({ projectId }),
+      User.find({ projectId }),
+      Commission.find({
+        projectId,
+        date: { $gte: start, $lte: end }
+      }).populate('userId').populate('saleId'),
+      Schedule.find({
+        projectId,
+        date: { $gte: start, $lte: end }
+      }).populate('userId')
+    ]);
 
-    // Lire le fichier Excel
-    const workbook = xlsx.readFile(filePath);
-    const results = {
-      success: true,
-      imports: {
-        clients: { count: 0, errors: [] },
-        produits: { count: 0, errors: [] },
-        stocks: { count: 0, errors: [] },
-        ventes: { count: 0, errors: [] },
-        depenses: { count: 0, errors: [] },
-        employes: { count: 0, errors: [] },
-        plannings: { count: 0, errors: [] },
-        commissions: { count: 0, errors: [] }
-      }
-    };
+    // Création du workbook
+    const workbook = XLSX.utils.book_new();
 
-    // 1. Importer les CLIENTS
-    if (workbook.SheetNames.includes('Clients')) {
-      const clientsSheet = workbook.Sheets['Clients'];
-      const clientsData = xlsx.utils.sheet_to_json(clientsSheet);
+    // ===== FEUILLE VENTES =====
+    const salesData = sales.map(sale => ({
+      'Date': new Date(sale.date).toLocaleDateString('fr-FR'),
+      'Produit': sale.productId?.name || 'N/A',
+      'Client': sale.customerId?.name || 'N/A',
+      'Employé': sale.employeeId?.fullName || sale.employeeId?.username || 'N/A',
+      'Quantité': sale.quantity,
+      'Prix Unitaire': sale.unitPrice.toFixed(2) + ' €',
+      'Remise': sale.discount + ' %',
+      'Montant Total': sale.amount.toFixed(2) + ' €',
+      'Description': sale.description || ''
+    }));
+    const salesSheet = XLSX.utils.json_to_sheet(salesData);
+    XLSX.utils.book_append_sheet(workbook, salesSheet, 'Ventes');
+
+    // ===== FEUILLE DÉPENSES =====
+    const expensesData = expenses.map(expense => ({
+      'Date': new Date(expense.date).toLocaleDateString('fr-FR'),
+      'Catégorie': expense.category === 'purchase' ? 'Achat' : 
+                   expense.category === 'variable' ? 'Variable' : 'Fixe',
+      'Montant': expense.amount.toFixed(2) + ' €',
+      'Description': expense.description || ''
+    }));
+    const expensesSheet = XLSX.utils.json_to_sheet(expensesData);
+    XLSX.utils.book_append_sheet(workbook, expensesSheet, 'Dépenses');
+
+    // ===== FEUILLE STOCKS =====
+    const stocksData = stocks.map(stock => ({
+      'Nom': stock.name,
+      'Produit lié': stock.productId?.name || 'N/A',
+      'SKU': stock.sku || 'N/A',
+      'Quantité': stock.quantity,
+      'Prix Unitaire': stock.unitPrice.toFixed(2) + ' €',
+      'Valeur Totale': (stock.quantity * stock.unitPrice).toFixed(2) + ' €',
+      'Quantité Minimale': stock.minQuantity,
+      'Emplacement': stock.location || 'N/A',
+      'Dernière MAJ': new Date(stock.updatedAt).toLocaleDateString('fr-FR')
+    }));
+    const stocksSheet = XLSX.utils.json_to_sheet(stocksData);
+    XLSX.utils.book_append_sheet(workbook, stocksSheet, 'Stocks');
+
+    // ===== FEUILLE EMPLOYÉS =====
+    const employeesData = employees.map(employee => ({
+      'Nom complet': employee.fullName || 'N/A',
+      'Username': employee.username,
+      'Email': employee.email,
+      'Rôle': employee.role === 'admin' ? 'Administrateur' : 
+              employee.role === 'manager' ? 'Responsable' : 
+              employee.role === 'responsable' ? 'Responsable' : 'Caissier',
+      'Taux commission': employee.commissionRate + ' %',
+      'Commissions totales': employee.totalCommissions.toFixed(2) + ' €',
+      'Taux horaire': employee.hourlyRate.toFixed(2) + ' €/h',
+      'Actif': employee.isActive ? 'Oui' : 'Non',
+      'Date création': new Date(employee.createdAt).toLocaleDateString('fr-FR')
+    }));
+    const employeesSheet = XLSX.utils.json_to_sheet(employeesData);
+    XLSX.utils.book_append_sheet(workbook, employeesSheet, 'Employés');
+
+    // ===== FEUILLE COMMISSIONS =====
+    const commissionsData = commissions.map(commission => ({
+      'Date': new Date(commission.date).toLocaleDateString('fr-FR'),
+      'Employé': commission.userId?.fullName || commission.userId?.username || 'N/A',
+      'Montant vente': commission.saleAmount.toFixed(2) + ' €',
+      'Taux': commission.rate + ' %',
+      'Montant commission': commission.amount.toFixed(2) + ' €',
+      'Statut': commission.status === 'paid' ? 'Payée' : 'En attente'
+    }));
+    const commissionsSheet = XLSX.utils.json_to_sheet(commissionsData);
+    XLSX.utils.book_append_sheet(workbook, commissionsSheet, 'Commissions');
+
+    // ===== FEUILLE SALAIRES (basé sur le planning) =====
+    const salariesData = schedules.map(schedule => {
+      const employee = schedule.userId;
+      const duration = schedule.duration || 0;
+      const hourlyRate = employee?.hourlyRate || 0;
+      const salary = duration * hourlyRate;
       
-      for (const row of clientsData) {
-        try {
-          if (row.nom && row.nom.trim() !== '') {
-            const customer = new Customer({
-              projectId,
-              name: row.nom,
-              email: row.email || '',
-              phone: row.telephone || '',
-              totalPurchases: parseFloat(row.totalAchats) || 0,
-              loyaltyPoints: parseInt(row.pointsFidelite) || 0,
-              loyaltyLevel: row.niveauFidelite || 'bronze',
-              discount: parseFloat(row.remise) || 0,
-              notes: row.notes || ''
-            });
-            await customer.save();
-            results.imports.clients.count++;
-          }
-        } catch (error) {
-          results.imports.clients.errors.push(`Ligne ${results.imports.clients.count + 1}: ${error.message}`);
-        }
-      }
-    }
-
-    // 2. Importer les PRODUITS
-    if (workbook.SheetNames.includes('Produits')) {
-      const productsSheet = workbook.Sheets['Produits'];
-      const productsData = xlsx.utils.sheet_to_json(productsSheet);
-      
-      for (const row of productsData) {
-        try {
-          if (row.nom && row.prixVente && row.prixRevient) {
-            const product = new Product({
-              projectId,
-              name: row.nom,
-              description: row.description || '',
-              unitPrice: parseFloat(row.prixVente),
-              costPrice: parseFloat(row.prixRevient),
-              category: row.categorie || '',
-              isActive: row.actif !== undefined ? Boolean(row.actif) : true
-            });
-            await product.save();
-            results.imports.produits.count++;
-          }
-        } catch (error) {
-          results.imports.produits.errors.push(`Ligne ${results.imports.produits.count + 1}: ${error.message}`);
-        }
-      }
-    }
-
-    // 3. Importer les STOCKS
-    if (workbook.SheetNames.includes('Stocks')) {
-      const stocksSheet = workbook.Sheets['Stocks'];
-      const stocksData = xlsx.utils.sheet_to_json(stocksSheet);
-      
-      for (const row of stocksData) {
-        try {
-          if (row.nom && row.quantite !== undefined && row.prixUnitaire !== undefined) {
-            const stock = new Stock({
-              projectId,
-              name: row.nom,
-              quantity: parseFloat(row.quantite),
-              unitPrice: parseFloat(row.prixUnitaire),
-              minQuantity: parseFloat(row.quantiteMin) || 0,
-              sku: row.sku || '',
-              location: row.emplacement || ''
-            });
-            await stock.save();
-            results.imports.stocks.count++;
-          }
-        } catch (error) {
-          results.imports.stocks.errors.push(`Ligne ${results.imports.stocks.count + 1}: ${error.message}`);
-        }
-      }
-    }
-
-    // 4. Importer les EMPLOYÉS
-    if (workbook.SheetNames.includes('Employes')) {
-      const employeesSheet = workbook.Sheets['Employes'];
-      const employeesData = xlsx.utils.sheet_to_json(employeesSheet);
-      
-      for (const row of employeesData) {
-        try {
-          if (row.username && row.email && row.nomComplet) {
-            // Vérifier si l'utilisateur existe déjà
-            const existingUser = await User.findOne({ 
-              $or: [{ username: row.username }, { email: row.email }] 
-            });
-            
-            if (!existingUser) {
-              const defaultPassword = row.motDePasse || 'BussnessApp2025';
-              const hashedPassword = await bcrypt.hash(defaultPassword, 10);
-              
-              const user = new User({
-                username: row.username,
-                email: row.email,
-                password: hashedPassword,
-                fullName: row.nomComplet,
-                role: row.role || 'cashier',
-                projectId: projectId,
-                commissionRate: parseFloat(row.tauxCommission) || 0,
-                hourlyRate: parseFloat(row.tauxHoraire) || 0,
-                isActive: row.actif !== undefined ? Boolean(row.actif) : true
-              });
-              await user.save();
-              results.imports.employes.count++;
-            }
-          }
-        } catch (error) {
-          results.imports.employes.errors.push(`Ligne ${results.imports.employes.count + 1}: ${error.message}`);
-        }
-      }
-    }
-
-    // 5. Importer les VENTES (nécessite que les clients, produits et employés existent)
-    if (workbook.SheetNames.includes('Ventes')) {
-      const salesSheet = workbook.Sheets['Ventes'];
-      const salesData = xlsx.utils.sheet_to_json(salesSheet);
-      
-      for (const row of salesData) {
-        try {
-          if (row.nomProduit && row.quantite && row.prixUnitaire && row.montant) {
-            // Trouver le produit par nom
-            const product = await Product.findOne({ projectId, name: row.nomProduit });
-            
-            // Trouver le client par nom (optionnel)
-            let customer = null;
-            if (row.nomClient) {
-              customer = await Customer.findOne({ projectId, name: row.nomClient });
-            }
-            
-            // Trouver l'employé par username (optionnel)
-            let employee = null;
-            if (row.employe) {
-              employee = await User.findOne({ username: row.employe });
-            }
-            
-            const sale = new Sale({
-              projectId,
-              productId: product ? product._id : undefined,
-              customerId: customer ? customer._id : undefined,
-              employeeId: employee ? employee._id : req.user.id,
-              quantity: parseFloat(row.quantite),
-              unitPrice: parseFloat(row.prixUnitaire),
-              amount: parseFloat(row.montant),
-              discount: parseFloat(row.remise) || 0,
-              description: row.description || '',
-              date: row.date ? new Date(row.date) : new Date()
-            });
-            await sale.save();
-            results.imports.ventes.count++;
-            
-            // Mettre à jour le stock si le produit existe
-            if (product) {
-              const stockItem = await Stock.findOne({ projectId, name: product.name });
-              if (stockItem && stockItem.quantity >= sale.quantity) {
-                const previousQuantity = stockItem.quantity;
-                stockItem.quantity -= sale.quantity;
-                await stockItem.save();
-                
-                // Créer un mouvement de stock
-                const movement = new StockMovement({
-                  projectId,
-                  stockId: stockItem._id,
-                  productId: product._id,
-                  type: 'sale',
-                  quantity: -sale.quantity,
-                  previousQuantity,
-                  newQuantity: stockItem.quantity,
-                  unitPrice: sale.unitPrice,
-                  reason: 'Import Excel - Vente',
-                  saleId: sale._id,
-                  userId: req.user.id
-                });
-                await movement.save();
-              }
-            }
-            
-            // Créer une commission si l'employé a un taux de commission
-            if (employee && employee.commissionRate > 0) {
-              const commissionAmount = (sale.amount * employee.commissionRate) / 100;
-              const commission = new Commission({
-                projectId,
-                userId: employee._id,
-                saleId: sale._id,
-                amount: commissionAmount,
-                rate: employee.commissionRate,
-                saleAmount: sale.amount,
-                date: sale.date
-              });
-              await commission.save();
-              
-              employee.totalCommissions += commissionAmount;
-              await employee.save();
-            }
-          }
-        } catch (error) {
-          results.imports.ventes.errors.push(`Ligne ${results.imports.ventes.count + 1}: ${error.message}`);
-        }
-      }
-    }
-
-    // 6. Importer les DÉPENSES
-    if (workbook.SheetNames.includes('Depenses')) {
-      const expensesSheet = workbook.Sheets['Depenses'];
-      const expensesData = xlsx.utils.sheet_to_json(expensesSheet);
-      
-      for (const row of expensesData) {
-        try {
-          if (row.montant && row.categorie) {
-            const expense = new Expense({
-              projectId,
-              amount: parseFloat(row.montant),
-              category: row.categorie, // 'purchase', 'variable', 'fixed'
-              description: row.description || '',
-              date: row.date ? new Date(row.date) : new Date()
-            });
-            await expense.save();
-            results.imports.depenses.count++;
-          }
-        } catch (error) {
-          results.imports.depenses.errors.push(`Ligne ${results.imports.depenses.count + 1}: ${error.message}`);
-        }
-      }
-    }
-
-    // 7. Importer les PLANNINGS
-    if (workbook.SheetNames.includes('Plannings')) {
-      const schedulesSheet = workbook.Sheets['Plannings'];
-      const schedulesData = xlsx.utils.sheet_to_json(schedulesSheet);
-      
-      for (const row of schedulesData) {
-        try {
-          if (row.employe && row.date && row.heureDebut && row.heureFin) {
-            // Trouver l'employé
-            const employee = await User.findOne({ username: row.employe });
-            
-            if (employee) {
-              // Calculer la durée
-              const start = new Date(`2000-01-01 ${row.heureDebut}`);
-              const end = new Date(`2000-01-01 ${row.heureFin}`);
-              const duration = (end - start) / (1000 * 60 * 60);
-              
-              const schedule = new Schedule({
-                projectId,
-                userId: employee._id,
-                date: new Date(row.date),
-                startTime: row.heureDebut,
-                endTime: row.heureFin,
-                duration: duration,
-                status: row.statut || 'scheduled',
-                notes: row.notes || '',
-                createdBy: req.user.id
-              });
-              await schedule.save();
-              results.imports.plannings.count++;
-            }
-          }
-        } catch (error) {
-          results.imports.plannings.errors.push(`Ligne ${results.imports.plannings.count + 1}: ${error.message}`);
-        }
-      }
-    }
-
-    // 8. Importer les COMMISSIONS
-    if (workbook.SheetNames.includes('Commissions')) {
-      const commissionsSheet = workbook.Sheets['Commissions'];
-      const commissionsData = xlsx.utils.sheet_to_json(commissionsSheet);
-      
-      for (const row of commissionsData) {
-        try {
-          if (row.employe && row.montant && row.taux && row.montantVente) {
-            // Trouver l'employé
-            const employee = await User.findOne({ username: row.employe });
-            
-            if (employee) {
-              const commission = new Commission({
-                projectId,
-                userId: employee._id,
-                saleId: null, // Pas de lien direct avec une vente lors de l'import
-                amount: parseFloat(row.montant),
-                rate: parseFloat(row.taux),
-                saleAmount: parseFloat(row.montantVente),
-                status: row.statut || 'pending',
-                date: row.date ? new Date(row.date) : new Date()
-              });
-              await commission.save();
-              results.imports.commissions.count++;
-            }
-          }
-        } catch (error) {
-          results.imports.commissions.errors.push(`Ligne ${results.imports.commissions.count + 1}: ${error.message}`);
-        }
-      }
-    }
-
-    console.log('Import terminé avec succès');
-    console.log('Résultats:', JSON.stringify(results, null, 2));
-
-    res.json({
-      success: true,
-      message: 'Import Excel terminé avec succès',
-      results: results.imports
+      return {
+        'Date': new Date(schedule.date).toLocaleDateString('fr-FR'),
+        'Employé': employee?.fullName || employee?.username || 'N/A',
+        'Heure début': schedule.startTime,
+        'Heure fin': schedule.endTime,
+        'Durée (heures)': duration,
+        'Taux horaire': hourlyRate.toFixed(2) + ' €/h',
+        'Salaire': salary.toFixed(2) + ' €',
+        'Statut': schedule.status === 'completed' ? 'Complété' : 
+                  schedule.status === 'absent' ? 'Absent' : 
+                  schedule.status === 'cancelled' ? 'Annulé' : 'Planifié',
+        'Notes': schedule.notes || ''
+      };
     });
+    const salariesSheet = XLSX.utils.json_to_sheet(salariesData);
+    XLSX.utils.book_append_sheet(workbook, salariesSheet, 'Salaires');
+
+    // ===== FEUILLE CLIENTS =====
+    const customersData = customers.map(customer => ({
+      'Nom': customer.name,
+      'Email': customer.email || 'N/A',
+      'Téléphone': customer.phone || 'N/A',
+      'Achats totaux': customer.totalPurchases.toFixed(2) + ' €',
+      'Points fidélité': customer.loyaltyPoints,
+      'Niveau': customer.loyaltyLevel === 'bronze' ? 'Bronze' : 
+                customer.loyaltyLevel === 'silver' ? 'Argent' : 
+                customer.loyaltyLevel === 'gold' ? 'Or' : 'Platine',
+      'Remise': customer.discount + ' %',
+      'Dernier achat': customer.lastPurchaseDate ? 
+        new Date(customer.lastPurchaseDate).toLocaleDateString('fr-FR') : 'N/A',
+      'Date création': new Date(customer.createdAt).toLocaleDateString('fr-FR'),
+      'Notes': customer.notes || ''
+    }));
+    const customersSheet = XLSX.utils.json_to_sheet(customersData);
+    XLSX.utils.book_append_sheet(workbook, customersSheet, 'Clients');
+
+    // ===== FEUILLE BILAN =====
+    const totalSales = sales.reduce((sum, sale) => sum + sale.amount, 0);
+    const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+    const totalStock = stocks.reduce((sum, stock) => sum + (stock.quantity * stock.unitPrice), 0);
+    const totalCommissions = commissions.reduce((sum, commission) => sum + commission.amount, 0);
+    const totalSalaries = salariesData.reduce((sum, s) => {
+      const salaryValue = parseFloat(s['Salaire'].replace(' €', '').replace(',', '.'));
+      return sum + (isNaN(salaryValue) ? 0 : salaryValue);
+    }, 0);
+    const netProfit = totalSales - totalExpenses;
+
+    const bilanData = [
+      { 'Indicateur': 'Ventes totales', 'Montant': totalSales.toFixed(2) + ' €' },
+      { 'Indicateur': 'Dépenses totales', 'Montant': totalExpenses.toFixed(2) + ' €' },
+      { 'Indicateur': 'Commissions totales', 'Montant': totalCommissions.toFixed(2) + ' €' },
+      { 'Indicateur': 'Salaires totaux', 'Montant': totalSalaries.toFixed(2) + ' €' },
+      { 'Indicateur': 'Valeur du stock', 'Montant': totalStock.toFixed(2) + ' €' },
+      { 'Indicateur': 'Bénéfice net', 'Montant': netProfit.toFixed(2) + ' €' },
+      { 'Indicateur': '', 'Montant': '' },
+      { 'Indicateur': 'Nombre de ventes', 'Montant': sales.length },
+      { 'Indicateur': 'Nombre de dépenses', 'Montant': expenses.length },
+      { 'Indicateur': 'Articles en stock', 'Montant': stocks.length },
+      { 'Indicateur': 'Nombre de clients', 'Montant': customers.length },
+      { 'Indicateur': 'Nombre d\'employés', 'Montant': employees.length },
+      { 'Indicateur': '', 'Montant': '' },
+      { 'Indicateur': 'Période', 'Montant': `${start.toLocaleDateString('fr-FR')} - ${end.toLocaleDateString('fr-FR')}` },
+      { 'Indicateur': 'Date d\'export', 'Montant': new Date().toLocaleDateString('fr-FR') }
+    ];
+    const bilanSheet = XLSX.utils.json_to_sheet(bilanData);
+    XLSX.utils.book_append_sheet(workbook, bilanSheet, 'Bilan');
+
+    // Génération du buffer Excel
+    const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    // Envoi du fichier
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=export_${projectId}_${Date.now()}.xlsx`);
+    res.send(excelBuffer);
 
   } catch (error) {
-    console.error('Erreur lors de l\'import Excel:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Erreur lors de l\'import Excel',
-      message: error.message
-    });
-  } finally {
-    // Nettoyer le fichier uploadé
-    if (filePath && fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      console.log('Fichier temporaire supprimé:', filePath);
-    }
+    console.error('Error exporting to Excel:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
