@@ -1594,10 +1594,10 @@ app.get('/BussnessApp/schedules/user/:userId', authenticateToken, async (req, re
   }
 });
 
-// Créer un nouveau planning
+// Créer un nouveau planning (simple ou récurrent)
 app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
-    const { userId, date, startTime, endTime, notes, projectId } = req.body;
+    const { userId, date, startTime, endTime, notes, projectId, isRecurring, recurringDays, endDate } = req.body;
 
     if (!userId || !date || !startTime || !endTime) {
       return res.status(400).json({ error: 'Tous les champs requis doivent être remplis' });
@@ -1612,24 +1612,69 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
       return res.status(400).json({ error: 'L\'heure de fin doit être après l\'heure de début' });
     }
 
-    const schedule = new Schedule({
-      projectId: projectId || req.user.projectId,
-      userId,
-      date: new Date(date),
-      startTime,
-      endTime,
-      duration,
-      notes,
-      createdBy: req.user.id
-    });
+    // Si c'est un planning récurrent
+    if (isRecurring && recurringDays && recurringDays.length > 0) {
+      const startDate = new Date(date);
+      const finalEndDate = endDate ? new Date(endDate) : new Date(startDate.getTime() + 90 * 24 * 60 * 60 * 1000); // 90 jours par défaut
+      const createdSchedules = [];
 
-    await schedule.save();
+      // Créer les plannings pour chaque occurrence
+      let currentDate = new Date(startDate);
+      while (currentDate <= finalEndDate) {
+        const dayOfWeek = currentDate.getDay(); // 0 = Dimanche, 1 = Lundi, etc.
+        
+        // Si ce jour est dans la liste des jours récurrents
+        if (recurringDays.includes(dayOfWeek)) {
+          const schedule = new Schedule({
+            projectId: projectId || req.user.projectId,
+            userId,
+            date: new Date(currentDate),
+            startTime,
+            endTime,
+            duration,
+            notes,
+            createdBy: req.user.id
+          });
+          await schedule.save();
+          createdSchedules.push(schedule);
+        }
+        
+        // Passer au jour suivant
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
 
-    const populatedSchedule = await Schedule.findById(schedule._id)
-      .populate('userId', 'username fullName role')
-      .populate('createdBy', 'username fullName');
+      const populatedSchedules = await Schedule.find({
+        _id: { $in: createdSchedules.map(s => s._id) }
+      })
+        .populate('userId', 'username fullName role')
+        .populate('createdBy', 'username fullName');
 
-    res.status(201).json({ data: populatedSchedule });
+      res.status(201).json({ 
+        data: populatedSchedules,
+        count: createdSchedules.length,
+        message: `${createdSchedules.length} planning(s) créé(s) avec succès`
+      });
+    } else {
+      // Planning simple (une seule date)
+      const schedule = new Schedule({
+        projectId: projectId || req.user.projectId,
+        userId,
+        date: new Date(date),
+        startTime,
+        endTime,
+        duration,
+        notes,
+        createdBy: req.user.id
+      });
+
+      await schedule.save();
+
+      const populatedSchedule = await Schedule.findById(schedule._id)
+        .populate('userId', 'username fullName role')
+        .populate('createdBy', 'username fullName');
+
+      res.status(201).json({ data: populatedSchedule });
+    }
   } catch (error) {
     console.error('Error creating schedule:', error);
     res.status(400).json({ error: error.message });

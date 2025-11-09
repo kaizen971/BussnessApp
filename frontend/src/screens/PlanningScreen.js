@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   Modal,
   Alert,
@@ -27,10 +26,10 @@ export const PlanningScreen = ({ navigation }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedSchedule, setSelectedSchedule] = useState(null);
+  const [selectedWeek, setSelectedWeek] = useState(new Date());
+  const [viewMode, setViewMode] = useState('week'); // 'week' ou 'list'
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
-  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   
   const [formData, setFormData] = useState({
     userId: '',
@@ -39,24 +38,43 @@ export const PlanningScreen = ({ navigation }) => {
     endTime: '17:00',
     notes: '',
     status: 'scheduled',
+    isRecurring: false,
+    recurringDays: [], // [1=Lundi, 2=Mardi, etc.]
+    endDate: null,
   });
 
   const isAdmin = user?.role === 'admin' || user?.role === 'responsable' || user?.role === 'manager';
   const isCashier = user?.role === 'cashier';
+
+  const daysOfWeek = [
+    { label: 'Lundi', value: 1, short: 'Lun' },
+    { label: 'Mardi', value: 2, short: 'Mar' },
+    { label: 'Mercredi', value: 3, short: 'Mer' },
+    { label: 'Jeudi', value: 4, short: 'Jeu' },
+    { label: 'Vendredi', value: 5, short: 'Ven' },
+    { label: 'Samedi', value: 6, short: 'Sam' },
+    { label: 'Dimanche', value: 0, short: 'Dim' },
+  ];
 
   useEffect(() => {
     loadSchedules();
     if (isAdmin) {
       loadUsers();
     }
-  }, [selectedProjectId]);
+  }, [selectedProjectId, selectedWeek]);
 
   const loadSchedules = async () => {
     try {
       setLoading(true);
-      const params = { projectId: selectedProjectId || user?.projectId };
+      const weekStart = getWeekStart(selectedWeek);
+      const weekEnd = getWeekEnd(selectedWeek);
       
-      // Si c'est un caissier, charger uniquement son planning
+      const params = {
+        projectId: selectedProjectId || user?.projectId,
+        startDate: weekStart.toISOString(),
+        endDate: weekEnd.toISOString(),
+      };
+      
       if (isCashier) {
         params.userId = user.id;
       }
@@ -88,19 +106,25 @@ export const PlanningScreen = ({ navigation }) => {
       return;
     }
 
+    if (formData.isRecurring && formData.recurringDays.length === 0) {
+      Alert.alert('Erreur', 'Veuillez sélectionner au moins un jour pour la récurrence');
+      return;
+    }
+
     try {
       setLoading(true);
       const dataToSend = {
         ...formData,
         date: formData.date.toISOString().split('T')[0],
+        endDate: formData.endDate ? formData.endDate.toISOString().split('T')[0] : null,
         projectId: selectedProjectId || user?.projectId,
       };
 
-      if (selectedSchedule) {
-        await api.put(`/schedules/${selectedSchedule._id}`, dataToSend);
-        Alert.alert('Succès', 'Planning mis à jour');
+      const response = await api.post('/schedules', dataToSend);
+      
+      if (response.data.count) {
+        Alert.alert('Succès', response.data.message);
       } else {
-        await api.post('/schedules', dataToSend);
         Alert.alert('Succès', 'Planning créé');
       }
 
@@ -138,21 +162,7 @@ export const PlanningScreen = ({ navigation }) => {
     );
   };
 
-  const handleEdit = (schedule) => {
-    setSelectedSchedule(schedule);
-    setFormData({
-      userId: schedule.userId._id || schedule.userId,
-      date: new Date(schedule.date),
-      startTime: schedule.startTime,
-      endTime: schedule.endTime,
-      notes: schedule.notes || '',
-      status: schedule.status,
-    });
-    setModalVisible(true);
-  };
-
   const resetForm = () => {
-    setSelectedSchedule(null);
     setFormData({
       userId: '',
       date: new Date(),
@@ -160,7 +170,68 @@ export const PlanningScreen = ({ navigation }) => {
       endTime: '17:00',
       notes: '',
       status: 'scheduled',
+      isRecurring: false,
+      recurringDays: [],
+      endDate: null,
     });
+  };
+
+  const getWeekStart = (date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Lundi
+    return new Date(d.setDate(diff));
+  };
+
+  const getWeekEnd = (date) => {
+    const start = getWeekStart(date);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    return end;
+  };
+
+  const getWeekDays = () => {
+    const start = getWeekStart(selectedWeek);
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(start);
+      day.setDate(day.getDate() + i);
+      days.push(day);
+    }
+    return days;
+  };
+
+  const getSchedulesForDay = (date) => {
+    return schedules.filter(schedule => {
+      const scheduleDate = new Date(schedule.date);
+      return scheduleDate.toDateString() === date.toDateString();
+    });
+  };
+
+  const previousWeek = () => {
+    const newDate = new Date(selectedWeek);
+    newDate.setDate(newDate.getDate() - 7);
+    setSelectedWeek(newDate);
+  };
+
+  const nextWeek = () => {
+    const newDate = new Date(selectedWeek);
+    newDate.setDate(newDate.getDate() + 7);
+    setSelectedWeek(newDate);
+  };
+
+  const toggleDay = (dayValue) => {
+    if (formData.recurringDays.includes(dayValue)) {
+      setFormData({
+        ...formData,
+        recurringDays: formData.recurringDays.filter(d => d !== dayValue)
+      });
+    } else {
+      setFormData({
+        ...formData,
+        recurringDays: [...formData.recurringDays, dayValue]
+      });
+    }
   };
 
   const getStatusInfo = (status) => {
@@ -178,95 +249,101 @@ export const PlanningScreen = ({ navigation }) => {
     }
   };
 
-  const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('fr-FR', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  };
-
   const calculateTotalHours = () => {
     return schedules
       .filter(s => s.status === 'completed')
       .reduce((sum, s) => sum + (s.duration || 0), 0);
   };
 
-  const renderScheduleItem = ({ item }) => {
-    const statusInfo = getStatusInfo(item.status);
-    const userName = item.userId?.fullName || item.userId?.username || 'Inconnu';
-
+  const renderWeekView = () => {
+    const weekDays = getWeekDays();
+    
     return (
-      <Card style={styles.scheduleCard}>
-        <View style={styles.scheduleHeader}>
-          <View style={styles.scheduleUser}>
-            <View style={[styles.userAvatar, { backgroundColor: statusInfo.color + '30' }]}>
-              <Ionicons name="person" size={24} color={statusInfo.color} />
-            </View>
-            <View style={styles.scheduleUserInfo}>
-              <Text style={styles.userName}>{userName}</Text>
-              <Text style={styles.scheduleDate}>{formatDate(item.date)}</Text>
-            </View>
-          </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusInfo.color + '20' }]}>
-            <Ionicons name={statusInfo.icon} size={16} color={statusInfo.color} />
-            <Text style={[styles.statusText, { color: statusInfo.color }]}>
-              {statusInfo.label}
+      <ScrollView style={styles.weekContainer} showsVerticalScrollIndicator={false}>
+        {/* Navigation de semaine */}
+        <View style={styles.weekNavigation}>
+          <TouchableOpacity style={styles.weekNavButton} onPress={previousWeek}>
+            <Ionicons name="chevron-back" size={24} color={colors.primary} />
+          </TouchableOpacity>
+          <View style={styles.weekLabel}>
+            <Text style={styles.weekLabelText}>
+              Semaine du {weekDays[0].getDate()} {weekDays[0].toLocaleDateString('fr-FR', { month: 'short' })} au {weekDays[6].getDate()} {weekDays[6].toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })}
             </Text>
           </View>
+          <TouchableOpacity style={styles.weekNavButton} onPress={nextWeek}>
+            <Ionicons name="chevron-forward" size={24} color={colors.primary} />
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.scheduleDetails}>
-          <View style={styles.timeContainer}>
-            <View style={styles.timeBlock}>
-              <Ionicons name="time-outline" size={20} color={colors.primary} />
-              <Text style={styles.timeLabel}>Début</Text>
-              <Text style={styles.timeValue}>{item.startTime}</Text>
-            </View>
-            <Ionicons name="arrow-forward" size={20} color={colors.textSecondary} />
-            <View style={styles.timeBlock}>
-              <Ionicons name="time" size={20} color={colors.accent} />
-              <Text style={styles.timeLabel}>Fin</Text>
-              <Text style={styles.timeValue}>{item.endTime}</Text>
-            </View>
-            <View style={styles.durationBlock}>
-              <Ionicons name="hourglass-outline" size={20} color={colors.info} />
-              <Text style={styles.durationValue}>{item.duration?.toFixed(1)}h</Text>
-            </View>
-          </View>
+        {/* Grille des jours */}
+        {weekDays.map((day, index) => {
+          const daySchedules = getSchedulesForDay(day);
+          const isToday = day.toDateString() === new Date().toDateString();
+          
+          return (
+            <Card key={index} style={[styles.dayCard, isToday && styles.dayCardToday]}>
+              <View style={styles.dayHeader}>
+                <View style={styles.dayTitleContainer}>
+                  <Text style={[styles.dayName, isToday && styles.dayNameToday]}>
+                    {day.toLocaleDateString('fr-FR', { weekday: 'long' })}
+                  </Text>
+                  <Text style={[styles.dayDate, isToday && styles.dayDateToday]}>
+                    {day.getDate()} {day.toLocaleDateString('fr-FR', { month: 'long' })}
+                  </Text>
+                </View>
+                {isToday && (
+                  <View style={styles.todayBadge}>
+                    <Text style={styles.todayBadgeText}>Aujourd'hui</Text>
+                  </View>
+                )}
+              </View>
 
-          {item.notes && (
-            <View style={styles.notesContainer}>
-              <Ionicons name="document-text-outline" size={16} color={colors.textSecondary} />
-              <Text style={styles.notesText}>{item.notes}</Text>
-            </View>
-          )}
-        </View>
-
-        {isAdmin && (
-          <View style={styles.scheduleActions}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => handleEdit(item)}
-            >
-              <Ionicons name="create-outline" size={20} color={colors.primary} />
-              <Text style={[styles.actionButtonText, { color: colors.primary }]}>
-                Modifier
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => handleDelete(item._id)}
-            >
-              <Ionicons name="trash-outline" size={20} color={colors.error} />
-              <Text style={[styles.actionButtonText, { color: colors.error }]}>
-                Supprimer
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </Card>
+              {daySchedules.length > 0 ? (
+                <View style={styles.daySchedules}>
+                  {daySchedules.map((schedule) => {
+                    const statusInfo = getStatusInfo(schedule.status);
+                    const userName = schedule.userId?.fullName || schedule.userId?.username || 'Inconnu';
+                    
+                    return (
+                      <LinearGradient
+                        key={schedule._id}
+                        colors={[statusInfo.color + '20', statusInfo.color + '08']}
+                        style={styles.scheduleItem}
+                      >
+                        <View style={styles.scheduleItemHeader}>
+                          <View style={styles.scheduleUserInfo}>
+                            <Ionicons name="person-circle" size={20} color={statusInfo.color} />
+                            <Text style={styles.scheduleUserName}>{userName}</Text>
+                          </View>
+                          {isAdmin && (
+                            <TouchableOpacity onPress={() => handleDelete(schedule._id)}>
+                              <Ionicons name="trash-outline" size={18} color={colors.error} />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        <View style={styles.scheduleTime}>
+                          <Ionicons name="time-outline" size={16} color={statusInfo.color} />
+                          <Text style={styles.scheduleTimeText}>
+                            {schedule.startTime} - {schedule.endTime} ({schedule.duration}h)
+                          </Text>
+                        </View>
+                        {schedule.notes && (
+                          <Text style={styles.scheduleNotes}>📝 {schedule.notes}</Text>
+                        )}
+                      </LinearGradient>
+                    );
+                  })}
+                </View>
+              ) : (
+                <View style={styles.emptyDay}>
+                  <Ionicons name="calendar-outline" size={32} color={colors.textSecondary} />
+                  <Text style={styles.emptyDayText}>Aucun planning</Text>
+                </View>
+              )}
+            </Card>
+          );
+        })}
+      </ScrollView>
     );
   };
 
@@ -284,9 +361,9 @@ export const PlanningScreen = ({ navigation }) => {
             <Ionicons name="arrow-back" size={24} color={colors.primary} />
           </TouchableOpacity>
           <View style={styles.titleContainer}>
-            <Text style={styles.title}>Planning</Text>
+            <Text style={styles.title}>📅 Planning</Text>
             <Text style={styles.subtitle}>
-              {isCashier ? 'Mon planning' : `${schedules.length} planning(s)`}
+              {isCashier ? 'Mon planning' : 'Gestion des horaires'}
             </Text>
           </View>
           {isAdmin && (
@@ -340,25 +417,9 @@ export const PlanningScreen = ({ navigation }) => {
         </LinearGradient>
       </LinearGradient>
 
-      <FlatList
-        data={schedules}
-        renderItem={renderScheduleItem}
-        keyExtractor={(item) => item._id}
-        contentContainerStyle={styles.list}
-        refreshing={loading}
-        onRefresh={loadSchedules}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="calendar-outline" size={80} color={colors.textSecondary} />
-            <Text style={styles.emptyText}>Aucun planning</Text>
-            {isAdmin && (
-              <Text style={styles.emptySubtext}>Appuyez sur + pour créer un planning</Text>
-            )}
-          </View>
-        }
-      />
+      {renderWeekView()}
 
-      {/* Modal de création/édition */}
+      {/* Modal de création/édition avec récurrence */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalContainer}>
           <LinearGradient
@@ -375,19 +436,13 @@ export const PlanningScreen = ({ navigation }) => {
                     colors={[colors.primary, colors.primaryDark]}
                     style={styles.modalIcon}
                   >
-                    <Ionicons
-                      name={selectedSchedule ? 'create' : 'calendar'}
-                      size={28}
-                      color="#000"
-                    />
+                    <Ionicons name="calendar" size={28} color="#000" />
                   </LinearGradient>
                 </View>
                 <View style={styles.modalTitleContainer}>
-                  <Text style={styles.modalTitle}>
-                    {selectedSchedule ? 'Modifier le planning' : 'Nouveau planning'}
-                  </Text>
+                  <Text style={styles.modalTitle}>Nouveau planning</Text>
                   <Text style={styles.modalSubtitle}>
-                    Planifier les horaires de travail
+                    {formData.isRecurring ? 'Planning récurrent' : 'Planning unique'}
                   </Text>
                 </View>
               </LinearGradient>
@@ -421,19 +476,122 @@ export const PlanningScreen = ({ navigation }) => {
                 </Picker>
               </View>
 
+              {/* Toggle récurrence */}
+              <TouchableOpacity
+                style={styles.recurringToggle}
+                onPress={() => setFormData({ ...formData, isRecurring: !formData.isRecurring })}
+              >
+                <LinearGradient
+                  colors={formData.isRecurring ? [colors.accent + '20', colors.accent + '10'] : [colors.surface, colors.surface]}
+                  style={styles.recurringToggleContent}
+                >
+                  <View style={styles.recurringToggleLeft}>
+                    <Ionicons 
+                      name={formData.isRecurring ? "repeat" : "calendar-outline"} 
+                      size={24} 
+                      color={formData.isRecurring ? colors.accent : colors.textSecondary} 
+                    />
+                    <View style={styles.recurringToggleText}>
+                      <Text style={styles.recurringToggleTitle}>Planning récurrent</Text>
+                      <Text style={styles.recurringToggleSubtitle}>
+                        {formData.isRecurring ? 'Répéter tous les jours sélectionnés' : 'Activer pour planifier plusieurs jours'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={[
+                    styles.toggle,
+                    formData.isRecurring && styles.toggleActive
+                  ]}>
+                    <View style={[
+                      styles.toggleCircle,
+                      formData.isRecurring && styles.toggleCircleActive
+                    ]} />
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {formData.isRecurring && (
+                <>
+                  <View style={styles.daysSelectionContainer}>
+                    <Text style={styles.pickerLabel}>⚡ Sélectionner les jours</Text>
+                    <View style={styles.daysGrid}>
+                      {daysOfWeek.map((day) => (
+                        <TouchableOpacity
+                          key={day.value}
+                          style={[
+                            styles.dayChip,
+                            formData.recurringDays.includes(day.value) && styles.dayChipSelected
+                          ]}
+                          onPress={() => toggleDay(day.value)}
+                        >
+                          <LinearGradient
+                            colors={
+                              formData.recurringDays.includes(day.value)
+                                ? [colors.primary, colors.primaryDark]
+                                : [colors.surface, colors.surface]
+                            }
+                            style={styles.dayChipGradient}
+                          >
+                            <Text style={[
+                              styles.dayChipText,
+                              formData.recurringDays.includes(day.value) && styles.dayChipTextSelected
+                            ]}>
+                              {day.short}
+                            </Text>
+                          </LinearGradient>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.dateButton}
+                    onPress={() => setShowEndDatePicker(true)}
+                  >
+                    <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+                    <View style={styles.dateButtonContent}>
+                      <Text style={styles.dateButtonLabel}>Jusqu'au</Text>
+                      <Text style={styles.dateButtonText}>
+                        {formData.endDate ? formData.endDate.toLocaleDateString('fr-FR') : '3 mois par défaut'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {showEndDatePicker && (
+                    <DateTimePicker
+                      value={formData.endDate || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={(event, selectedDate) => {
+                        setShowEndDatePicker(Platform.OS === 'ios');
+                        if (selectedDate) {
+                          setFormData({ ...formData, endDate: selectedDate });
+                        }
+                      }}
+                      minimumDate={new Date()}
+                    />
+                  )}
+                </>
+              )}
+
               <TouchableOpacity
                 style={styles.dateButton}
                 onPress={() => setShowDatePicker(true)}
               >
                 <Ionicons name="calendar-outline" size={20} color={colors.primary} />
-                <Text style={styles.dateButtonText}>
-                  {formData.date.toLocaleDateString('fr-FR', {
-                    weekday: 'long',
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  })}
-                </Text>
+                <View style={styles.dateButtonContent}>
+                  <Text style={styles.dateButtonLabel}>
+                    {formData.isRecurring ? 'À partir du' : 'Date'}
+                  </Text>
+                  <Text style={styles.dateButtonText}>
+                    {formData.date.toLocaleDateString('fr-FR', {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                  </Text>
+                </View>
               </TouchableOpacity>
 
               {showDatePicker && (
@@ -469,20 +627,6 @@ export const PlanningScreen = ({ navigation }) => {
                 </View>
               </View>
 
-              <View style={styles.pickerContainer}>
-                <Text style={styles.pickerLabel}>Statut</Text>
-                <Picker
-                  selectedValue={formData.status}
-                  onValueChange={(value) => setFormData({ ...formData, status: value })}
-                  style={styles.picker}
-                >
-                  <Picker.Item label="Planifié" value="scheduled" />
-                  <Picker.Item label="Terminé" value="completed" />
-                  <Picker.Item label="Absent" value="absent" />
-                  <Picker.Item label="Annulé" value="cancelled" />
-                </Picker>
-              </View>
-
               <Input
                 placeholder="Notes (optionnel)"
                 value={formData.notes}
@@ -515,13 +659,9 @@ export const PlanningScreen = ({ navigation }) => {
                     <ActivityIndicator color="#000" />
                   ) : (
                     <>
-                      <Ionicons
-                        name={selectedSchedule ? 'checkmark' : 'add'}
-                        size={20}
-                        color="#000"
-                      />
+                      <Ionicons name="checkmark-circle" size={20} color="#000" />
                       <Text style={styles.saveButtonText}>
-                        {selectedSchedule ? 'Modifier' : 'Créer'}
+                        {formData.isRecurring ? 'Créer les plannings' : 'Créer'}
                       </Text>
                     </>
                   )}
@@ -611,139 +751,140 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  list: {
+  // Vue semaine
+  weekContainer: {
+    flex: 1,
     padding: 20,
   },
-  scheduleCard: {
+  weekNavigation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 12,
+  },
+  weekNavButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  weekLabel: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  weekLabelText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  dayCard: {
     marginBottom: 15,
   },
-  scheduleHeader: {
+  dayCardToday: {
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  dayHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  scheduleUser: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  dayTitleContainer: {
     flex: 1,
   },
-  userAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  scheduleUserInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 16,
+  dayName: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: colors.text,
+    textTransform: 'capitalize',
     marginBottom: 4,
   },
-  scheduleDate: {
+  dayNameToday: {
+    color: colors.primary,
+  },
+  dayDate: {
     fontSize: 13,
     color: colors.textSecondary,
     textTransform: 'capitalize',
   },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  dayDateToday: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  todayBadge: {
+    backgroundColor: colors.primary + '20',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
-    gap: 4,
   },
-  statusText: {
+  todayBadgeText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: 'bold',
+    color: colors.primary,
   },
-  scheduleDetails: {
-    marginBottom: 15,
+  daySchedules: {
+    gap: 10,
   },
-  timeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
+  scheduleItem: {
     padding: 12,
     borderRadius: 12,
-    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  timeBlock: {
-    alignItems: 'center',
-  },
-  timeLabel: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 4,
-  },
-  timeValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginTop: 2,
-  },
-  durationBlock: {
-    alignItems: 'center',
-  },
-  durationValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.info,
-    marginTop: 4,
-  },
-  notesContainer: {
+  scheduleItemHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: colors.surface,
-    padding: 10,
-    borderRadius: 8,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  scheduleUserInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-  },
-  notesText: {
     flex: 1,
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 18,
   },
-  scheduleActions: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 15,
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    gap: 6,
-  },
-  actionButtonText: {
+  scheduleUserName: {
     fontSize: 14,
     fontWeight: '600',
+    color: colors.text,
   },
-  emptyContainer: {
+  scheduleTime: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  scheduleTimeText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  scheduleNotes: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+  },
+  emptyDay: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    paddingVertical: 30,
   },
-  emptyText: {
-    fontSize: 18,
+  emptyDayText: {
+    fontSize: 13,
     color: colors.textSecondary,
-    marginTop: 20,
+    marginTop: 8,
   },
-  emptySubtext: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 5,
-  },
+  // Modal
   modalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.85)',
@@ -818,6 +959,96 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     color: colors.text,
   },
+  // Toggle récurrence
+  recurringToggle: {
+    marginBottom: 20,
+  },
+  recurringToggleContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  recurringToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  recurringToggleText: {
+    flex: 1,
+  },
+  recurringToggleTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  recurringToggleSubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  toggle: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.border,
+    justifyContent: 'center',
+    padding: 2,
+  },
+  toggleActive: {
+    backgroundColor: colors.accent,
+  },
+  toggleCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+  },
+  toggleCircleActive: {
+    transform: [{ translateX: 22 }],
+  },
+  // Sélection des jours
+  daysSelectionContainer: {
+    marginBottom: 20,
+  },
+  daysGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  dayChip: {
+    flex: 1,
+    minWidth: '12%',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  dayChipSelected: {
+    elevation: 4,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  dayChipGradient: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderRadius: 12,
+    borderColor: colors.border,
+  },
+  dayChipText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  dayChipTextSelected: {
+    color: '#000',
+  },
   dateButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -829,10 +1060,19 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     gap: 10,
   },
+  dateButtonContent: {
+    flex: 1,
+  },
+  dateButtonLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
   dateButtonText: {
     fontSize: 14,
     color: colors.text,
     textTransform: 'capitalize',
+    fontWeight: '600',
   },
   timePickerRow: {
     flexDirection: 'row',
@@ -880,4 +1120,3 @@ const styles = StyleSheet.create({
     color: '#000',
   },
 });
-

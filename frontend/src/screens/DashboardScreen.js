@@ -33,7 +33,7 @@ export const DashboardScreen = ({ navigation }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const modalSlideAnim = useRef(new Animated.Value(0)).current;
-  const isAdmin = user?.role === 'admin' || user?.role === 'responsable';
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   console.log(user)
 

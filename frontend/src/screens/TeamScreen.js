@@ -557,71 +557,192 @@ export const TeamScreen = ({ navigation }) => {
         </View>
       </Modal>
 
-      {/* Modal de modification de commission */}
+      {/* Modal de modification de commission - Améliorée */}
       <Modal 
         visible={commissionModalVisible} 
-        animationType="fade" 
+        animationType="slide" 
         transparent
         onRequestClose={() => setCommissionModalVisible(false)}
       >
-        <View style={styles.roleModalOverlay}>
-          <View style={styles.roleModalContainer}>
-            <View style={styles.roleModalHeader}>
-              <Ionicons name="cash" size={32} color={colors.success} />
-              <Text style={styles.roleModalTitle}>Modifier la commission</Text>
-              {selectedUser && (
-                <Text style={styles.roleModalSubtitle}>{selectedUser.fullName}</Text>
-              )}
+        <View style={styles.commissionModalOverlay}>
+          <TouchableOpacity 
+            style={styles.commissionModalBackdrop}
+            activeOpacity={1}
+            onPress={() => {
+              setCommissionModalVisible(false);
+              setSelectedUser(null);
+            }}
+          />
+          <View style={styles.commissionModalContainer}>
+            {/* Handle de glissement */}
+            <View style={styles.commissionModalHandle}>
+              <View style={styles.commissionModalHandleLine} />
             </View>
 
-            <View style={styles.commissionModalContent}>
-              <LinearGradient
-                colors={[colors.success + '20', colors.success + '10']}
-                style={styles.commissionInputContainer}
-              >
-                <View style={styles.commissionInputWrapper}>
-                  <Ionicons name="percent-outline" size={24} color={colors.success} />
-                  <Input
-                    placeholder="0"
-                    value={commissionRate}
-                    onChangeText={setCommissionRate}
-                    keyboardType="decimal-pad"
-                    style={styles.commissionInput}
-                  />
-                  <Text style={styles.commissionPercentSymbol}>%</Text>
-                </View>
-                <Text style={styles.commissionHint}>
-                  Taux de commission par vente (0-100%)
-                </Text>
-              </LinearGradient>
-
-              {selectedUser && selectedUser.totalCommissions > 0 && (
-                <View style={styles.commissionStats}>
-                  <View style={styles.commissionStatItem}>
-                    <Text style={styles.commissionStatLabel}>Total gagné</Text>
-                    <Text style={styles.commissionStatValue}>
-                      {(selectedUser.totalCommissions || 0).toFixed(2)} €
-                    </Text>
-                  </View>
-                  <View style={styles.commissionStatItem}>
-                    <Text style={styles.commissionStatLabel}>Taux actuel</Text>
-                    <Text style={styles.commissionStatValue}>
-                      {selectedUser.commissionRate || 0}%
-                    </Text>
-                  </View>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.commissionModalActions}>
+            {/* En-tête avec avatar */}
+            <LinearGradient
+              colors={[colors.success + '20', colors.success + '05']}
+              style={styles.commissionModalHeader}
+            >
+              <View style={styles.commissionUserAvatar}>
+                <LinearGradient
+                  colors={[colors.success, colors.success + 'DD']}
+                  style={styles.commissionAvatarGradient}
+                >
+                  <Ionicons name="person" size={32} color="#fff" />
+                </LinearGradient>
+              </View>
+              <View style={styles.commissionHeaderText}>
+                <Text style={styles.commissionModalTitle}>💰 Modifier la commission</Text>
+                {selectedUser && (
+                  <Text style={styles.commissionModalSubtitle}>{selectedUser.fullName}</Text>
+                )}
+              </View>
               <TouchableOpacity
-                style={styles.roleCancelButton}
+                style={styles.commissionCloseButton}
                 onPress={() => {
                   setCommissionModalVisible(false);
                   setSelectedUser(null);
                 }}
               >
-                <Text style={styles.roleCancelButtonText}>Annuler</Text>
+                <Ionicons name="close-circle" size={28} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </LinearGradient>
+
+            <ScrollView 
+              style={styles.commissionModalContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Statistiques actuelles */}
+              {selectedUser && (
+                <View style={styles.currentCommissionStats}>
+                  <LinearGradient
+                    colors={[colors.primary + '15', colors.primary + '05']}
+                    style={styles.currentStatCard}
+                  >
+                    <Ionicons name="trending-up" size={24} color={colors.primary} />
+                    <View style={styles.currentStatContent}>
+                      <Text style={styles.currentStatLabel}>Taux actuel</Text>
+                      <Text style={styles.currentStatValue}>{selectedUser.commissionRate || 0}%</Text>
+                    </View>
+                  </LinearGradient>
+                  <LinearGradient
+                    colors={[colors.accent + '15', colors.accent + '05']}
+                    style={styles.currentStatCard}
+                  >
+                    <Ionicons name="wallet" size={24} color={colors.accent} />
+                    <View style={styles.currentStatContent}>
+                      <Text style={styles.currentStatLabel}>Total gagné</Text>
+                      <Text style={styles.currentStatValue}>
+                        {(selectedUser.totalCommissions || 0).toFixed(2)} €
+                      </Text>
+                    </View>
+                  </LinearGradient>
+                </View>
+              )}
+
+              {/* Sélection rapide */}
+              <View style={styles.quickSelectContainer}>
+                <Text style={styles.quickSelectTitle}>⚡ Sélection rapide</Text>
+                <View style={styles.quickSelectButtons}>
+                  {[2, 5, 10, 15, 20].map((rate) => (
+                    <TouchableOpacity
+                      key={rate}
+                      style={[
+                        styles.quickSelectButton,
+                        commissionRate === rate.toString() && styles.quickSelectButtonActive
+                      ]}
+                      onPress={() => setCommissionRate(rate.toString())}
+                    >
+                      <LinearGradient
+                        colors={
+                          commissionRate === rate.toString()
+                            ? [colors.success, colors.success + 'DD']
+                            : [colors.surface, colors.surface]
+                        }
+                        style={styles.quickSelectButtonGradient}
+                      >
+                        <Text style={[
+                          styles.quickSelectButtonText,
+                          commissionRate === rate.toString() && styles.quickSelectButtonTextActive
+                        ]}>
+                          {rate}%
+                        </Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Saisie personnalisée */}
+              <View style={styles.customInputSection}>
+                <Text style={styles.customInputTitle}>🎯 Taux personnalisé</Text>
+                <LinearGradient
+                  colors={[colors.success + '15', colors.success + '08']}
+                  style={styles.commissionInputContainer}
+                >
+                  <View style={styles.commissionInputWrapper}>
+                    <Ionicons name="cash-outline" size={28} color={colors.success} />
+                    <Input
+                      placeholder="0"
+                      value={commissionRate}
+                      onChangeText={setCommissionRate}
+                      keyboardType="decimal-pad"
+                      style={styles.commissionInput}
+                    />
+                    <Text style={styles.commissionPercentSymbol}>%</Text>
+                  </View>
+                  <Text style={styles.commissionHint}>
+                    Entrez un taux entre 0 et 100%
+                  </Text>
+                </LinearGradient>
+              </View>
+
+              {/* Exemple de calcul */}
+              {commissionRate && parseFloat(commissionRate) > 0 && (
+                <View style={styles.exampleCalculation}>
+                  <LinearGradient
+                    colors={[colors.info + '15', colors.info + '05']}
+                    style={styles.exampleCard}
+                  >
+                    <View style={styles.exampleHeader}>
+                      <Ionicons name="calculator-outline" size={20} color={colors.info} />
+                      <Text style={styles.exampleTitle}>Exemple de calcul</Text>
+                    </View>
+                    <View style={styles.exampleRow}>
+                      <Text style={styles.exampleLabel}>Vente de 100 €</Text>
+                      <Text style={styles.exampleValue}>
+                        → {(100 * parseFloat(commissionRate) / 100).toFixed(2)} € de commission
+                      </Text>
+                    </View>
+                    <View style={styles.exampleRow}>
+                      <Text style={styles.exampleLabel}>Vente de 500 €</Text>
+                      <Text style={styles.exampleValue}>
+                        → {(500 * parseFloat(commissionRate) / 100).toFixed(2)} € de commission
+                      </Text>
+                    </View>
+                    <View style={styles.exampleRow}>
+                      <Text style={styles.exampleLabel}>Vente de 1000 €</Text>
+                      <Text style={styles.exampleValue}>
+                        → {(1000 * parseFloat(commissionRate) / 100).toFixed(2)} € de commission
+                      </Text>
+                    </View>
+                  </LinearGradient>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Actions */}
+            <View style={styles.commissionModalActions}>
+              <TouchableOpacity
+                style={styles.commissionCancelButton}
+                onPress={() => {
+                  setCommissionModalVisible(false);
+                  setSelectedUser(null);
+                }}
+              >
+                <Ionicons name="close-outline" size={22} color={colors.textSecondary} />
+                <Text style={styles.commissionCancelButtonText}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.commissionSaveButtonWrapper}
@@ -631,8 +752,8 @@ export const TeamScreen = ({ navigation }) => {
                   colors={[colors.success, colors.success + 'DD']}
                   style={styles.commissionSaveButton}
                 >
-                  <Ionicons name="checkmark" size={20} color="#fff" />
-                  <Text style={styles.commissionSaveButtonText}>Valider</Text>
+                  <Ionicons name="checkmark-circle" size={22} color="#fff" />
+                  <Text style={styles.commissionSaveButtonText}>Valider la commission</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -1076,14 +1197,165 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.text,
   },
-  // Styles pour le modal de commission
+  // Styles pour le modal de commission amélioré
+  commissionModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  commissionModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  commissionModalContainer: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    maxHeight: '90%',
+    elevation: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+  },
+  commissionModalHandle: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  commissionModalHandleLine: {
+    width: 40,
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+  },
+  commissionModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '50',
+  },
+  commissionUserAvatar: {
+    marginRight: 14,
+  },
+  commissionAvatarGradient: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  commissionHeaderText: {
+    flex: 1,
+  },
+  commissionModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  commissionModalSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  commissionCloseButton: {
+    padding: 4,
+  },
   commissionModalContent: {
     padding: 20,
+    maxHeight: 500,
+  },
+  // Statistiques actuelles
+  currentCommissionStats: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  currentStatCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 12,
+  },
+  currentStatContent: {
+    flex: 1,
+  },
+  currentStatLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  currentStatValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  // Sélection rapide
+  quickSelectContainer: {
+    marginBottom: 24,
+  },
+  quickSelectTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  quickSelectButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  quickSelectButton: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  quickSelectButtonActive: {
+    elevation: 4,
+    shadowColor: colors.success,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  quickSelectButtonGradient: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderRadius: 12,
+    borderColor: colors.border,
+  },
+  quickSelectButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  quickSelectButtonTextActive: {
+    color: '#fff',
+  },
+  // Saisie personnalisée
+  customInputSection: {
+    marginBottom: 24,
+  },
+  customInputTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 12,
   },
   commissionInputContainer: {
     padding: 20,
     borderRadius: 16,
-    marginBottom: 20,
     borderWidth: 1,
     borderColor: colors.success + '30',
   },
@@ -1094,51 +1366,92 @@ const styles = StyleSheet.create({
   },
   commissionInput: {
     flex: 1,
-    fontSize: 32,
+    fontSize: 40,
     fontWeight: 'bold',
     textAlign: 'center',
   },
   commissionPercentSymbol: {
-    fontSize: 32,
+    fontSize: 40,
     fontWeight: 'bold',
     color: colors.success,
   },
   commissionHint: {
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 12,
   },
-  commissionStats: {
-    flexDirection: 'row',
-    gap: 12,
+  // Exemple de calcul
+  exampleCalculation: {
+    marginBottom: 20,
   },
-  commissionStatItem: {
-    flex: 1,
-    backgroundColor: colors.surface,
+  exampleCard: {
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.info + '30',
+  },
+  exampleHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
   },
-  commissionStatLabel: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 6,
-  },
-  commissionStatValue: {
-    fontSize: 18,
+  exampleTitle: {
+    fontSize: 14,
     fontWeight: 'bold',
+    color: colors.info,
+  },
+  exampleRow: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '30',
+  },
+  exampleLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  exampleValue: {
+    fontSize: 15,
+    fontWeight: '600',
     color: colors.text,
   },
+  // Actions
   commissionModalActions: {
     flexDirection: 'row',
     padding: 20,
+    paddingTop: 16,
     gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  commissionCancelButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 6,
+  },
+  commissionCancelButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
   commissionSaveButtonWrapper: {
-    flex: 1,
+    flex: 2,
     borderRadius: 12,
     overflow: 'hidden',
+    elevation: 4,
+    shadowColor: colors.success,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   commissionSaveButton: {
     paddingVertical: 14,
@@ -1148,7 +1461,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   commissionSaveButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#fff',
   },
