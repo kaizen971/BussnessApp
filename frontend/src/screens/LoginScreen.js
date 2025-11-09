@@ -100,7 +100,7 @@ export const LoginScreen = ({ navigation }) => {
             <View style={styles.iconContainer}>
               <Ionicons name="business-outline" size={60} color="#fff" />
             </View>
-            <Text style={styles.title}>BussnessApp</Text>
+            <Text style={styles.title}>BizFlow</Text>
             <Text style={styles.subtitle}>Gérez votre business intelligemment</Text>
           </Animated.View>
 

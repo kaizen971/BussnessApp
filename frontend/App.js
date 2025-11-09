@@ -17,6 +17,8 @@ import { FeedbackScreen } from './src/screens/FeedbackScreen';
 import { ProductsScreen } from './src/screens/ProductsScreen';
 import { TeamScreen } from './src/screens/TeamScreen';
 import { ProjectsScreen } from './src/screens/ProjectsScreen';
+import { PlanningScreen } from './src/screens/PlanningScreen';
+import { CommissionsScreen } from './src/screens/CommissionsScreen';
 import { colors } from './src/utils/colors';
 
 const Stack = createStackNavigator();
@@ -102,6 +104,16 @@ const MainStack = () => (
       name="Projects"
       component={ProjectsScreen}
       options={{ title: 'Projets', headerShown: false }}
+    />
+    <Stack.Screen
+      name="Planning"
+      component={PlanningScreen}
+      options={{ title: 'Planning', headerShown: false }}
+    />
+    <Stack.Screen
+      name="Commissions"
+      component={CommissionsScreen}
+      options={{ title: 'Commissions', headerShown: false }}
     />
   </Stack.Navigator>
 );

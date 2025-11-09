@@ -18,7 +18,7 @@ export const OnboardingScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Ionicons name="briefcase" size={80} color="#fff" />
-          <Text style={styles.appName}>BussnessApp</Text>
+          <Text style={styles.appName}>BizFlow</Text>
           <Text style={styles.slogan}>Valide ton idée. Pilote ton business. Simplement.</Text>
         </View>
 

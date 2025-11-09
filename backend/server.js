@@ -136,6 +136,8 @@ const UserSchema = new mongoose.Schema({
   projectIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Project' }], // Liste des projets pour un responsable
   fullName: String,
   isActive: { type: Boolean, default: true },
+  commissionRate: { type: Number, default: 0 }, // Taux de commission en % (ex: 5 pour 5%)
+  totalCommissions: { type: Number, default: 0 }, // Total des commissions gagnées
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -145,6 +147,34 @@ const FeedbackSchema = new mongoose.Schema({
   type: { type: String, enum: ['bug', 'feature', 'improvement', 'other'], required: true },
   message: { type: String, required: true },
   status: { type: String, enum: ['pending', 'in_review', 'resolved'], default: 'pending' },
+  createdAt: { type: Date, default: Date.now }
+});
+
+// Schema pour le planning des employés
+const ScheduleSchema = new mongoose.Schema({
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // L'employé concerné
+  date: { type: Date, required: true }, // Date du shift
+  startTime: { type: String, required: true }, // Heure de début (format: "09:00")
+  endTime: { type: String, required: true }, // Heure de fin (format: "17:00")
+  duration: { type: Number }, // Durée en heures (calculé automatiquement)
+  status: { type: String, enum: ['scheduled', 'completed', 'absent', 'cancelled'], default: 'scheduled' },
+  notes: String, // Notes supplémentaires
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Qui a créé ce planning
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+// Schema pour suivre les commissions des employés
+const CommissionSchema = new mongoose.Schema({
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  saleId: { type: mongoose.Schema.Types.ObjectId, ref: 'Sale', required: true },
+  amount: { type: Number, required: true }, // Montant de la commission
+  rate: { type: Number, required: true }, // Taux appliqué (%)
+  saleAmount: { type: Number, required: true }, // Montant de la vente
+  date: { type: Date, default: Date.now },
+  status: { type: String, enum: ['pending', 'paid'], default: 'pending' },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -158,6 +188,8 @@ const StockMovement = mongoose.model('StockMovement', StockMovementSchema);
 const Customer = mongoose.model('Customer', CustomerSchema);
 const User = mongoose.model('User', UserSchema);
 const Feedback = mongoose.model('Feedback', FeedbackSchema);
+const Schedule = mongoose.model('Schedule', ScheduleSchema);
+const Commission = mongoose.model('Commission', CommissionSchema);
 
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'bussnessapp_secret_key_2025';
@@ -277,7 +309,7 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
 
     // IMPORTANT: Lors de l'inscription, l'utilisateur devient automatiquement "responsable"
     // et non "cashier". Chaque responsable peut gérer plusieurs projets de business.
-    const userRole = role || 'responsable';
+    const userRole = role || 'admin';
 
     // Create user
     const user = new User({
@@ -919,6 +951,29 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
       console.log(`Stock mis à jour: ${stockItem.name} - ${previousQuantity} → ${stockItem.quantity}`);
     }
 
+    // NOUVEAU : Calcul automatique des commissions pour l'employé
+    const employee = await User.findById(req.user.id);
+    if (employee && employee.commissionRate > 0) {
+      const commissionAmount = (amount * employee.commissionRate) / 100;
+      
+      // Créer l'enregistrement de commission
+      const commission = new Commission({
+        projectId,
+        userId: req.user.id,
+        saleId: sale._id,
+        amount: commissionAmount,
+        rate: employee.commissionRate,
+        saleAmount: amount
+      });
+      await commission.save();
+
+      // Mettre à jour le total des commissions de l'employé
+      employee.totalCommissions += commissionAmount;
+      await employee.save();
+
+      console.log(`Commission créée: ${commissionAmount}€ pour ${employee.fullName}`);
+    }
+
     const populatedSale = await Sale.findById(sale._id)
       .populate('productId', 'name unitPrice')
       .populate('customerId', 'name phone')
@@ -1449,6 +1504,287 @@ app.put('/BussnessApp/users/:id/status', authenticateToken, checkRole('admin'), 
     }
     res.json(user);
   } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// ============= SCHEDULE ROUTES =============
+
+// Obtenir tous les plannings (avec filtres)
+app.get('/BussnessApp/schedules', authenticateToken, async (req, res) => {
+  try {
+    const { projectId, userId, startDate, endDate, status } = req.query;
+    const filter = {};
+
+    if (projectId) filter.projectId = projectId;
+    
+    // Les salariés ne voient que leur propre planning
+    if (req.user.role === 'cashier') {
+      filter.userId = req.user.id;
+    } else if (userId) {
+      filter.userId = userId;
+    }
+
+    if (status) filter.status = status;
+
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) filter.date.$lte = new Date(endDate);
+    }
+
+    const schedules = await Schedule.find(filter)
+      .populate('userId', 'username fullName role')
+      .populate('createdBy', 'username fullName')
+      .sort({ date: 1, startTime: 1 });
+
+    res.json({ data: schedules });
+  } catch (error) {
+    console.error('Error loading schedules:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Obtenir le planning d'un utilisateur spécifique
+app.get('/BussnessApp/schedules/user/:userId', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { startDate, endDate } = req.query;
+
+    // Vérifier que l'utilisateur a le droit de voir ce planning
+    if (req.user.role === 'cashier' && req.user.id !== userId) {
+      return res.status(403).json({ error: 'Accès non autorisé' });
+    }
+
+    const filter = { userId };
+
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) filter.date.$lte = new Date(endDate);
+    }
+
+    const schedules = await Schedule.find(filter)
+      .populate('createdBy', 'username fullName')
+      .sort({ date: 1, startTime: 1 });
+
+    // Calculer les statistiques
+    const totalHours = schedules
+      .filter(s => s.status === 'completed')
+      .reduce((sum, s) => sum + (s.duration || 0), 0);
+
+    const scheduledHours = schedules
+      .filter(s => s.status === 'scheduled')
+      .reduce((sum, s) => sum + (s.duration || 0), 0);
+
+    res.json({
+      data: schedules,
+      stats: {
+        totalSchedules: schedules.length,
+        totalHours,
+        scheduledHours,
+        completedShifts: schedules.filter(s => s.status === 'completed').length
+      }
+    });
+  } catch (error) {
+    console.error('Error loading user schedules:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Créer un nouveau planning
+app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+  try {
+    const { userId, date, startTime, endTime, notes, projectId } = req.body;
+
+    if (!userId || !date || !startTime || !endTime) {
+      return res.status(400).json({ error: 'Tous les champs requis doivent être remplis' });
+    }
+
+    // Calculer la durée
+    const start = new Date(`2000-01-01 ${startTime}`);
+    const end = new Date(`2000-01-01 ${endTime}`);
+    const duration = (end - start) / (1000 * 60 * 60); // Durée en heures
+
+    if (duration <= 0) {
+      return res.status(400).json({ error: 'L\'heure de fin doit être après l\'heure de début' });
+    }
+
+    const schedule = new Schedule({
+      projectId: projectId || req.user.projectId,
+      userId,
+      date: new Date(date),
+      startTime,
+      endTime,
+      duration,
+      notes,
+      createdBy: req.user.id
+    });
+
+    await schedule.save();
+
+    const populatedSchedule = await Schedule.findById(schedule._id)
+      .populate('userId', 'username fullName role')
+      .populate('createdBy', 'username fullName');
+
+    res.status(201).json({ data: populatedSchedule });
+  } catch (error) {
+    console.error('Error creating schedule:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Mettre à jour un planning
+app.put('/BussnessApp/schedules/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+  try {
+    const { date, startTime, endTime, status, notes } = req.body;
+    const schedule = await Schedule.findById(req.params.id);
+
+    if (!schedule) {
+      return res.status(404).json({ error: 'Planning non trouvé' });
+    }
+
+    // Calculer la nouvelle durée si les heures changent
+    if (startTime && endTime) {
+      const start = new Date(`2000-01-01 ${startTime}`);
+      const end = new Date(`2000-01-01 ${endTime}`);
+      const duration = (end - start) / (1000 * 60 * 60);
+
+      if (duration <= 0) {
+        return res.status(400).json({ error: 'L\'heure de fin doit être après l\'heure de début' });
+      }
+
+      schedule.duration = duration;
+    }
+
+    if (date) schedule.date = new Date(date);
+    if (startTime) schedule.startTime = startTime;
+    if (endTime) schedule.endTime = endTime;
+    if (status) schedule.status = status;
+    if (notes !== undefined) schedule.notes = notes;
+    schedule.updatedAt = Date.now();
+
+    await schedule.save();
+
+    const populatedSchedule = await Schedule.findById(schedule._id)
+      .populate('userId', 'username fullName role')
+      .populate('createdBy', 'username fullName');
+
+    res.json({ data: populatedSchedule });
+  } catch (error) {
+    console.error('Error updating schedule:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Supprimer un planning
+app.delete('/BussnessApp/schedules/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+  try {
+    const schedule = await Schedule.findByIdAndDelete(req.params.id);
+    
+    if (!schedule) {
+      return res.status(404).json({ error: 'Planning non trouvé' });
+    }
+
+    res.json({ message: 'Planning supprimé avec succès' });
+  } catch (error) {
+    console.error('Error deleting schedule:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= COMMISSION ROUTES =============
+
+// Obtenir les commissions
+app.get('/BussnessApp/commissions', authenticateToken, async (req, res) => {
+  try {
+    const { projectId, userId, status, startDate, endDate } = req.query;
+    const filter = {};
+
+    if (projectId) filter.projectId = projectId;
+
+    // Les salariés ne voient que leurs propres commissions
+    if (req.user.role === 'cashier') {
+      filter.userId = req.user.id;
+    } else if (userId) {
+      filter.userId = userId;
+    }
+
+    if (status) filter.status = status;
+
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) filter.date.$lte = new Date(endDate);
+    }
+
+    const commissions = await Commission.find(filter)
+      .populate('userId', 'username fullName commissionRate')
+      .populate('saleId', 'amount quantity')
+      .sort({ date: -1 });
+
+    // Calculer le total
+    const total = commissions.reduce((sum, c) => sum + c.amount, 0);
+    const pending = commissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + c.amount, 0);
+    const paid = commissions.filter(c => c.status === 'paid').reduce((sum, c) => sum + c.amount, 0);
+
+    res.json({
+      data: commissions,
+      stats: {
+        total,
+        pending,
+        paid,
+        count: commissions.length
+      }
+    });
+  } catch (error) {
+    console.error('Error loading commissions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Marquer une commission comme payée
+app.put('/BussnessApp/commissions/:id/pay', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+  try {
+    const commission = await Commission.findByIdAndUpdate(
+      req.params.id,
+      { status: 'paid' },
+      { new: true }
+    ).populate('userId', 'username fullName');
+
+    if (!commission) {
+      return res.status(404).json({ error: 'Commission non trouvée' });
+    }
+
+    res.json({ data: commission });
+  } catch (error) {
+    console.error('Error updating commission:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Mettre à jour le taux de commission d'un utilisateur
+app.put('/BussnessApp/users/:id/commission', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+  try {
+    const { commissionRate } = req.body;
+
+    if (commissionRate === undefined || commissionRate < 0 || commissionRate > 100) {
+      return res.status(400).json({ error: 'Taux de commission invalide (0-100%)' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { commissionRate },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    res.json({ data: user });
+  } catch (error) {
+    console.error('Error updating commission rate:', error);
     res.status(400).json({ error: error.message });
   }
 });

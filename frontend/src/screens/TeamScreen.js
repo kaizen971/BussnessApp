@@ -27,7 +27,9 @@ export const TeamScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [roleModalVisible, setRoleModalVisible] = useState(false);
+  const [commissionModalVisible, setCommissionModalVisible] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [commissionRate, setCommissionRate] = useState('0');
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -101,6 +103,32 @@ export const TeamScreen = ({ navigation }) => {
     setRoleModalVisible(true);
   };
 
+  const openCommissionModal = (user) => {
+    setSelectedUser(user);
+    setCommissionRate(user.commissionRate?.toString() || '0');
+    setCommissionModalVisible(true);
+  };
+
+  const handleUpdateCommission = async () => {
+    if (!selectedUser) return;
+    
+    const rate = parseFloat(commissionRate);
+    if (isNaN(rate) || rate < 0 || rate > 100) {
+      Alert.alert('Erreur', 'Le taux doit être entre 0 et 100%');
+      return;
+    }
+
+    try {
+      await api.put(`/users/${selectedUser._id}/commission`, { commissionRate: rate });
+      setCommissionModalVisible(false);
+      setSelectedUser(null);
+      loadUsers();
+      Alert.alert('Succès', 'Taux de commission modifié avec succès');
+    } catch (error) {
+      Alert.alert('Erreur', 'Impossible de modifier le taux de commission');
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       username: '',
@@ -118,7 +146,7 @@ export const TeamScreen = ({ navigation }) => {
       case 'manager':
         return { label: 'Responsable', icon: 'star', color: colors.warning };
       case 'cashier':
-        return { label: 'Caissier', icon: 'person', color: colors.info };
+        return { label: 'Salarié', icon: 'person', color: colors.info };
       default:
         return { label: role, icon: 'person', color: colors.textSecondary };
     }
@@ -172,6 +200,26 @@ export const TeamScreen = ({ navigation }) => {
           <Text style={styles.rolePermissions}>{getRolePermissions(item.role)}</Text>
         </View>
 
+        {/* Section commissions */}
+        <View style={styles.commissionSection}>
+          <View style={styles.commissionRow}>
+            <View style={styles.commissionInfo}>
+              <Ionicons name="cash-outline" size={20} color={colors.success} />
+              <View style={styles.commissionTextContainer}>
+                <Text style={styles.commissionLabel}>Commission</Text>
+                <Text style={styles.commissionValue}>{item.commissionRate || 0}%</Text>
+              </View>
+            </View>
+            <View style={styles.commissionInfo}>
+              <Ionicons name="wallet-outline" size={20} color={colors.accent} />
+              <View style={styles.commissionTextContainer}>
+                <Text style={styles.commissionLabel}>Total gagné</Text>
+                <Text style={styles.commissionValue}>{(item.totalCommissions || 0).toFixed(2)} €</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
         <View style={styles.userActions}>
           <TouchableOpacity
             style={styles.actionButton}
@@ -187,13 +235,23 @@ export const TeamScreen = ({ navigation }) => {
             </Text>
           </TouchableOpacity>
 
-          {item.role !== 'admin' && (
+          {item.role !== 'admin' && (user?.role === 'admin') && (
             <TouchableOpacity
               style={styles.actionButton}
               onPress={() => openRoleModal(item)}
             >
               <Ionicons name="swap-horizontal" size={20} color={colors.primary} />
               <Text style={[styles.actionButtonText, { color: colors.primary }]}>Changer rôle</Text>
+            </TouchableOpacity>
+          )}
+
+          {(user?.role === 'admin' || user?.role === 'responsable' || user?.role === 'manager') && (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => openCommissionModal(item)}
+            >
+              <Ionicons name="cash" size={20} color={colors.success} />
+              <Text style={[styles.actionButtonText, { color: colors.success }]}>Commission</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -438,7 +496,7 @@ export const TeamScreen = ({ navigation }) => {
                 >
                   <Ionicons name="person" size={32} color={colors.info} />
                   <View style={styles.roleOptionContent}>
-                    <Text style={styles.roleOptionTitle}>Caissier</Text>
+                    <Text style={styles.roleOptionTitle}>Salarié</Text>
                     <Text style={styles.roleOptionDescription}>
                       Ajout de ventes et consultation du catalogue
                     </Text>
@@ -495,6 +553,89 @@ export const TeamScreen = ({ navigation }) => {
             >
               <Text style={styles.roleCancelButtonText}>Annuler</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de modification de commission */}
+      <Modal 
+        visible={commissionModalVisible} 
+        animationType="fade" 
+        transparent
+        onRequestClose={() => setCommissionModalVisible(false)}
+      >
+        <View style={styles.roleModalOverlay}>
+          <View style={styles.roleModalContainer}>
+            <View style={styles.roleModalHeader}>
+              <Ionicons name="cash" size={32} color={colors.success} />
+              <Text style={styles.roleModalTitle}>Modifier la commission</Text>
+              {selectedUser && (
+                <Text style={styles.roleModalSubtitle}>{selectedUser.fullName}</Text>
+              )}
+            </View>
+
+            <View style={styles.commissionModalContent}>
+              <LinearGradient
+                colors={[colors.success + '20', colors.success + '10']}
+                style={styles.commissionInputContainer}
+              >
+                <View style={styles.commissionInputWrapper}>
+                  <Ionicons name="percent-outline" size={24} color={colors.success} />
+                  <Input
+                    placeholder="0"
+                    value={commissionRate}
+                    onChangeText={setCommissionRate}
+                    keyboardType="decimal-pad"
+                    style={styles.commissionInput}
+                  />
+                  <Text style={styles.commissionPercentSymbol}>%</Text>
+                </View>
+                <Text style={styles.commissionHint}>
+                  Taux de commission par vente (0-100%)
+                </Text>
+              </LinearGradient>
+
+              {selectedUser && selectedUser.totalCommissions > 0 && (
+                <View style={styles.commissionStats}>
+                  <View style={styles.commissionStatItem}>
+                    <Text style={styles.commissionStatLabel}>Total gagné</Text>
+                    <Text style={styles.commissionStatValue}>
+                      {(selectedUser.totalCommissions || 0).toFixed(2)} €
+                    </Text>
+                  </View>
+                  <View style={styles.commissionStatItem}>
+                    <Text style={styles.commissionStatLabel}>Taux actuel</Text>
+                    <Text style={styles.commissionStatValue}>
+                      {selectedUser.commissionRate || 0}%
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.commissionModalActions}>
+              <TouchableOpacity
+                style={styles.roleCancelButton}
+                onPress={() => {
+                  setCommissionModalVisible(false);
+                  setSelectedUser(null);
+                }}
+              >
+                <Text style={styles.roleCancelButtonText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.commissionSaveButtonWrapper}
+                onPress={handleUpdateCommission}
+              >
+                <LinearGradient
+                  colors={[colors.success, colors.success + 'DD']}
+                  style={styles.commissionSaveButton}
+                >
+                  <Ionicons name="checkmark" size={20} color="#fff" />
+                  <Text style={styles.commissionSaveButtonText}>Valider</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -904,5 +1045,111 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.textSecondary,
+  },
+  // Styles pour la section commissions
+  commissionSection: {
+    marginBottom: 15,
+    padding: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+  },
+  commissionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  commissionInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  commissionTextContainer: {
+    gap: 2,
+  },
+  commissionLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  commissionValue: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  // Styles pour le modal de commission
+  commissionModalContent: {
+    padding: 20,
+  },
+  commissionInputContainer: {
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.success + '30',
+  },
+  commissionInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  commissionInput: {
+    flex: 1,
+    fontSize: 32,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  commissionPercentSymbol: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: colors.success,
+  },
+  commissionHint: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  commissionStats: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  commissionStatItem: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  commissionStatLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 6,
+  },
+  commissionStatValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  commissionModalActions: {
+    flexDirection: 'row',
+    padding: 20,
+    gap: 12,
+  },
+  commissionSaveButtonWrapper: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  commissionSaveButton: {
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  commissionSaveButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
   },
 });

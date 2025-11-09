@@ -25,6 +25,7 @@ const screenWidth = Dimensions.get('window').width;
 
 export const DashboardScreen = ({ navigation }) => {
   const { user, logout, selectedProjectId, availableProjects } = useAuth();
+  console.log(user)
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -32,6 +33,8 @@ export const DashboardScreen = ({ navigation }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const modalSlideAnim = useRef(new Animated.Value(0)).current;
+  const isAdmin = user?.role === 'admin' || user?.role === 'responsable';
+
   console.log(user)
 
   useEffect(() => {
@@ -181,7 +184,7 @@ export const DashboardScreen = ({ navigation }) => {
                 <View style={styles.roleContainer}>
                   <Ionicons name="shield-checkmark" size={14} color={colors.primary} />
                   <Text style={styles.userRole}>
-                    {user?.role === 'admin' ? 'Administrateur' : user?.role === 'responsable' ? 'Responsable' : 'Caissier'}
+                    {user?.role === 'admin' ? 'Administrateur' : user?.role === 'manager' ? 'Responsable' : 'Salarié'}
                   </Text>
                 </View>
               </View>
@@ -215,7 +218,7 @@ export const DashboardScreen = ({ navigation }) => {
           </Card>
         )}
 
-      {stats && (
+      {stats && isAdmin && (
         <TouchableOpacity style={styles.statsButton} onPress={openStatsModal} activeOpacity={0.8}>
           <LinearGradient
             colors={[colors.primary, colors.accent]}
@@ -239,12 +242,12 @@ export const DashboardScreen = ({ navigation }) => {
 
       <Text style={styles.sectionTitle}>Actions rapides</Text>
       <View style={styles.actionsGrid}>
-        <QuickActionButton
+        {isAdmin && <QuickActionButton
           title="Simulation"
           icon="calculator-outline"
           color={colors.primary}
           onPress={() => navigation.navigate('Simulation')}
-        />
+        />}
         <QuickActionButton
           title="Ventes"
           icon="cart-outline"
@@ -275,11 +278,23 @@ export const DashboardScreen = ({ navigation }) => {
           color={colors.warning}
           onPress={() => navigation.navigate('Products')}
         />
-        <QuickActionButton
+        {isAdmin && <QuickActionButton
           title="Équipe"
           icon="people"
           color={colors.info}
           onPress={() => navigation.navigate('Team')}
+        />}
+        <QuickActionButton
+          title="Planning"
+          icon="calendar"
+          color={colors.primary}
+          onPress={() => navigation.navigate('Planning')}
+        />
+        <QuickActionButton
+          title="Commissions"
+          icon="cash"
+          color={colors.success}
+          onPress={() => navigation.navigate('Commissions')}
         />
         <QuickActionButton
           title="Feedback"
