@@ -28,8 +28,10 @@ export const TeamScreen = ({ navigation }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [roleModalVisible, setRoleModalVisible] = useState(false);
   const [commissionModalVisible, setCommissionModalVisible] = useState(false);
+  const [salaryModalVisible, setSalaryModalVisible] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [commissionRate, setCommissionRate] = useState('0');
+  const [hourlyRate, setHourlyRate] = useState('0');
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -129,6 +131,32 @@ export const TeamScreen = ({ navigation }) => {
     }
   };
 
+  const openSalaryModal = (user) => {
+    setSelectedUser(user);
+    setHourlyRate(user.hourlyRate?.toString() || '0');
+    setSalaryModalVisible(true);
+  };
+
+  const handleUpdateHourlyRate = async () => {
+    if (!selectedUser) return;
+    
+    const rate = parseFloat(hourlyRate);
+    if (isNaN(rate) || rate < 0) {
+      Alert.alert('Erreur', 'Le salaire horaire doit être un nombre positif');
+      return;
+    }
+
+    try {
+      await api.put(`/users/${selectedUser._id}/hourly-rate`, { hourlyRate: rate });
+      setSalaryModalVisible(false);
+      setSelectedUser(null);
+      loadUsers();
+      Alert.alert('Succès', 'Salaire horaire modifié avec succès');
+    } catch (error) {
+      Alert.alert('Erreur', 'Impossible de modifier le salaire horaire');
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       username: '',
@@ -200,9 +228,16 @@ export const TeamScreen = ({ navigation }) => {
           <Text style={styles.rolePermissions}>{getRolePermissions(item.role)}</Text>
         </View>
 
-        {/* Section commissions */}
+        {/* Section rémunération */}
         <View style={styles.commissionSection}>
-          <View style={styles.commissionRow}>
+          <View style={styles.compensationGrid}>
+            <View style={styles.commissionInfo}>
+              <Ionicons name="time-outline" size={20} color={colors.info} />
+              <View style={styles.commissionTextContainer}>
+                <Text style={styles.commissionLabel}>Salaire horaire</Text>
+                <Text style={styles.commissionValue}>{(item.hourlyRate || 0).toFixed(2)} €/h</Text>
+              </View>
+            </View>
             <View style={styles.commissionInfo}>
               <Ionicons name="cash-outline" size={20} color={colors.success} />
               <View style={styles.commissionTextContainer}>
@@ -210,10 +245,12 @@ export const TeamScreen = ({ navigation }) => {
                 <Text style={styles.commissionValue}>{item.commissionRate || 0}%</Text>
               </View>
             </View>
+          </View>
+          <View style={styles.commissionRow}>
             <View style={styles.commissionInfo}>
               <Ionicons name="wallet-outline" size={20} color={colors.accent} />
               <View style={styles.commissionTextContainer}>
-                <Text style={styles.commissionLabel}>Total gagné</Text>
+                <Text style={styles.commissionLabel}>Total commissions</Text>
                 <Text style={styles.commissionValue}>{(item.totalCommissions || 0).toFixed(2)} €</Text>
               </View>
             </View>
@@ -246,13 +283,22 @@ export const TeamScreen = ({ navigation }) => {
           )}
 
           {(user?.role === 'admin' || user?.role === 'responsable' || user?.role === 'manager') && (
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => openCommissionModal(item)}
-            >
-              <Ionicons name="cash" size={20} color={colors.success} />
-              <Text style={[styles.actionButtonText, { color: colors.success }]}>Commission</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => openSalaryModal(item)}
+              >
+                <Ionicons name="time" size={20} color={colors.info} />
+                <Text style={[styles.actionButtonText, { color: colors.info }]}>Salaire</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => openCommissionModal(item)}
+              >
+                <Ionicons name="cash" size={20} color={colors.success} />
+                <Text style={[styles.actionButtonText, { color: colors.success }]}>Commission</Text>
+              </TouchableOpacity>
+            </>
           )}
         </View>
 
@@ -760,6 +806,203 @@ export const TeamScreen = ({ navigation }) => {
           </View>
         </View>
       </Modal>
+
+      {/* Modal de modification du salaire horaire */}
+      <Modal 
+        visible={salaryModalVisible} 
+        animationType="slide" 
+        transparent
+        onRequestClose={() => setSalaryModalVisible(false)}
+      >
+        <View style={styles.commissionModalOverlay}>
+          <TouchableOpacity 
+            style={styles.commissionModalBackdrop}
+            activeOpacity={1}
+            onPress={() => {
+              setSalaryModalVisible(false);
+              setSelectedUser(null);
+            }}
+          />
+          <View style={styles.commissionModalContainer}>
+            <View style={styles.commissionModalHandle}>
+              <View style={styles.commissionModalHandleLine} />
+            </View>
+
+            <LinearGradient
+              colors={[colors.info + '20', colors.info + '05']}
+              style={styles.commissionModalHeader}
+            >
+              <View style={styles.commissionUserAvatar}>
+                <LinearGradient
+                  colors={[colors.info, colors.info + 'DD']}
+                  style={styles.commissionAvatarGradient}
+                >
+                  <Ionicons name="person" size={32} color="#fff" />
+                </LinearGradient>
+              </View>
+              <View style={styles.commissionHeaderText}>
+                <Text style={styles.commissionModalTitle}>💶 Modifier le salaire horaire</Text>
+                {selectedUser && (
+                  <Text style={styles.commissionModalSubtitle}>{selectedUser.fullName}</Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={styles.commissionCloseButton}
+                onPress={() => {
+                  setSalaryModalVisible(false);
+                  setSelectedUser(null);
+                }}
+              >
+                <Ionicons name="close-circle" size={28} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </LinearGradient>
+
+            <ScrollView 
+              style={styles.commissionModalContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {selectedUser && (
+                <View style={styles.currentCommissionStats}>
+                  <LinearGradient
+                    colors={[colors.primary + '15', colors.primary + '05']}
+                    style={styles.currentStatCard}
+                  >
+                    <Ionicons name="time-outline" size={24} color={colors.primary} />
+                    <View style={styles.currentStatContent}>
+                      <Text style={styles.currentStatLabel}>Actuel</Text>
+                      <Text style={styles.currentStatValue}>{(selectedUser.hourlyRate || 0).toFixed(2)} €/h</Text>
+                    </View>
+                  </LinearGradient>
+                  <LinearGradient
+                    colors={[colors.accent + '15', colors.accent + '05']}
+                    style={styles.currentStatCard}
+                  >
+                    <Ionicons name="calculator" size={24} color={colors.accent} />
+                    <View style={styles.currentStatContent}>
+                      <Text style={styles.currentStatLabel}>Mensuel estimé</Text>
+                      <Text style={styles.currentStatValue}>
+                        {((selectedUser.hourlyRate || 0) * 35 * 4.33).toFixed(2)} €
+                      </Text>
+                    </View>
+                  </LinearGradient>
+                </View>
+              )}
+
+              <View style={styles.quickSelectContainer}>
+                <Text style={styles.quickSelectTitle}>⚡ Sélection rapide</Text>
+                <View style={styles.quickSelectButtons}>
+                  {[10, 12, 15, 18, 20].map((rate) => (
+                    <TouchableOpacity
+                      key={rate}
+                      style={[
+                        styles.quickSelectButton,
+                        hourlyRate === rate.toString() && styles.quickSelectButtonActive
+                      ]}
+                      onPress={() => setHourlyRate(rate.toString())}
+                    >
+                      <LinearGradient
+                        colors={
+                          hourlyRate === rate.toString()
+                            ? [colors.info, colors.info + 'DD']
+                            : [colors.surface, colors.surface]
+                        }
+                        style={styles.quickSelectButtonGradient}
+                      >
+                        <Text style={[
+                          styles.quickSelectButtonText,
+                          hourlyRate === rate.toString() && styles.quickSelectButtonTextActive
+                        ]}>
+                          {rate}€
+                        </Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.customInputSection}>
+                <Text style={styles.customInputTitle}>🎯 Salaire personnalisé</Text>
+                <LinearGradient
+                  colors={[colors.info + '15', colors.info + '08']}
+                  style={styles.commissionInputContainer}
+                >
+                  <View style={styles.commissionInputWrapper}>
+                    <Ionicons name="time-outline" size={28} color={colors.info} />
+                    <Input
+                      placeholder="0"
+                      value={hourlyRate}
+                      onChangeText={setHourlyRate}
+                      keyboardType="decimal-pad"
+                      style={styles.commissionInput}
+                    />
+                    <Text style={styles.commissionPercentSymbol}>€/h</Text>
+                  </View>
+                  <Text style={styles.commissionHint}>
+                    Salaire par heure de travail
+                  </Text>
+                </LinearGradient>
+              </View>
+
+              {hourlyRate && parseFloat(hourlyRate) > 0 && (
+                <View style={styles.exampleCalculation}>
+                  <LinearGradient
+                    colors={[colors.success + '15', colors.success + '05']}
+                    style={styles.exampleCard}
+                  >
+                    <View style={styles.exampleHeader}>
+                      <Ionicons name="calculator-outline" size={20} color={colors.success} />
+                      <Text style={styles.exampleTitle}>Estimation de salaire</Text>
+                    </View>
+                    <View style={styles.exampleRow}>
+                      <Text style={styles.exampleLabel}>8h de travail</Text>
+                      <Text style={styles.exampleValue}>
+                        → {(8 * parseFloat(hourlyRate)).toFixed(2)} € / jour
+                      </Text>
+                    </View>
+                    <View style={styles.exampleRow}>
+                      <Text style={styles.exampleLabel}>35h / semaine</Text>
+                      <Text style={styles.exampleValue}>
+                        → {(35 * parseFloat(hourlyRate)).toFixed(2)} € / semaine
+                      </Text>
+                    </View>
+                    <View style={styles.exampleRow}>
+                      <Text style={styles.exampleLabel}>151.67h / mois (35h)</Text>
+                      <Text style={styles.exampleValue}>
+                        → {(151.67 * parseFloat(hourlyRate)).toFixed(2)} € / mois
+                      </Text>
+                    </View>
+                  </LinearGradient>
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={styles.commissionModalActions}>
+              <TouchableOpacity
+                style={styles.commissionCancelButton}
+                onPress={() => {
+                  setSalaryModalVisible(false);
+                  setSelectedUser(null);
+                }}
+              >
+                <Ionicons name="close-outline" size={22} color={colors.textSecondary} />
+                <Text style={styles.commissionCancelButtonText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.commissionSaveButtonWrapper}
+                onPress={handleUpdateHourlyRate}
+              >
+                <LinearGradient
+                  colors={[colors.info, colors.info + 'DD']}
+                  style={styles.commissionSaveButton}
+                >
+                  <Ionicons name="checkmark-circle" size={22} color="#fff" />
+                  <Text style={styles.commissionSaveButtonText}>Valider le salaire</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1173,6 +1416,11 @@ const styles = StyleSheet.create({
     padding: 12,
     backgroundColor: colors.surface,
     borderRadius: 12,
+  },
+  compensationGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
   commissionRow: {
     flexDirection: 'row',

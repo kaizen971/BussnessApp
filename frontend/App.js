@@ -19,6 +19,7 @@ import { TeamScreen } from './src/screens/TeamScreen';
 import { ProjectsScreen } from './src/screens/ProjectsScreen';
 import { PlanningScreen } from './src/screens/PlanningScreen';
 import { CommissionsScreen } from './src/screens/CommissionsScreen';
+import ImportScreen from './src/screens/ImportScreen';
 import { colors } from './src/utils/colors';
 
 const Stack = createStackNavigator();
@@ -114,6 +115,11 @@ const MainStack = () => (
       name="Commissions"
       component={CommissionsScreen}
       options={{ title: 'Commissions', headerShown: false }}
+    />
+    <Stack.Screen
+      name="Import"
+      component={ImportScreen}
+      options={{ title: 'Import Excel', headerShown: false }}
     />
   </Stack.Navigator>
 );

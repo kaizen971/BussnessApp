@@ -26,6 +26,8 @@ export const PlanningScreen = ({ navigation }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [salaryModalVisible, setSalaryModalVisible] = useState(false);
+  const [salaryStats, setSalaryStats] = useState(null);
   const [selectedWeek, setSelectedWeek] = useState(new Date());
   const [viewMode, setViewMode] = useState('week'); // 'week' ou 'list'
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -255,6 +257,26 @@ export const PlanningScreen = ({ navigation }) => {
       .reduce((sum, s) => sum + (s.duration || 0), 0);
   };
 
+  const loadSalaryStats = async () => {
+    try {
+      setLoading(true);
+      const now = new Date();
+      const response = await api.get(`/users/${user.id}/salary-stats`, {
+        params: {
+          month: now.getMonth() + 1,
+          year: now.getFullYear()
+        }
+      });
+      setSalaryStats(response.data);
+      setSalaryModalVisible(true);
+    } catch (error) {
+      console.error('Erreur chargement salaire:', error);
+      Alert.alert('Erreur', 'Impossible de charger les statistiques de salaire');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const renderWeekView = () => {
     const weekDays = getWeekDays();
     
@@ -416,6 +438,27 @@ export const PlanningScreen = ({ navigation }) => {
           <Text style={styles.statLabel}>Heures</Text>
         </LinearGradient>
       </LinearGradient>
+
+      {/* Bouton pour voir le salaire mensuel */}
+      <TouchableOpacity 
+        style={styles.salaryButton} 
+        onPress={loadSalaryStats}
+        activeOpacity={0.8}
+      >
+        <LinearGradient
+          colors={[colors.accent, colors.accent + 'DD']}
+          style={styles.salaryButtonGradient}
+        >
+          <View style={styles.salaryButtonContent}>
+            <Ionicons name="wallet" size={28} color="#fff" />
+            <View style={styles.salaryButtonTextContainer}>
+              <Text style={styles.salaryButtonTitle}>💰 Mon Salaire Mensuel</Text>
+              <Text style={styles.salaryButtonSubtitle}>Voir le détail de ma rémunération</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={24} color="#fff" />
+        </LinearGradient>
+      </TouchableOpacity>
 
       {renderWeekView()}
 
@@ -665,6 +708,204 @@ export const PlanningScreen = ({ navigation }) => {
                       </Text>
                     </>
                   )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+        </View>
+      </Modal>
+
+      {/* Modal de visualisation du salaire mensuel */}
+      <Modal visible={salaryModalVisible} animationType="slide" transparent>
+        <View style={styles.modalContainer}>
+          <LinearGradient
+            colors={[colors.surface, colors.background]}
+            style={styles.modalContent}
+          >
+            <View style={styles.modalHeaderContainer}>
+              <LinearGradient
+                colors={[colors.accent + '30', colors.accent + '10']}
+                style={styles.modalHeaderGradient}
+              >
+                <View style={styles.modalIconContainer}>
+                  <LinearGradient
+                    colors={[colors.accent, colors.accent + 'DD']}
+                    style={styles.modalIcon}
+                  >
+                    <Ionicons name="wallet" size={28} color="#fff" />
+                  </LinearGradient>
+                </View>
+                <View style={styles.modalTitleContainer}>
+                  <Text style={styles.modalTitle}>💰 Mon Salaire</Text>
+                  <Text style={styles.modalSubtitle}>
+                    {salaryStats?.period?.label || 'Mois actuel'}
+                  </Text>
+                </View>
+              </LinearGradient>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setSalaryModalVisible(false)}
+              >
+                <Ionicons name="close-circle" size={32} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalForm} showsVerticalScrollIndicator={false}>
+              {salaryStats && (
+                <>
+                  {/* Résumé financier */}
+                  <View style={styles.salarySection}>
+                    <Text style={styles.salarySectionTitle}>📊 Résumé Financier</Text>
+                    <View style={styles.salaryStatsGrid}>
+                      <LinearGradient
+                        colors={[colors.primary + '15', colors.primary + '08']}
+                        style={styles.salaryStatCard}
+                      >
+                        <Ionicons name="cash" size={32} color={colors.primary} />
+                        <Text style={styles.salaryStatValue}>
+                          {salaryStats.salary.hourly.toFixed(2)} €
+                        </Text>
+                        <Text style={styles.salaryStatLabel}>Salaire horaire</Text>
+                        <Text style={styles.salaryStatDetail}>
+                          {salaryStats.hours.total}h × {salaryStats.user.hourlyRate}€/h
+                        </Text>
+                      </LinearGradient>
+
+                      <LinearGradient
+                        colors={[colors.success + '15', colors.success + '08']}
+                        style={styles.salaryStatCard}
+                      >
+                        <Ionicons name="trending-up" size={32} color={colors.success} />
+                        <Text style={styles.salaryStatValue}>
+                          {salaryStats.salary.commissions.toFixed(2)} €
+                        </Text>
+                        <Text style={styles.salaryStatLabel}>Commissions</Text>
+                        <Text style={styles.salaryStatDetail}>
+                          {salaryStats.user.commissionRate}% sur ventes
+                        </Text>
+                      </LinearGradient>
+                    </View>
+
+                    <LinearGradient
+                      colors={[colors.accent + '20', colors.accent + '08']}
+                      style={styles.totalSalaryCard}
+                    >
+                      <View style={styles.totalSalaryContent}>
+                        <Ionicons name="wallet" size={40} color={colors.accent} />
+                        <View style={styles.totalSalaryText}>
+                          <Text style={styles.totalSalaryLabel}>Salaire Total</Text>
+                          <Text style={styles.totalSalaryValue}>
+                            {salaryStats.salary.total.toFixed(2)} €
+                          </Text>
+                          <Text style={styles.totalSalarySubtext}>
+                            Pour le mois de {salaryStats.period.label}
+                          </Text>
+                        </View>
+                      </View>
+                    </LinearGradient>
+                  </View>
+
+                  {/* Détail des heures */}
+                  <View style={styles.salarySection}>
+                    <Text style={styles.salarySectionTitle}>⏱️ Détail des Heures</Text>
+                    <View style={styles.hoursDetailGrid}>
+                      <View style={styles.hoursDetailItem}>
+                        <Ionicons name="time-outline" size={24} color={colors.info} />
+                        <Text style={styles.hoursDetailLabel}>Total heures</Text>
+                        <Text style={styles.hoursDetailValue}>
+                          {salaryStats.hours.total}h
+                        </Text>
+                      </View>
+                      <View style={styles.hoursDetailItem}>
+                        <Ionicons name="checkmark-circle" size={24} color={colors.success} />
+                        <Text style={styles.hoursDetailLabel}>Jours travaillés</Text>
+                        <Text style={styles.hoursDetailValue}>
+                          {salaryStats.hours.completed}
+                        </Text>
+                      </View>
+                      <View style={styles.hoursDetailItem}>
+                        <Ionicons name="stats-chart" size={24} color={colors.primary} />
+                        <Text style={styles.hoursDetailLabel}>Moyenne/jour</Text>
+                        <Text style={styles.hoursDetailValue}>
+                          {salaryStats.hours.average}h
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Détail des commissions */}
+                  {salaryStats.commissions.count > 0 && (
+                    <View style={styles.salarySection}>
+                      <Text style={styles.salarySectionTitle}>💸 Détail des Commissions</Text>
+                      <View style={styles.commissionsDetail}>
+                        <View style={styles.commissionDetailRow}>
+                          <Text style={styles.commissionDetailLabel}>Total commissions</Text>
+                          <Text style={styles.commissionDetailValue}>
+                            {salaryStats.commissions.total.toFixed(2)} €
+                          </Text>
+                        </View>
+                        <View style={styles.commissionDetailRow}>
+                          <Text style={styles.commissionDetailLabel}>En attente</Text>
+                          <Text style={[styles.commissionDetailValue, { color: colors.warning }]}>
+                            {salaryStats.commissions.pending.toFixed(2)} €
+                          </Text>
+                        </View>
+                        <View style={styles.commissionDetailRow}>
+                          <Text style={styles.commissionDetailLabel}>Payées</Text>
+                          <Text style={[styles.commissionDetailValue, { color: colors.success }]}>
+                            {salaryStats.commissions.paid.toFixed(2)} €
+                          </Text>
+                        </View>
+                        <View style={styles.commissionDetailRow}>
+                          <Text style={styles.commissionDetailLabel}>Nombre de ventes</Text>
+                          <Text style={styles.commissionDetailValue}>
+                            {salaryStats.commissions.count}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Statistiques hebdomadaires */}
+                  {salaryStats.weeklyStats && salaryStats.weeklyStats.length > 0 && (
+                    <View style={styles.salarySection}>
+                      <Text style={styles.salarySectionTitle}>📅 Détail Hebdomadaire</Text>
+                      {salaryStats.weeklyStats.map((week, index) => (
+                        <LinearGradient
+                          key={index}
+                          colors={[colors.surface, colors.surface]}
+                          style={styles.weeklyStatCard}
+                        >
+                          <View style={styles.weeklyStatHeader}>
+                            <Text style={styles.weeklyStatWeek}>{week.week}</Text>
+                            <Text style={styles.weeklyStatSalary}>
+                              {week.salary.toFixed(2)} €
+                            </Text>
+                          </View>
+                          <View style={styles.weeklyStatDetails}>
+                            <Text style={styles.weeklyStatDetail}>
+                              {week.hours}h sur {week.days} jour(s)
+                            </Text>
+                          </View>
+                        </LinearGradient>
+                      ))}
+                    </View>
+                  )}
+                </>
+              )}
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.saveButtonWrapper}
+                onPress={() => setSalaryModalVisible(false)}
+              >
+                <LinearGradient
+                  colors={[colors.accent, colors.accent + 'DD']}
+                  style={styles.saveButton}
+                >
+                  <Ionicons name="checkmark" size={20} color="#fff" />
+                  <Text style={styles.saveButtonText}>Fermer</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -1118,5 +1359,193 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#000',
+  },
+  // Styles pour le bouton de salaire
+  salaryButton: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+    elevation: 4,
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  salaryButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  salaryButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  salaryButtonTextContainer: {
+    gap: 4,
+  },
+  salaryButtonTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  salaryButtonSubtitle: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.9,
+  },
+  // Styles pour la modal de salaire
+  salarySection: {
+    marginBottom: 24,
+  },
+  salarySectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  salaryStatsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  salaryStatCard: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 8,
+  },
+  salaryStatValue: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  salaryStatLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  salaryStatDetail: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  totalSalaryCard: {
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.accent + '30',
+  },
+  totalSalaryContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  totalSalaryText: {
+    flex: 1,
+  },
+  totalSalaryLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  totalSalaryValue: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  totalSalarySubtext: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+  },
+  hoursDetailGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  hoursDetailItem: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  hoursDetailLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  hoursDetailValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  commissionsDetail: {
+    backgroundColor: colors.surface,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 12,
+  },
+  commissionDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '30',
+  },
+  commissionDetailLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  commissionDetailValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  weeklyStatCard: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  weeklyStatHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  weeklyStatWeek: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  weeklyStatSalary: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.accent,
+  },
+  weeklyStatDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  weeklyStatDetail: {
+    fontSize: 13,
+    color: colors.textSecondary,
   },
 });

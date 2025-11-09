@@ -296,6 +296,12 @@ export const DashboardScreen = ({ navigation }) => {
           color={colors.success}
           onPress={() => navigation.navigate('Commissions')}
         />
+        {isAdmin && <QuickActionButton
+          title="Import Excel"
+          icon="cloud-upload-outline"
+          color={colors.accent}
+          onPress={() => navigation.navigate('Import')}
+        />}
         <QuickActionButton
           title="Feedback"
           icon="chatbubble-outline"

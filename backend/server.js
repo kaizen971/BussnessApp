@@ -5,6 +5,10 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const xlsx = require('xlsx');
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = 3003;
@@ -16,6 +20,24 @@ app.set('trust proxy', 1);
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// Configuration de Multer pour l'upload de fichiers
+const upload = multer({
+  dest: 'uploads/',
+  limits: { fileSize: 10 * 1024 * 1024 }, // Limite à 10MB
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext !== '.xlsx' && ext !== '.xls') {
+      return cb(new Error('Seuls les fichiers Excel sont acceptés (.xlsx, .xls)'));
+    }
+    cb(null, true);
+  }
+});
+
+// Créer le dossier uploads s'il n'existe pas
+if (!fs.existsSync('uploads')) {
+  fs.mkdirSync('uploads');
+}
 
 // MongoDB Connection
 const connectDB = async () => {
@@ -138,6 +160,7 @@ const UserSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
   commissionRate: { type: Number, default: 0 }, // Taux de commission en % (ex: 5 pour 5%)
   totalCommissions: { type: Number, default: 0 }, // Total des commissions gagnées
+  hourlyRate: { type: Number, default: 0 }, // Salaire horaire en € (ex: 15 pour 15€/h)
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -1836,6 +1859,166 @@ app.put('/BussnessApp/users/:id/commission', authenticateToken, checkRole('admin
   }
 });
 
+// Mettre à jour le salaire horaire d'un utilisateur
+app.put('/BussnessApp/users/:id/hourly-rate', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+  try {
+    const { hourlyRate } = req.body;
+
+    if (hourlyRate === undefined || hourlyRate < 0) {
+      return res.status(400).json({ error: 'Salaire horaire invalide (minimum 0€)' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { hourlyRate },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    res.json({ data: user });
+  } catch (error) {
+    console.error('Error updating hourly rate:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Obtenir les statistiques de salaire pour un utilisateur
+app.get('/BussnessApp/users/:id/salary-stats', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { startDate, endDate, month, year } = req.query;
+
+    // Vérifier que l'utilisateur a le droit de voir ces stats
+    if (req.user.role === 'cashier' && req.user.id !== userId) {
+      return res.status(403).json({ error: 'Accès non autorisé' });
+    }
+
+    const user = await User.findById(userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    // Définir la période
+    let periodStart, periodEnd;
+    
+    if (month && year) {
+      // Mois spécifique
+      periodStart = new Date(year, month - 1, 1);
+      periodEnd = new Date(year, month, 0, 23, 59, 59);
+    } else if (startDate && endDate) {
+      // Période personnalisée
+      periodStart = new Date(startDate);
+      periodEnd = new Date(endDate);
+    } else {
+      // Mois actuel par défaut
+      const now = new Date();
+      periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    }
+
+    // Récupérer tous les plannings complétés dans la période
+    const schedules = await Schedule.find({
+      userId: userId,
+      status: 'completed',
+      date: {
+        $gte: periodStart,
+        $lte: periodEnd
+      }
+    }).sort({ date: 1 });
+
+    // Calculer les heures totales et le salaire
+    const totalHours = schedules.reduce((sum, s) => sum + (s.duration || 0), 0);
+    const totalSalary = totalHours * (user.hourlyRate || 0);
+
+    // Récupérer les commissions de la période
+    const commissions = await Commission.find({
+      userId: userId,
+      date: {
+        $gte: periodStart,
+        $lte: periodEnd
+      }
+    });
+
+    const totalCommissions = commissions.reduce((sum, c) => sum + c.amount, 0);
+    const pendingCommissions = commissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + c.amount, 0);
+    const paidCommissions = commissions.filter(c => c.status === 'paid').reduce((sum, c) => sum + c.amount, 0);
+
+    // Salaire total (salaire + commissions)
+    const totalEarnings = totalSalary + totalCommissions;
+
+    // Grouper par semaine
+    const weeklyStats = {};
+    schedules.forEach(schedule => {
+      const weekNumber = getWeekNumber(new Date(schedule.date));
+      if (!weeklyStats[weekNumber]) {
+        weeklyStats[weekNumber] = {
+          week: weekNumber,
+          hours: 0,
+          salary: 0,
+          days: 0
+        };
+      }
+      weeklyStats[weekNumber].hours += schedule.duration || 0;
+      weeklyStats[weekNumber].salary += (schedule.duration || 0) * (user.hourlyRate || 0);
+      weeklyStats[weekNumber].days += 1;
+    });
+
+    res.json({
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        hourlyRate: user.hourlyRate || 0,
+        commissionRate: user.commissionRate || 0
+      },
+      period: {
+        start: periodStart,
+        end: periodEnd,
+        label: periodStart.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+      },
+      hours: {
+        total: totalHours,
+        completed: schedules.length,
+        average: schedules.length > 0 ? (totalHours / schedules.length).toFixed(2) : 0
+      },
+      salary: {
+        hourly: totalSalary,
+        commissions: totalCommissions,
+        total: totalEarnings
+      },
+      commissions: {
+        total: totalCommissions,
+        pending: pendingCommissions,
+        paid: paidCommissions,
+        count: commissions.length
+      },
+      weeklyStats: Object.values(weeklyStats),
+      schedules: schedules.map(s => ({
+        date: s.date,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        duration: s.duration,
+        salary: (s.duration || 0) * (user.hourlyRate || 0)
+      }))
+    });
+  } catch (error) {
+    console.error('Error loading salary stats:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Fonction helper pour obtenir le numéro de semaine
+function getWeekNumber(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return `${d.getFullYear()}-S${weekNo}`;
+}
+
 // Simulation Business Plan Route
 app.post('/BussnessApp/simulation', authenticateToken, async (req, res) => {
   try {
@@ -2018,6 +2201,368 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= IMPORT EXCEL ROUTE =============
+
+// Import Excel - Import complet des données depuis un fichier Excel
+app.post('/BussnessApp/import-excel', authenticateToken, upload.single('file'), async (req, res) => {
+  let filePath = null;
+  
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Aucun fichier fourni' });
+    }
+
+    filePath = req.file.path;
+    const { projectId } = req.body;
+
+    if (!projectId) {
+      return res.status(400).json({ error: 'projectId est requis' });
+    }
+
+    console.log('Début de l\'import Excel pour le projet:', projectId);
+    console.log('Fichier:', req.file.originalname);
+
+    // Lire le fichier Excel
+    const workbook = xlsx.readFile(filePath);
+    const results = {
+      success: true,
+      imports: {
+        clients: { count: 0, errors: [] },
+        produits: { count: 0, errors: [] },
+        stocks: { count: 0, errors: [] },
+        ventes: { count: 0, errors: [] },
+        depenses: { count: 0, errors: [] },
+        employes: { count: 0, errors: [] },
+        plannings: { count: 0, errors: [] },
+        commissions: { count: 0, errors: [] }
+      }
+    };
+
+    // 1. Importer les CLIENTS
+    if (workbook.SheetNames.includes('Clients')) {
+      const clientsSheet = workbook.Sheets['Clients'];
+      const clientsData = xlsx.utils.sheet_to_json(clientsSheet);
+      
+      for (const row of clientsData) {
+        try {
+          if (row.nom && row.nom.trim() !== '') {
+            const customer = new Customer({
+              projectId,
+              name: row.nom,
+              email: row.email || '',
+              phone: row.telephone || '',
+              totalPurchases: parseFloat(row.totalAchats) || 0,
+              loyaltyPoints: parseInt(row.pointsFidelite) || 0,
+              loyaltyLevel: row.niveauFidelite || 'bronze',
+              discount: parseFloat(row.remise) || 0,
+              notes: row.notes || ''
+            });
+            await customer.save();
+            results.imports.clients.count++;
+          }
+        } catch (error) {
+          results.imports.clients.errors.push(`Ligne ${results.imports.clients.count + 1}: ${error.message}`);
+        }
+      }
+    }
+
+    // 2. Importer les PRODUITS
+    if (workbook.SheetNames.includes('Produits')) {
+      const productsSheet = workbook.Sheets['Produits'];
+      const productsData = xlsx.utils.sheet_to_json(productsSheet);
+      
+      for (const row of productsData) {
+        try {
+          if (row.nom && row.prixVente && row.prixRevient) {
+            const product = new Product({
+              projectId,
+              name: row.nom,
+              description: row.description || '',
+              unitPrice: parseFloat(row.prixVente),
+              costPrice: parseFloat(row.prixRevient),
+              category: row.categorie || '',
+              isActive: row.actif !== undefined ? Boolean(row.actif) : true
+            });
+            await product.save();
+            results.imports.produits.count++;
+          }
+        } catch (error) {
+          results.imports.produits.errors.push(`Ligne ${results.imports.produits.count + 1}: ${error.message}`);
+        }
+      }
+    }
+
+    // 3. Importer les STOCKS
+    if (workbook.SheetNames.includes('Stocks')) {
+      const stocksSheet = workbook.Sheets['Stocks'];
+      const stocksData = xlsx.utils.sheet_to_json(stocksSheet);
+      
+      for (const row of stocksData) {
+        try {
+          if (row.nom && row.quantite !== undefined && row.prixUnitaire !== undefined) {
+            const stock = new Stock({
+              projectId,
+              name: row.nom,
+              quantity: parseFloat(row.quantite),
+              unitPrice: parseFloat(row.prixUnitaire),
+              minQuantity: parseFloat(row.quantiteMin) || 0,
+              sku: row.sku || '',
+              location: row.emplacement || ''
+            });
+            await stock.save();
+            results.imports.stocks.count++;
+          }
+        } catch (error) {
+          results.imports.stocks.errors.push(`Ligne ${results.imports.stocks.count + 1}: ${error.message}`);
+        }
+      }
+    }
+
+    // 4. Importer les EMPLOYÉS
+    if (workbook.SheetNames.includes('Employes')) {
+      const employeesSheet = workbook.Sheets['Employes'];
+      const employeesData = xlsx.utils.sheet_to_json(employeesSheet);
+      
+      for (const row of employeesData) {
+        try {
+          if (row.username && row.email && row.nomComplet) {
+            // Vérifier si l'utilisateur existe déjà
+            const existingUser = await User.findOne({ 
+              $or: [{ username: row.username }, { email: row.email }] 
+            });
+            
+            if (!existingUser) {
+              const defaultPassword = row.motDePasse || 'BussnessApp2025';
+              const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+              
+              const user = new User({
+                username: row.username,
+                email: row.email,
+                password: hashedPassword,
+                fullName: row.nomComplet,
+                role: row.role || 'cashier',
+                projectId: projectId,
+                commissionRate: parseFloat(row.tauxCommission) || 0,
+                hourlyRate: parseFloat(row.tauxHoraire) || 0,
+                isActive: row.actif !== undefined ? Boolean(row.actif) : true
+              });
+              await user.save();
+              results.imports.employes.count++;
+            }
+          }
+        } catch (error) {
+          results.imports.employes.errors.push(`Ligne ${results.imports.employes.count + 1}: ${error.message}`);
+        }
+      }
+    }
+
+    // 5. Importer les VENTES (nécessite que les clients, produits et employés existent)
+    if (workbook.SheetNames.includes('Ventes')) {
+      const salesSheet = workbook.Sheets['Ventes'];
+      const salesData = xlsx.utils.sheet_to_json(salesSheet);
+      
+      for (const row of salesData) {
+        try {
+          if (row.nomProduit && row.quantite && row.prixUnitaire && row.montant) {
+            // Trouver le produit par nom
+            const product = await Product.findOne({ projectId, name: row.nomProduit });
+            
+            // Trouver le client par nom (optionnel)
+            let customer = null;
+            if (row.nomClient) {
+              customer = await Customer.findOne({ projectId, name: row.nomClient });
+            }
+            
+            // Trouver l'employé par username (optionnel)
+            let employee = null;
+            if (row.employe) {
+              employee = await User.findOne({ username: row.employe });
+            }
+            
+            const sale = new Sale({
+              projectId,
+              productId: product ? product._id : undefined,
+              customerId: customer ? customer._id : undefined,
+              employeeId: employee ? employee._id : req.user.id,
+              quantity: parseFloat(row.quantite),
+              unitPrice: parseFloat(row.prixUnitaire),
+              amount: parseFloat(row.montant),
+              discount: parseFloat(row.remise) || 0,
+              description: row.description || '',
+              date: row.date ? new Date(row.date) : new Date()
+            });
+            await sale.save();
+            results.imports.ventes.count++;
+            
+            // Mettre à jour le stock si le produit existe
+            if (product) {
+              const stockItem = await Stock.findOne({ projectId, name: product.name });
+              if (stockItem && stockItem.quantity >= sale.quantity) {
+                const previousQuantity = stockItem.quantity;
+                stockItem.quantity -= sale.quantity;
+                await stockItem.save();
+                
+                // Créer un mouvement de stock
+                const movement = new StockMovement({
+                  projectId,
+                  stockId: stockItem._id,
+                  productId: product._id,
+                  type: 'sale',
+                  quantity: -sale.quantity,
+                  previousQuantity,
+                  newQuantity: stockItem.quantity,
+                  unitPrice: sale.unitPrice,
+                  reason: 'Import Excel - Vente',
+                  saleId: sale._id,
+                  userId: req.user.id
+                });
+                await movement.save();
+              }
+            }
+            
+            // Créer une commission si l'employé a un taux de commission
+            if (employee && employee.commissionRate > 0) {
+              const commissionAmount = (sale.amount * employee.commissionRate) / 100;
+              const commission = new Commission({
+                projectId,
+                userId: employee._id,
+                saleId: sale._id,
+                amount: commissionAmount,
+                rate: employee.commissionRate,
+                saleAmount: sale.amount,
+                date: sale.date
+              });
+              await commission.save();
+              
+              employee.totalCommissions += commissionAmount;
+              await employee.save();
+            }
+          }
+        } catch (error) {
+          results.imports.ventes.errors.push(`Ligne ${results.imports.ventes.count + 1}: ${error.message}`);
+        }
+      }
+    }
+
+    // 6. Importer les DÉPENSES
+    if (workbook.SheetNames.includes('Depenses')) {
+      const expensesSheet = workbook.Sheets['Depenses'];
+      const expensesData = xlsx.utils.sheet_to_json(expensesSheet);
+      
+      for (const row of expensesData) {
+        try {
+          if (row.montant && row.categorie) {
+            const expense = new Expense({
+              projectId,
+              amount: parseFloat(row.montant),
+              category: row.categorie, // 'purchase', 'variable', 'fixed'
+              description: row.description || '',
+              date: row.date ? new Date(row.date) : new Date()
+            });
+            await expense.save();
+            results.imports.depenses.count++;
+          }
+        } catch (error) {
+          results.imports.depenses.errors.push(`Ligne ${results.imports.depenses.count + 1}: ${error.message}`);
+        }
+      }
+    }
+
+    // 7. Importer les PLANNINGS
+    if (workbook.SheetNames.includes('Plannings')) {
+      const schedulesSheet = workbook.Sheets['Plannings'];
+      const schedulesData = xlsx.utils.sheet_to_json(schedulesSheet);
+      
+      for (const row of schedulesData) {
+        try {
+          if (row.employe && row.date && row.heureDebut && row.heureFin) {
+            // Trouver l'employé
+            const employee = await User.findOne({ username: row.employe });
+            
+            if (employee) {
+              // Calculer la durée
+              const start = new Date(`2000-01-01 ${row.heureDebut}`);
+              const end = new Date(`2000-01-01 ${row.heureFin}`);
+              const duration = (end - start) / (1000 * 60 * 60);
+              
+              const schedule = new Schedule({
+                projectId,
+                userId: employee._id,
+                date: new Date(row.date),
+                startTime: row.heureDebut,
+                endTime: row.heureFin,
+                duration: duration,
+                status: row.statut || 'scheduled',
+                notes: row.notes || '',
+                createdBy: req.user.id
+              });
+              await schedule.save();
+              results.imports.plannings.count++;
+            }
+          }
+        } catch (error) {
+          results.imports.plannings.errors.push(`Ligne ${results.imports.plannings.count + 1}: ${error.message}`);
+        }
+      }
+    }
+
+    // 8. Importer les COMMISSIONS
+    if (workbook.SheetNames.includes('Commissions')) {
+      const commissionsSheet = workbook.Sheets['Commissions'];
+      const commissionsData = xlsx.utils.sheet_to_json(commissionsSheet);
+      
+      for (const row of commissionsData) {
+        try {
+          if (row.employe && row.montant && row.taux && row.montantVente) {
+            // Trouver l'employé
+            const employee = await User.findOne({ username: row.employe });
+            
+            if (employee) {
+              const commission = new Commission({
+                projectId,
+                userId: employee._id,
+                saleId: null, // Pas de lien direct avec une vente lors de l'import
+                amount: parseFloat(row.montant),
+                rate: parseFloat(row.taux),
+                saleAmount: parseFloat(row.montantVente),
+                status: row.statut || 'pending',
+                date: row.date ? new Date(row.date) : new Date()
+              });
+              await commission.save();
+              results.imports.commissions.count++;
+            }
+          }
+        } catch (error) {
+          results.imports.commissions.errors.push(`Ligne ${results.imports.commissions.count + 1}: ${error.message}`);
+        }
+      }
+    }
+
+    console.log('Import terminé avec succès');
+    console.log('Résultats:', JSON.stringify(results, null, 2));
+
+    res.json({
+      success: true,
+      message: 'Import Excel terminé avec succès',
+      results: results.imports
+    });
+
+  } catch (error) {
+    console.error('Erreur lors de l\'import Excel:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erreur lors de l\'import Excel',
+      message: error.message
+    });
+  } finally {
+    // Nettoyer le fichier uploadé
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log('Fichier temporaire supprimé:', filePath);
+    }
   }
 });
 
