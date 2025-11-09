@@ -61,7 +61,7 @@ export const StockScreen = () => {
 
   const loadProducts = async () => {
     try {
-      const response = await api.get('/products');
+      const response = await api.get('/products', { params: { projectId: user?.projectId } });
       setProducts(response.data?.data || []);
     } catch (error) {
       console.error('Error loading products:', error);

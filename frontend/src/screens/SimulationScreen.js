@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,15 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
 import { colors } from '../utils/colors';
 import { simulationAPI } from '../services/api';
+
+const STORAGE_KEY = '@simulation_last_business_plan';
 
 export const SimulationScreen = () => {
   const [formData, setFormData] = useState({
@@ -34,6 +37,47 @@ export const SimulationScreen = () => {
 
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [hasSavedData, setHasSavedData] = useState(false);
+
+  // Charger les données sauvegardées au montage du composant
+  useEffect(() => {
+    checkForSavedData();
+  }, []);
+
+  // Vérifier s'il existe des données sauvegardées
+  const checkForSavedData = async () => {
+    try {
+      const savedData = await AsyncStorage.getItem(STORAGE_KEY);
+      setHasSavedData(!!savedData);
+    } catch (error) {
+      console.error('Erreur lors de la vérification des données sauvegardées:', error);
+    }
+  };
+
+  // Sauvegarder les données du formulaire
+  const saveFormData = async (data) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      setHasSavedData(true);
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde:', error);
+    }
+  };
+
+  // Charger les données sauvegardées
+  const loadSavedData = async () => {
+    try {
+      const savedData = await AsyncStorage.getItem(STORAGE_KEY);
+      if (savedData) {
+        const parsedData = JSON.parse(savedData);
+        setFormData(parsedData);
+        Alert.alert('Succès', 'Business plan précédent chargé avec succès');
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement:', error);
+      Alert.alert('Erreur', 'Impossible de charger le business plan précédent');
+    }
+  };
 
   const updateField = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -72,7 +116,12 @@ export const SimulationScreen = () => {
       };
 
       const response = await simulationAPI.calculate(simulationData);
+      console.log(response.data);
       setResults(response.data);
+      
+      // Sauvegarder les données du formulaire après un calcul réussi
+      await saveFormData(formData);
+      
       Alert.alert('Succès', 'Simulation calculée avec succès');
     } catch (error) {
       console.error('Error calculating simulation:', error);
@@ -102,6 +151,12 @@ export const SimulationScreen = () => {
     setResults(null);
   };
 
+  // Fonction utilitaire pour formater les nombres de manière sûre
+  const formatNumber = (value, decimals = 2) => {
+    const num = Number(value);
+    return isNaN(num) ? '0.00' : num.toFixed(decimals);
+  };
+
   const ResultRow = ({ label, value, color }) => (
     <View style={styles.resultRow}>
       <Text style={styles.resultLabel}>{label}</Text>
@@ -120,6 +175,25 @@ export const SimulationScreen = () => {
           Validez la rentabilité de votre projet
         </Text>
       </Card>
+
+      {hasSavedData && (
+        <Card style={styles.savedDataCard}>
+          <View style={styles.savedDataContent}>
+            <View style={styles.savedDataInfo}>
+              <Ionicons name="save-outline" size={24} color={colors.info} />
+              <Text style={styles.savedDataText}>
+                Un business plan précédent est disponible
+              </Text>
+            </View>
+            <Button
+              title="Charger"
+              onPress={loadSavedData}
+              variant="outline"
+              style={styles.loadButton}
+            />
+          </View>
+        </Card>
+      )}
 
       <Card style={styles.formCard}>
         <Text style={styles.sectionTitle}>📦 Informations produit</Text>
@@ -286,29 +360,29 @@ export const SimulationScreen = () => {
               <Ionicons name="analytics-outline" size={28} color={colors.success} />
               <Text style={styles.resultsTitle}>Résumé</Text>
             </View>
-
-            {results.summary && (
+            
+            {results?.summary && (
               <>
                 <ResultRow
                   label="Marge unitaire"
-                  value={`${results.summary.unitMargin?.toFixed(2) || 0} €`}
-                  color={results.summary.unitMargin >= 0 ? colors.success : colors.error}
+                  value={`${formatNumber(results.summary.unitMargin)} €`}
+                  color={Number(results.summary.unitMargin || 0) >= 0 ? colors.success : colors.error}
                 />
 
                 <ResultRow
                   label="Pourcentage de marge"
-                  value={`${results.summary.marginPercentage?.toFixed(2) || 0}%`}
-                  color={results.summary.marginPercentage >= 0 ? colors.success : colors.error}
+                  value={`${formatNumber(results.summary.marginPercentage)}%`}
+                  color={Number(results.summary.marginPercentage || 0) >= 0 ? colors.success : colors.error}
                 />
 
                 <ResultRow
                   label="Charges fixes totales"
-                  value={`${results.summary.totalFixedCosts?.toFixed(2) || 0} €/mois`}
+                  value={`${formatNumber(results.summary.totalFixedCosts)} €/mois`}
                 />
 
                 <ResultRow
                   label="Budget de lancement"
-                  value={`${results.summary.initialInvestment?.toFixed(2) || 0} €`}
+                  value={`${formatNumber(results.summary.initialInvestment)} €`}
                 />
               </>
             )}
@@ -328,7 +402,7 @@ export const SimulationScreen = () => {
 
               <ResultRow
                 label="CA minimum mensuel"
-                value={`${results.breakEven.revenueNeeded?.toFixed(2) || 0} €`}
+                value={`${formatNumber(results.breakEven.revenueNeeded)} €`}
               />
 
               <View style={styles.infoBox}>
@@ -350,25 +424,25 @@ export const SimulationScreen = () => {
 
               <ResultRow
                 label="Revenus mensuels"
-                value={`${results.monthlyForecasts.revenue?.toFixed(2) || 0} €`}
+                value={`${formatNumber(results.monthlyForecasts.revenue)} €`}
               />
 
               <ResultRow
                 label="Coûts variables mensuels"
-                value={`${results.monthlyForecasts.variableCosts?.toFixed(2) || 0} €`}
+                value={`${formatNumber(results.monthlyForecasts.variableCosts)} €`}
               />
 
               <ResultRow
                 label="Charges fixes mensuelles"
-                value={`${results.monthlyForecasts.fixedCosts?.toFixed(2) || 0} €`}
+                value={`${formatNumber(results.monthlyForecasts.fixedCosts)} €`}
               />
 
               <View style={styles.divider} />
 
               <ResultRow
                 label="Bénéfice net mensuel"
-                value={`${results.monthlyForecasts.netProfit?.toFixed(2) || 0} €`}
-                color={results.monthlyForecasts.netProfit >= 0 ? colors.success : colors.error}
+                value={`${formatNumber(results.monthlyForecasts.netProfit)} €`}
+                color={Number(results.monthlyForecasts.netProfit || 0) >= 0 ? colors.success : colors.error}
               />
             </Card>
           )}
@@ -382,19 +456,19 @@ export const SimulationScreen = () => {
 
               <ResultRow
                 label="CA total"
-                value={`${results.periodAnalysis.totalRevenue?.toFixed(2) || 0} €`}
+                value={`${formatNumber(results.periodAnalysis.totalRevenue)} €`}
               />
 
               <ResultRow
                 label="Profit total"
-                value={`${results.periodAnalysis.totalProfit?.toFixed(2) || 0} €`}
-                color={results.periodAnalysis.totalProfit >= 0 ? colors.success : colors.error}
+                value={`${formatNumber(results.periodAnalysis.totalProfit)} €`}
+                color={Number(results.periodAnalysis.totalProfit || 0) >= 0 ? colors.success : colors.error}
               />
 
               <ResultRow
                 label="ROI"
-                value={`${results.periodAnalysis.roi?.toFixed(2) || 0}%`}
-                color={results.periodAnalysis.roi >= 0 ? colors.success : colors.error}
+                value={`${formatNumber(results.periodAnalysis.roi)}%`}
+                color={Number(results.periodAnalysis.roi || 0) >= 0 ? colors.success : colors.error}
               />
 
               {results.periodAnalysis.monthsToRecoverInvestment !== null && (
@@ -432,20 +506,48 @@ export const SimulationScreen = () => {
                 <View key={index} style={styles.projectionItem}>
                   <Text style={styles.projectionMonth}>Mois {projection.month}</Text>
                   <View style={styles.projectionDetails}>
-                    <Text style={styles.projectionLabel}>
-                      Profit: <Text style={[styles.projectionValue, {
-                        color: projection.profit >= 0 ? colors.success : colors.error
-                      }]}>
-                        {projection.profit?.toFixed(2) || 0} €
+                    <View style={styles.projectionRow}>
+                      <Text style={styles.projectionLabel}>Revenus</Text>
+                      <Text style={[styles.projectionValue, { color: colors.primary }]}>
+                        {formatNumber(projection.revenue)} €
                       </Text>
-                    </Text>
-                    <Text style={styles.projectionLabel}>
-                      Cumul: <Text style={[styles.projectionValue, {
-                        color: projection.cumulativeProfit >= 0 ? colors.success : colors.error
-                      }]}>
-                        {projection.cumulativeProfit?.toFixed(2) || 0} €
+                    </View>
+                    
+                    <View style={styles.projectionRow}>
+                      <Text style={styles.projectionLabel}>Dépenses</Text>
+                      <Text style={[styles.projectionValue, { color: colors.error }]}>
+                        {formatNumber(projection.expenses)} €
                       </Text>
-                    </Text>
+                    </View>
+                    
+                    <View style={[styles.projectionRow, { 
+                      borderTopWidth: 1, 
+                      borderTopColor: colors.border,
+                      paddingTop: 8,
+                      marginTop: 4,
+                    }]}>
+                      <Text style={[styles.projectionLabel, { fontWeight: '600' }]}>Profit net</Text>
+                      <Text style={[styles.projectionValue, {
+                        color: Number(projection.netProfit || 0) >= 0 ? colors.success : colors.error
+                      }]}>
+                        {formatNumber(projection.netProfit)} €
+                      </Text>
+                    </View>
+                    
+                    <View style={[styles.projectionRow, {
+                      backgroundColor: colors.primary + '10',
+                      padding: 8,
+                      borderRadius: 6,
+                      marginTop: 4,
+                    }]}>
+                      <Text style={[styles.projectionLabel, { fontWeight: 'bold' }]}>Cumul</Text>
+                      <Text style={[styles.projectionValue, {
+                        color: Number(projection.cumulativeProfit || 0) >= 0 ? colors.success : colors.error,
+                        fontSize: 16,
+                      }]}>
+                        {formatNumber(projection.cumulativeProfit)} €
+                      </Text>
+                    </View>
                   </View>
                 </View>
               ))}
@@ -489,6 +591,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  savedDataCard: {
+    marginBottom: 16,
+    backgroundColor: colors.info + '10',
+    borderColor: colors.info,
+    borderWidth: 1,
+  },
+  savedDataContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  savedDataInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  savedDataText: {
+    fontSize: 14,
+    color: colors.text,
+    flex: 1,
+  },
+  loadButton: {
+    minWidth: 100,
   },
   formCard: {
     marginBottom: 16,
@@ -585,25 +712,37 @@ const styles = StyleSheet.create({
   },
   projectionItem: {
     backgroundColor: colors.background,
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   projectionMonth: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 6,
+    color: colors.primary,
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   projectionDetails: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  projectionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
   },
   projectionLabel: {
-    fontSize: 13,
-    color: colors.textSecondary,
+    fontSize: 14,
+    color: colors.text,
   },
   projectionValue: {
-    fontWeight: '600',
+    fontWeight: '700',
+    fontSize: 15,
   },
 });

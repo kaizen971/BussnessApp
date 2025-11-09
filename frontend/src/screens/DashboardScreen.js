@@ -9,6 +9,8 @@ import {
   Alert,
   Animated,
   Dimensions,
+  Modal,
+  PanResponder,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,8 +28,11 @@ export const DashboardScreen = ({ navigation }) => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [statsModalVisible, setStatsModalVisible] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
+  const modalSlideAnim = useRef(new Animated.Value(0)).current;
+  console.log(user)
 
   useEffect(() => {
     loadDashboardData();
@@ -85,6 +90,26 @@ export const DashboardScreen = ({ navigation }) => {
         { text: 'Déconnexion', onPress: logout, style: 'destructive' },
       ]
     );
+  };
+
+  const openStatsModal = () => {
+    setStatsModalVisible(true);
+    Animated.spring(modalSlideAnim, {
+      toValue: 1,
+      tension: 50,
+      friction: 8,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeStatsModal = () => {
+    Animated.timing(modalSlideAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      setStatsModalVisible(false);
+    });
   };
 
   const StatCard = ({ title, value, icon, color, onPress, subtitle }) => (
@@ -191,210 +216,25 @@ export const DashboardScreen = ({ navigation }) => {
         )}
 
       {stats && (
-        <>
-          <Text style={styles.sectionTitle}>Statistiques financières</Text>
-          <View style={styles.statsRow}>
-            <StatCard
-              title="Ventes totales"
-              value={`${stats.totalSales?.toFixed(2) || 0} €`}
-              subtitle={`${stats.salesCount || 0} ventes`}
-              icon="cash"
-              color={colors.success}
-            />
-            <StatCard
-              title="Dépenses"
-              value={`${stats.totalExpenses?.toFixed(2) || 0} €`}
-              subtitle={`${stats.expensesCount || 0} dépenses`}
-              icon="trending-down"
-              color={colors.error}
-            />
-          </View>
-
-          <View style={styles.statsRow}>
-            <StatCard
-              title="Bénéfice Net"
-              value={`${stats.netProfit?.toFixed(2) || 0} €`}
-              subtitle={stats.netProfit >= 0 ? "Positif" : "Négatif"}
-              icon="analytics"
-              color={stats.netProfit >= 0 ? colors.success : colors.error}
-            />
-            <StatCard
-              title="Valeur Stock"
-              value={`${stats.totalStock?.toFixed(2) || 0} €`}
-              subtitle={`${stats.stockItems || 0} articles`}
-              icon="cube"
-              color={colors.primary}
-            />
-          </View>
-
-          <Card style={styles.summaryCard}>
-            <View style={styles.summaryHeader}>
-              <Text style={styles.summaryTitle}>Aperçu détaillé</Text>
-              <View style={styles.summaryIcon}>
-                <Ionicons name="bar-chart" size={24} color={colors.primary} />
-              </View>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryRow}>
-              <View style={styles.summaryRowLeft}>
-                <View style={[styles.summaryDot, { backgroundColor: colors.success }]} />
-                <Text style={styles.summaryLabel}>Nombre de ventes</Text>
-              </View>
-              <Text style={styles.summaryValue}>{stats.salesCount || 0}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <View style={styles.summaryRowLeft}>
-                <View style={[styles.summaryDot, { backgroundColor: colors.error }]} />
-                <Text style={styles.summaryLabel}>Nombre de dépenses</Text>
-              </View>
-              <Text style={styles.summaryValue}>{stats.expensesCount || 0}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <View style={styles.summaryRowLeft}>
-                <View style={[styles.summaryDot, { backgroundColor: colors.primary }]} />
-                <Text style={styles.summaryLabel}>Articles en stock</Text>
-              </View>
-              <Text style={styles.summaryValue}>{stats.stockItems || 0}</Text>
-            </View>
-          </Card>
-
-          {stats.monthlyData && stats.monthlyData.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>Évolution mensuelle</Text>
-              <Card style={styles.chartCard}>
-                <Text style={styles.chartTitle}>Ventes vs Dépenses (6 derniers mois)</Text>
-                <LineChart
-                  data={{
-                    labels: stats.monthlyData.map(d => d.month.split(' ')[0]),
-                    datasets: [
-                      {
-                        data: stats.monthlyData.map(d => d.sales),
-                        color: (opacity = 1) => colors.success,
-                        strokeWidth: 3
-                      },
-                      {
-                        data: stats.monthlyData.map(d => d.expenses),
-                        color: (opacity = 1) => colors.error,
-                        strokeWidth: 3
-                      }
-                    ],
-                    legend: ['Ventes', 'Dépenses']
-                  }}
-                  width={screenWidth - 64}
-                  height={220}
-                  chartConfig={{
-                    backgroundColor: colors.background,
-                    backgroundGradientFrom: colors.background,
-                    backgroundGradientTo: colors.background,
-                    decimalPlaces: 0,
-                    color: (opacity = 1) => colors.text + Math.round(opacity * 255).toString(16).padStart(2, '0'),
-                    labelColor: (opacity = 1) => colors.textSecondary,
-                    style: { borderRadius: 16 },
-                    propsForDots: {
-                      r: '6',
-                      strokeWidth: '2',
-                      stroke: colors.background
-                    }
-                  }}
-                  bezier
-                  style={styles.chart}
-                />
-              </Card>
-
-              <Card style={styles.chartCard}>
-                <Text style={styles.chartTitle}>Bénéfices mensuels</Text>
-                <BarChart
-                  data={{
-                    labels: stats.monthlyData.map(d => d.month.split(' ')[0]),
-                    datasets: [{
-                      data: stats.monthlyData.map(d => d.profit)
-                    }]
-                  }}
-                  width={screenWidth - 64}
-                  height={220}
-                  chartConfig={{
-                    backgroundColor: colors.background,
-                    backgroundGradientFrom: colors.background,
-                    backgroundGradientTo: colors.background,
-                    decimalPlaces: 0,
-                    color: (opacity = 1) => colors.primary + Math.round(opacity * 255).toString(16).padStart(2, '0'),
-                    labelColor: (opacity = 1) => colors.textSecondary,
-                    style: { borderRadius: 16 },
-                    barPercentage: 0.7
-                  }}
-                  style={styles.chart}
-                  showValuesOnTopOfBars
-                />
-              </Card>
-            </>
-          )}
-
-          {stats.expensesByCategory && (
-            <Card style={styles.chartCard}>
-              <Text style={styles.chartTitle}>Répartition des dépenses</Text>
-              <PieChart
-                data={[
-                  {
-                    name: 'Achats',
-                    population: stats.expensesByCategory.purchase || 0,
-                    color: colors.primary,
-                    legendFontColor: colors.textSecondary,
-                    legendFontSize: 13
-                  },
-                  {
-                    name: 'Variables',
-                    population: stats.expensesByCategory.variable || 0,
-                    color: colors.accent,
-                    legendFontColor: colors.textSecondary,
-                    legendFontSize: 13
-                  },
-                  {
-                    name: 'Fixes',
-                    population: stats.expensesByCategory.fixed || 0,
-                    color: colors.error,
-                    legendFontColor: colors.textSecondary,
-                    legendFontSize: 13
-                  }
-                ].filter(item => item.population > 0)}
-                width={screenWidth - 64}
-                height={200}
-                chartConfig={{
-                  color: (opacity = 1) => colors.text + Math.round(opacity * 255).toString(16).padStart(2, '0'),
-                }}
-                accessor="population"
-                backgroundColor="transparent"
-                paddingLeft="15"
-                absolute
-              />
-            </Card>
-          )}
-
-          {stats.topProducts && stats.topProducts.length > 0 && (
-            <Card style={styles.summaryCard}>
-              <View style={styles.summaryHeader}>
-                <Text style={styles.summaryTitle}>Top 5 Produits</Text>
-                <View style={styles.summaryIcon}>
-                  <Ionicons name="trophy" size={24} color={colors.accent} />
+        <TouchableOpacity style={styles.statsButton} onPress={openStatsModal} activeOpacity={0.8}>
+          <LinearGradient
+            colors={[colors.primary, colors.accent]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.statsButtonGradient}
+          >
+            <View style={styles.statsButtonContent}>
+              <View style={styles.statsButtonLeft}>
+                <Ionicons name="stats-chart" size={28} color={colors.background} />
+                <View style={styles.statsButtonTextContainer}>
+                  <Text style={styles.statsButtonTitle}>Statistiques détaillées</Text>
+                  <Text style={styles.statsButtonSubtitle}>Voir toutes les analyses</Text>
                 </View>
               </View>
-              <View style={styles.summaryDivider} />
-              {stats.topProducts.map((product, index) => (
-                <View key={index} style={styles.summaryRow}>
-                  <View style={styles.summaryRowLeft}>
-                    <View style={[styles.rankBadge, { backgroundColor: index === 0 ? colors.accent : colors.primary }]}>
-                      <Text style={styles.rankText}>{index + 1}</Text>
-                    </View>
-                    <View style={styles.productInfo}>
-                      <Text style={styles.productName}>{product.productName}</Text>
-                      <Text style={styles.productQuantity}>{product.quantity} ventes</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.summaryValue}>{product.revenue.toFixed(2)} €</Text>
-                </View>
-              ))}
-            </Card>
-          )}
-        </>
+              <Ionicons name="chevron-up" size={24} color={colors.background} />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
       )}
 
       <Text style={styles.sectionTitle}>Actions rapides</Text>
@@ -449,6 +289,258 @@ export const DashboardScreen = ({ navigation }) => {
         />
       </View>
       </ScrollView>
+
+      <Modal
+        visible={statsModalVisible}
+        transparent={true}
+        animationType="none"
+        onRequestClose={closeStatsModal}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalBackdrop} 
+            activeOpacity={1} 
+            onPress={closeStatsModal}
+          />
+          <Animated.View 
+            style={[
+              styles.modalContainer,
+              {
+                transform: [
+                  {
+                    translateY: modalSlideAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [600, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={styles.modalHandle}>
+              <View style={styles.modalHandleLine} />
+            </View>
+            
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>📊 Statistiques complètes</Text>
+              <TouchableOpacity onPress={closeStatsModal} style={styles.closeButton}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView 
+              style={styles.modalContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {stats && (
+                <>
+                  <View style={styles.statsRow}>
+                    <StatCard
+                      title="Ventes totales"
+                      value={`${stats.totalSales?.toFixed(2) || 0} €`}
+                      subtitle={`${stats.salesCount || 0} ventes`}
+                      icon="cash"
+                      color={colors.success}
+                    />
+                    <StatCard
+                      title="Dépenses"
+                      value={`${stats.totalExpenses?.toFixed(2) || 0} €`}
+                      subtitle={`${stats.expensesCount || 0} dépenses`}
+                      icon="trending-down"
+                      color={colors.error}
+                    />
+                  </View>
+
+                  <View style={styles.statsRow}>
+                    <StatCard
+                      title="Bénéfice Net"
+                      value={`${stats.netProfit?.toFixed(2) || 0} €`}
+                      subtitle={stats.netProfit >= 0 ? "Positif" : "Négatif"}
+                      icon="analytics"
+                      color={stats.netProfit >= 0 ? colors.success : colors.error}
+                    />
+                    <StatCard
+                      title="Valeur Stock"
+                      value={`${stats.totalStock?.toFixed(2) || 0} €`}
+                      subtitle={`${stats.stockItems || 0} articles`}
+                      icon="cube"
+                      color={colors.primary}
+                    />
+                  </View>
+
+                  <Card style={styles.summaryCard}>
+                    <View style={styles.summaryHeader}>
+                      <Text style={styles.summaryTitle}>Aperçu détaillé</Text>
+                      <View style={styles.summaryIcon}>
+                        <Ionicons name="bar-chart" size={24} color={colors.primary} />
+                      </View>
+                    </View>
+                    <View style={styles.summaryDivider} />
+                    <View style={styles.summaryRow}>
+                      <View style={styles.summaryRowLeft}>
+                        <View style={[styles.summaryDot, { backgroundColor: colors.success }]} />
+                        <Text style={styles.summaryLabel}>Nombre de ventes</Text>
+                      </View>
+                      <Text style={styles.summaryValue}>{stats.salesCount || 0}</Text>
+                    </View>
+                    <View style={styles.summaryRow}>
+                      <View style={styles.summaryRowLeft}>
+                        <View style={[styles.summaryDot, { backgroundColor: colors.error }]} />
+                        <Text style={styles.summaryLabel}>Nombre de dépenses</Text>
+                      </View>
+                      <Text style={styles.summaryValue}>{stats.expensesCount || 0}</Text>
+                    </View>
+                    <View style={styles.summaryRow}>
+                      <View style={styles.summaryRowLeft}>
+                        <View style={[styles.summaryDot, { backgroundColor: colors.primary }]} />
+                        <Text style={styles.summaryLabel}>Articles en stock</Text>
+                      </View>
+                      <Text style={styles.summaryValue}>{stats.stockItems || 0}</Text>
+                    </View>
+                  </Card>
+
+                  {stats.monthlyData && stats.monthlyData.length > 0 && (
+                    <>
+                      <Text style={styles.sectionTitleModal}>Évolution mensuelle</Text>
+                      <Card style={styles.chartCard}>
+                        <Text style={styles.chartTitle}>Ventes vs Dépenses (6 derniers mois)</Text>
+                        <LineChart
+                          data={{
+                            labels: stats.monthlyData.map(d => d.month.split(' ')[0]),
+                            datasets: [
+                              {
+                                data: stats.monthlyData.map(d => d.sales),
+                                color: (opacity = 1) => colors.success,
+                                strokeWidth: 3
+                              },
+                              {
+                                data: stats.monthlyData.map(d => d.expenses),
+                                color: (opacity = 1) => colors.error,
+                                strokeWidth: 3
+                              }
+                            ],
+                            legend: ['Ventes', 'Dépenses']
+                          }}
+                          width={screenWidth - 64}
+                          height={220}
+                          chartConfig={{
+                            backgroundColor: colors.background,
+                            backgroundGradientFrom: colors.background,
+                            backgroundGradientTo: colors.background,
+                            decimalPlaces: 0,
+                            color: (opacity = 1) => colors.text + Math.round(opacity * 255).toString(16).padStart(2, '0'),
+                            labelColor: (opacity = 1) => colors.textSecondary,
+                            style: { borderRadius: 16 },
+                            propsForDots: {
+                              r: '6',
+                              strokeWidth: '2',
+                              stroke: colors.background
+                            }
+                          }}
+                          bezier
+                          style={styles.chart}
+                        />
+                      </Card>
+
+                      <Card style={styles.chartCard}>
+                        <Text style={styles.chartTitle}>Bénéfices mensuels</Text>
+                        <BarChart
+                          data={{
+                            labels: stats.monthlyData.map(d => d.month.split(' ')[0]),
+                            datasets: [{
+                              data: stats.monthlyData.map(d => d.profit)
+                            }]
+                          }}
+                          width={screenWidth - 64}
+                          height={220}
+                          chartConfig={{
+                            backgroundColor: colors.background,
+                            backgroundGradientFrom: colors.background,
+                            backgroundGradientTo: colors.background,
+                            decimalPlaces: 0,
+                            color: (opacity = 1) => colors.primary + Math.round(opacity * 255).toString(16).padStart(2, '0'),
+                            labelColor: (opacity = 1) => colors.textSecondary,
+                            style: { borderRadius: 16 },
+                            barPercentage: 0.7
+                          }}
+                          style={styles.chart}
+                          showValuesOnTopOfBars
+                        />
+                      </Card>
+                    </>
+                  )}
+
+                  {stats.expensesByCategory && (
+                    <Card style={styles.chartCard}>
+                      <Text style={styles.chartTitle}>Répartition des dépenses</Text>
+                      <PieChart
+                        data={[
+                          {
+                            name: 'Achats',
+                            population: stats.expensesByCategory.purchase || 0,
+                            color: colors.primary,
+                            legendFontColor: colors.textSecondary,
+                            legendFontSize: 13
+                          },
+                          {
+                            name: 'Variables',
+                            population: stats.expensesByCategory.variable || 0,
+                            color: colors.accent,
+                            legendFontColor: colors.textSecondary,
+                            legendFontSize: 13
+                          },
+                          {
+                            name: 'Fixes',
+                            population: stats.expensesByCategory.fixed || 0,
+                            color: colors.error,
+                            legendFontColor: colors.textSecondary,
+                            legendFontSize: 13
+                          }
+                        ].filter(item => item.population > 0)}
+                        width={screenWidth - 64}
+                        height={200}
+                        chartConfig={{
+                          color: (opacity = 1) => colors.text + Math.round(opacity * 255).toString(16).padStart(2, '0'),
+                        }}
+                        accessor="population"
+                        backgroundColor="transparent"
+                        paddingLeft="15"
+                        absolute
+                      />
+                    </Card>
+                  )}
+
+                  {stats.topProducts && stats.topProducts.length > 0 && (
+                    <Card style={styles.summaryCard}>
+                      <View style={styles.summaryHeader}>
+                        <Text style={styles.summaryTitle}>Top 5 Produits</Text>
+                        <View style={styles.summaryIcon}>
+                          <Ionicons name="trophy" size={24} color={colors.accent} />
+                        </View>
+                      </View>
+                      <View style={styles.summaryDivider} />
+                      {stats.topProducts.map((product, index) => (
+                        <View key={index} style={styles.summaryRow}>
+                          <View style={styles.summaryRowLeft}>
+                            <View style={[styles.rankBadge, { backgroundColor: index === 0 ? colors.accent : colors.primary }]}>
+                              <Text style={styles.rankText}>{index + 1}</Text>
+                            </View>
+                            <View style={styles.productInfo}>
+                              <Text style={styles.productName}>{product.productName}</Text>
+                              <Text style={styles.productQuantity}>{product.quantity} ventes</Text>
+                            </View>
+                          </View>
+                          <Text style={styles.summaryValue}>{product.revenue.toFixed(2)} €</Text>
+                        </View>
+                      ))}
+                    </Card>
+                  )}
+                </>
+              )}
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
     </Animated.View>
   );
 };
@@ -782,5 +874,112 @@ const styles = StyleSheet.create({
   productQuantity: {
     fontSize: 12,
     color: colors.textLight,
+  },
+  statsButton: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginBottom: 24,
+    marginTop: 8,
+    elevation: 4,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  statsButtonGradient: {
+    padding: 20,
+  },
+  statsButtonContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  statsButtonLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  statsButtonTextContainer: {
+    gap: 4,
+  },
+  statsButtonTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.background,
+    letterSpacing: 0.3,
+  },
+  statsButtonSubtitle: {
+    fontSize: 13,
+    color: colors.background,
+    opacity: 0.9,
+    fontWeight: '500',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  modalContainer: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    maxHeight: '90%',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  modalHandle: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  modalHandleLine: {
+    width: 40,
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: colors.text,
+    letterSpacing: 0.3,
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalContent: {
+    padding: 16,
+  },
+  sectionTitleModal: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 16,
+    marginTop: 12,
+    letterSpacing: 0.3,
   },
 });

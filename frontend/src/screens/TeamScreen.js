@@ -26,6 +26,8 @@ export const TeamScreen = ({ navigation }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [roleModalVisible, setRoleModalVisible] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -55,10 +57,10 @@ export const TeamScreen = ({ navigation }) => {
       Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
       return;
     }
-
+    console.log(formData);
     try {
       setLoading(true);
-      await api.post('/users', formData);
+      await api.post('/users', { ...formData, projectId: user?.projectId });
       setModalVisible(false);
       resetForm();
       loadUsers();
@@ -72,7 +74,7 @@ export const TeamScreen = ({ navigation }) => {
 
   const handleToggleStatus = async (user) => {
     try {
-      await api.put(`/users/${user._id}`, { isActive: !user.isActive });
+      await api.put(`/users/${user._id}/status`, { isActive: !user.isActive });
       loadUsers();
       Alert.alert('Succès', `Compte ${user.isActive ? 'désactivé' : 'activé'}`);
     } catch (error) {
@@ -80,14 +82,23 @@ export const TeamScreen = ({ navigation }) => {
     }
   };
 
-  const handleChangeRole = async (user, newRole) => {
+  const handleChangeRole = async (newRole) => {
+    if (!selectedUser) return;
+    
     try {
-      await api.put(`/users/${user._id}`, { role: newRole });
+      await api.put(`/users/${selectedUser._id}/role`, { role: newRole });
+      setRoleModalVisible(false);
+      setSelectedUser(null);
       loadUsers();
       Alert.alert('Succès', 'Rôle modifié avec succès');
     } catch (error) {
       Alert.alert('Erreur', 'Impossible de modifier le rôle');
     }
+  };
+
+  const openRoleModal = (user) => {
+    setSelectedUser(user);
+    setRoleModalVisible(true);
   };
 
   const resetForm = () => {
@@ -179,28 +190,7 @@ export const TeamScreen = ({ navigation }) => {
           {item.role !== 'admin' && (
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => {
-                Alert.alert(
-                  'Modifier le rôle',
-                  `Choisir un nouveau rôle pour ${item.fullName}`,
-                  [
-                    { text: 'Annuler', style: 'cancel' },
-                    {
-                      text: 'Caissier',
-                      onPress: () => handleChangeRole(item, 'cashier'),
-                    },
-                    {
-                      text: 'Responsable',
-                      onPress: () => handleChangeRole(item, 'manager'),
-                    },
-                    {
-                      text: 'Admin',
-                      onPress: () => handleChangeRole(item, 'admin'),
-                      style: 'destructive',
-                    },
-                  ]
-                );
-              }}
+              onPress={() => openRoleModal(item)}
             >
               <Ionicons name="swap-horizontal" size={20} color={colors.primary} />
               <Text style={[styles.actionButtonText, { color: colors.primary }]}>Changer rôle</Text>
@@ -374,8 +364,8 @@ export const TeamScreen = ({ navigation }) => {
                   onValueChange={(value) => setFormData({ ...formData, role: value })}
                   style={styles.picker}
                 >
-                  <Picker.Item label="Caissier" value="cashier" />
-                  <Picker.Item label="Responsable" value="manager" />
+                  <Picker.Item label="Salarié" value="cashier" />
+                  <Picker.Item label="Manager" value="manager" />
                   <Picker.Item label="Administrateur" value="admin" />
                 </Picker>
               </View>
@@ -417,6 +407,95 @@ export const TeamScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
           </LinearGradient>
+        </View>
+      </Modal>
+
+      {/* Modal de changement de rôle */}
+      <Modal 
+        visible={roleModalVisible} 
+        animationType="fade" 
+        transparent
+        onRequestClose={() => setRoleModalVisible(false)}
+      >
+        <View style={styles.roleModalOverlay}>
+          <View style={styles.roleModalContainer}>
+            <View style={styles.roleModalHeader}>
+              <Ionicons name="swap-horizontal" size={32} color={colors.primary} />
+              <Text style={styles.roleModalTitle}>Changer le rôle</Text>
+              {selectedUser && (
+                <Text style={styles.roleModalSubtitle}>{selectedUser.fullName}</Text>
+              )}
+            </View>
+
+            <View style={styles.roleOptionsContainer}>
+              <TouchableOpacity
+                style={styles.roleOption}
+                onPress={() => handleChangeRole('cashier')}
+              >
+                <LinearGradient
+                  colors={[colors.info + '20', colors.info + '10']}
+                  style={styles.roleOptionGradient}
+                >
+                  <Ionicons name="person" size={32} color={colors.info} />
+                  <View style={styles.roleOptionContent}>
+                    <Text style={styles.roleOptionTitle}>Caissier</Text>
+                    <Text style={styles.roleOptionDescription}>
+                      Ajout de ventes et consultation du catalogue
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={24} color={colors.info} />
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.roleOption}
+                onPress={() => handleChangeRole('manager')}
+              >
+                <LinearGradient
+                  colors={[colors.warning + '20', colors.warning + '10']}
+                  style={styles.roleOptionGradient}
+                >
+                  <Ionicons name="star" size={32} color={colors.warning} />
+                  <View style={styles.roleOptionContent}>
+                    <Text style={styles.roleOptionTitle}>Responsable</Text>
+                    <Text style={styles.roleOptionDescription}>
+                      Gestion des produits, ventes, clients et rapports
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={24} color={colors.warning} />
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.roleOption}
+                onPress={() => handleChangeRole('admin')}
+              >
+                <LinearGradient
+                  colors={[colors.error + '20', colors.error + '10']}
+                  style={styles.roleOptionGradient}
+                >
+                  <Ionicons name="shield-checkmark" size={32} color={colors.error} />
+                  <View style={styles.roleOptionContent}>
+                    <Text style={styles.roleOptionTitle}>Administrateur</Text>
+                    <Text style={styles.roleOptionDescription}>
+                      Accès complet et gestion des utilisateurs
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={24} color={colors.error} />
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.roleCancelButton}
+              onPress={() => {
+                setRoleModalVisible(false);
+                setSelectedUser(null);
+              }}
+            >
+              <Text style={styles.roleCancelButtonText}>Annuler</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
     </View>
@@ -694,6 +773,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
+    textColor: colors.text,
+    color: colors.text,
   },
   permissionsInfo: {
     flexDirection: 'row',
@@ -747,5 +828,81 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#000',
+  },
+  // Styles du modal de changement de rôle
+  roleModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  roleModalContainer: {
+    width: '100%',
+    maxWidth: 500,
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  roleModalHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  roleModalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginTop: 12,
+  },
+  roleModalSubtitle: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  roleOptionsContainer: {
+    gap: 12,
+    marginBottom: 20,
+  },
+  roleOption: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  roleOptionGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 12,
+  },
+  roleOptionContent: {
+    flex: 1,
+  },
+  roleOptionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  roleOptionDescription: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  roleCancelButton: {
+    backgroundColor: colors.background,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  roleCancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
 });

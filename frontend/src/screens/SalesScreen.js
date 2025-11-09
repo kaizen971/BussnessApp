@@ -11,6 +11,7 @@ import {
   Animated,
   ActivityIndicator,
   Dimensions,
+  TextInput,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -492,9 +493,21 @@ export const SalesScreen = () => {
                           >
                             <Ionicons name="remove" size={20} color={colors.primary} />
                           </TouchableOpacity>
-                          <View style={styles.quantityDisplay}>
-                            <Text style={styles.quantityText}>{item.quantity}</Text>
-                          </View>
+                          <TextInput
+                            style={styles.quantityInput}
+                            value={String(item.quantity)}
+                            onChangeText={(text) => {
+                              const value = text.replace(/[^0-9]/g, '');
+                              if (value === '' || value === '0') {
+                                updateCartItemQuantity(item.productId, 0);
+                              } else {
+                                updateCartItemQuantity(item.productId, parseInt(value));
+                              }
+                            }}
+                            keyboardType="numeric"
+                            selectTextOnFocus
+                            maxLength={4}
+                          />
                           <TouchableOpacity
                             style={styles.quantityButton}
                             onPress={() => updateCartItemQuantity(item.productId, item.quantity + 1)}
@@ -1022,16 +1035,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  quantityDisplay: {
-    minWidth: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  quantityText: {
-    fontSize: 18,
+  quantityInput: {
+    minWidth: 50,
+    height: 50,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    textAlign: 'center',
+    fontSize: 16,
     fontWeight: 'bold',
-    color: colors.primary,
+    color: colors.text,
+    paddingHorizontal: 8,
+    marginHorizontal: 8,
+    paddingVertical: 5,
   },
   deleteButton: {
     width: 40,
