@@ -762,8 +762,8 @@ app.get('/BussnessApp/products', authenticateToken, async (req, res) => {
   try {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
-    const products = await Product.find({}).sort({ name: 1 });
-
+    console.log(filter)
+    const products = await Product.find(filter).sort({ name: 1 });
     // NOUVEAU : Enrichir les produits avec les informations de stock
     const productsWithStock = await Promise.all(products.map(async (product) => {
       const stockItem = await Stock.findOne({
@@ -1013,6 +1013,7 @@ app.get('/BussnessApp/stock', authenticateToken, async (req, res) => {
   try {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
+    console.log(projectId)
     const stock = await Stock.find(filter).sort({ name: 1 });
     res.json({ data: stock });
   } catch (error) {
@@ -1428,6 +1429,7 @@ app.get('/BussnessApp/users', authenticateToken, checkRole('admin', 'manager', '
   try {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
+    console.log(filter)
     const users = await User.find(filter).select('-password');
     res.json(users);
   } catch (error) {
