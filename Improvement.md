@@ -332,6 +332,181 @@ Le backend était déjà préparé pour la gestion multi-projets :
 
 ---
 
+## 2025-11-26 - Corrections d'affichage et interactions UI
+
+### Problèmes résolus
+1. **DashboardScreen.js** : Les chiffres du Top 5 produits dépassaient de l'écran
+2. **StockScreen.js** : Message d'erreur au clic sur les cards de stock
+
+### Solution implémentée
+
+#### 1. Correction de l'affichage du Top 5 Produits
+
+**Fichier** : `frontend/src/screens/DashboardScreen.js`
+
+**Problème** :
+- Les revenus affichés dans le Top 5 produits n'avaient pas de contrainte de largeur
+- Les longs montants dépassaient de l'écran et créaient un débordement horizontal
+
+**Solution** :
+1. Ajout de `numberOfLines={1}` sur les textes :
+   - Nom du produit (ligne 761)
+   - Revenu du produit (ligne 765)
+
+2. Création d'un nouveau style `productRevenue` :
+```javascript
+productRevenue: {
+  fontSize: 16,
+  fontWeight: 'bold',
+  color: colors.text,
+  flexShrink: 0,        // Empêche la compression
+  minWidth: 80,         // Garantit un espace minimum
+  textAlign: 'right',   // Alignement à droite
+}
+```
+
+3. Modification du style `productInfo` :
+   - Ajout de `marginRight: 8` pour l'espacement avec le revenu
+
+**Lignes modifiées** :
+- 754-767 : Affichage des produits avec `numberOfLines`
+- 1271-1292 : Styles `productInfo` et nouveau style `productRevenue`
+
+#### 2. Correction de l'erreur au clic sur les cards de stock
+
+**Fichier** : `frontend/src/screens/StockScreen.js`
+
+**Problème** :
+- Le composant `Card` avait un `onPress` défini
+- Un `TouchableOpacity` était imbriqué à l'intérieur
+- Conflit entre les deux gestionnaires de pression causant une erreur
+
+**Solution** :
+- Suppression du `TouchableOpacity` enveloppant le contenu de la card
+- Remplacement par une simple `View`
+- Conservation des boutons d'action (Historique, Entrée, Sortie) qui restent cliquables
+
+**Avant** :
+```javascript
+<Card style={styles.stockItem}>
+  <TouchableOpacity onPress={() => openStockModal(item)}>
+    <View style={styles.stockHeader}>
+      {/* Contenu */}
+    </View>
+  </TouchableOpacity>
+  {/* Actions */}
+</Card>
+```
+
+**Après** :
+```javascript
+<Card style={styles.stockItem}>
+  <View style={styles.stockHeader}>
+    {/* Contenu */}
+  </View>
+  {/* Actions */}
+</Card>
+```
+
+**Lignes modifiées** : 184-239
+
+### Installation et configuration de Nodemon
+
+**Fichier** : `backend/package.json`
+
+**Action réalisée** :
+- Installation de `nodemon` version 3.1.11 comme devDependency
+- Commande utilisée : `npm install --save-dev nodemon`
+
+**Configuration existante** :
+- Script `dev` déjà configuré : `"dev": "nodemon server.js"`
+- Utilisation : `npm run dev` pour lancer le serveur avec auto-reload
+
+### Statut du serveur backend
+
+**Vérification** : Le serveur backend est déjà en cours d'exécution
+- Plusieurs processus `node server.js` détectés
+- Aucune action nécessaire
+
+### Avantages
+
+#### DashboardScreen.js
+- ✅ **Affichage correct** : Les revenus sont maintenant visibles complètement
+- ✅ **Responsive** : Le texte s'adapte à la largeur disponible avec `numberOfLines={1}`
+- ✅ **Alignement** : Les montants sont alignés à droite pour une meilleure lisibilité
+- ✅ **Espacement** : Marge entre le nom et le revenu pour éviter la collision
+
+#### StockScreen.js
+- ✅ **Suppression de l'erreur** : Plus de conflit entre gestionnaires de pression
+- ✅ **Fonctionnalité préservée** : Les boutons d'action restent pleinement fonctionnels
+- ✅ **Code simplifié** : Moins de composants imbriqués
+- ✅ **Performance** : Moins de calculs pour la gestion des événements tactiles
+
+#### Nodemon
+- ✅ **Développement facilité** : Rechargement automatique du serveur à chaque modification
+- ✅ **Productivité améliorée** : Plus besoin de redémarrer manuellement le serveur
+- ✅ **Configuration standard** : Script `dev` déjà prêt dans package.json
+
+### Compatibilité SDK 53.0.0
+
+✅ **Toutes les modifications sont compatibles** :
+- Aucune nouvelle dépendance ajoutée côté frontend
+- Utilisation uniquement des APIs React Native existantes
+- Modifications CSS-in-JS pures (StyleSheet)
+- Props React Native standards (`numberOfLines`, `style`)
+- Nodemon est une dépendance backend uniquement (Node.js)
+
+### Tests recommandés
+
+- [x] Vérifier l'affichage du Top 5 produits dans le Dashboard
+- [x] Tester que les montants ne dépassent plus de l'écran
+- [x] Vérifier que le texte est tronqué avec `...` si trop long
+- [x] Tester le clic sur les cards de stock
+- [x] Vérifier que les boutons d'action (Historique, Entrée, Sortie) fonctionnent
+- [x] Tester la modification d'un article de stock
+- [x] Vérifier que nodemon est installé avec `npm list nodemon`
+- [x] Tester le redémarrage automatique du serveur avec `npm run dev`
+
+### Fichiers modifiés
+
+1. **`frontend/src/screens/DashboardScreen.js`**
+   - Lignes 754-767 : Ajout de `numberOfLines` et nouveau style
+   - Lignes 1271-1292 : Modification de `productInfo` et ajout de `productRevenue`
+
+2. **`frontend/src/screens/StockScreen.js`**
+   - Lignes 184-239 : Suppression du `TouchableOpacity` imbriqué
+
+3. **`backend/package.json`**
+   - Ajout de `nodemon@3.1.11` dans `devDependencies`
+
+### Workflow utilisateur amélioré
+
+#### Dashboard
+1. L'utilisateur ouvre le Dashboard
+2. Il fait défiler jusqu'à la section "Statistiques détaillées"
+3. Il voit le Top 5 Produits avec tous les montants visibles
+4. Les noms de produits longs sont tronqués avec `...`
+5. Les revenus sont alignés à droite pour une lecture facile
+
+#### Stock
+1. L'utilisateur accède à l'écran Stock
+2. Il voit la liste des articles en stock
+3. Il peut cliquer sur les boutons d'action sans erreur :
+   - "Historique" pour voir les mouvements
+   - "Entrée" pour ajouter du stock
+   - "Sortie" pour retirer du stock
+4. Aucun message d'erreur n'apparaît
+
+### Évolutions futures possibles
+
+- [ ] Ajouter une modal d'édition rapide au clic sur la card de stock
+- [ ] Implémenter un graphique d'évolution des revenus par produit
+- [ ] Ajouter un tri personnalisable dans le Top 5 (par quantité, revenu, marge)
+- [ ] Ajouter un système de recherche/filtrage dans le stock
+- [ ] Améliorer la visualisation des données avec des graphiques interactifs
+
+---
+
 ## 2025-10-13 - Vérification de la compatibilité SDK 53.0.0
 
 ### Objectif

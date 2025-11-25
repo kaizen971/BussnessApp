@@ -183,62 +183,60 @@ export const StockScreen = () => {
 
     return (
       <Card style={styles.stockItem}>
-        <TouchableOpacity onPress={() => openStockModal(item)}>
-          <View style={styles.stockHeader}>
-            <View style={[
-              styles.stockIcon,
-              { backgroundColor: isLowStock ? colors.error + '20' : colors.info + '20' }
-            ]}>
-              <Ionicons
-                name={isLowStock ? 'alert-circle-outline' : 'cube-outline'}
-                size={24}
-                color={isLowStock ? colors.error : colors.info}
-              />
-            </View>
-            <View style={styles.stockInfo}>
-              <View style={styles.headerRow}>
-                <Text style={styles.stockName}>{item.name}</Text>
-                {isLowStock && (
-                  <View style={styles.alertBadge}>
-                    <Ionicons name="warning-outline" size={14} color={colors.error} />
-                    <Text style={styles.alertText}>Stock bas</Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.detailsRow}>
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>Quantité</Text>
-                  <Text style={[styles.detailValue, isLowStock && { color: colors.error }]}>
-                    {item.quantity}
-                  </Text>
-                </View>
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>Prix unitaire</Text>
-                  <Text style={styles.detailValue}>{item.unitPrice.toFixed(2)} €</Text>
-                </View>
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailLabel}>Valeur totale</Text>
-                  <Text style={[styles.detailValue, styles.totalValue]}>
-                    {totalValue.toFixed(2)} €
-                  </Text>
-                </View>
-              </View>
-              {item.sku && (
-                <Text style={styles.skuText}>SKU: {item.sku}</Text>
-              )}
-              {item.location && (
-                <Text style={styles.locationText}>
-                  <Ionicons name="location-outline" size={12} color={colors.textSecondary} /> {item.location}
-                </Text>
-              )}
-              {item.minQuantity > 0 && (
-                <Text style={styles.minQuantityText}>
-                  Seuil minimum: {item.minQuantity}
-                </Text>
-              )}
-            </View>
+        <View style={styles.stockHeader}>
+          <View style={[
+            styles.stockIcon,
+            { backgroundColor: isLowStock ? colors.error + '20' : colors.info + '20' }
+          ]}>
+            <Ionicons
+              name={isLowStock ? 'alert-circle-outline' : 'cube-outline'}
+              size={24}
+              color={isLowStock ? colors.error : colors.info}
+            />
           </View>
-        </TouchableOpacity>
+          <View style={styles.stockInfo}>
+            <View style={styles.headerRow}>
+              <Text style={styles.stockName}>{item.name}</Text>
+              {isLowStock && (
+                <View style={styles.alertBadge}>
+                  <Ionicons name="warning-outline" size={14} color={colors.error} />
+                  <Text style={styles.alertText}>Stock bas</Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.detailsRow}>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Quantité</Text>
+                <Text style={[styles.detailValue, isLowStock && { color: colors.error }]}>
+                  {item.quantity}
+                </Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Prix unitaire</Text>
+                <Text style={styles.detailValue}>{item.unitPrice.toFixed(2)} €</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Valeur totale</Text>
+                <Text style={[styles.detailValue, styles.totalValue]}>
+                  {totalValue.toFixed(2)} €
+                </Text>
+              </View>
+            </View>
+            {item.sku && (
+              <Text style={styles.skuText}>SKU: {item.sku}</Text>
+            )}
+            {item.location && (
+              <Text style={styles.locationText}>
+                <Ionicons name="location-outline" size={12} color={colors.textSecondary} /> {item.location}
+              </Text>
+            )}
+            {item.minQuantity > 0 && (
+              <Text style={styles.minQuantityText}>
+                Seuil minimum: {item.minQuantity}
+              </Text>
+            )}
+          </View>
+        </View>
 
         <View style={styles.stockActions}>
           <TouchableOpacity

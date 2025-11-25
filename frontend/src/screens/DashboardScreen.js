@@ -758,11 +758,11 @@ export const DashboardScreen = ({ navigation }) => {
                               <Text style={styles.rankText}>{index + 1}</Text>
                             </View>
                             <View style={styles.productInfo}>
-                              <Text style={styles.productName}>{product.productName}</Text>
+                              <Text style={styles.productName} numberOfLines={1}>{product.productName}</Text>
                               <Text style={styles.productQuantity}>{product.quantity} ventes</Text>
                             </View>
                           </View>
-                          <Text style={styles.summaryValue}>{product.revenue.toFixed(2)} €</Text>
+                          <Text style={styles.productRevenue} numberOfLines={1}>{product.revenue.toFixed(2)} €</Text>
                         </View>
                       ))}
                     </Card>
@@ -1270,6 +1270,7 @@ const styles = StyleSheet.create({
   },
   productInfo: {
     flex: 1,
+    marginRight: 8,
   },
   productName: {
     fontSize: 14,
@@ -1280,6 +1281,14 @@ const styles = StyleSheet.create({
   productQuantity: {
     fontSize: 12,
     color: colors.textLight,
+  },
+  productRevenue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+    flexShrink: 0,
+    minWidth: 80,
+    textAlign: 'right',
   },
   statsButton: {
     borderRadius: 20,
