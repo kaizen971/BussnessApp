@@ -848,6 +848,8 @@ app.get('/BussnessApp/sales', authenticateToken, async (req, res) => {
 app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
   try {
     const { customerId, productId, quantity, unitPrice, discount, projectId } = req.body;
+    
+    console.log(req.body)
 
     // Validation des champs requis
     if (!productId || !quantity || !unitPrice) {
@@ -919,6 +921,8 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
         ...(product ? [{ name: product.name }] : []) // Fallback par nom du produit si le produit existe
       ]
     });
+    
+    console.log(stockItem);
 
     if (stockItem) {
       const previousQuantity = stockItem.quantity;
