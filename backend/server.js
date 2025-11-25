@@ -909,11 +909,14 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
 
     // NOUVEAU : Gestion automatique du stock
     // Chercher un article de stock lié à ce produit
+    // D'abord récupérer les infos du produit
+    const product = await Product.findById(productId);
+
     const stockItem = await Stock.findOne({
       projectId,
       $or: [
-        { productId: productId },
-        { name: { $regex: new RegExp(productId, 'i') } } // Fallback par nom si pas de lien direct
+        { productId: productId }, // Chercher par productId
+        ...(product ? [{ name: product.name }] : []) // Fallback par nom du produit si le produit existe
       ]
     });
 
@@ -950,6 +953,8 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
       await movement.save();
 
       console.log(`Stock mis à jour: ${stockItem.name} - ${previousQuantity} → ${stockItem.quantity}`);
+    } else {
+      console.log(`Aucun stock trouvé pour le produit ${product?.name || productId}. La vente est enregistrée mais le stock n'est pas mis à jour.`);
     }
 
     // NOUVEAU : Calcul automatique des commissions pour l'employé
@@ -1182,10 +1187,10 @@ app.get('/BussnessApp/stock', authenticateToken, async (req, res) => {
 
 app.post('/BussnessApp/stock', authenticateToken, async (req, res) => {
   try {
-    const { name, quantity, unitPrice, minQuantity, projectId } = req.body;
+    const { name, quantity, unitPrice, minQuantity, projectId, productId } = req.body;
 
     // Log pour débugger
-    console.log('Creating stock with data:', { name, quantity, unitPrice, minQuantity, projectId, userId: req.user?.id });
+    console.log('Creating stock with data:', { name, quantity, unitPrice, minQuantity, projectId, productId, userId: req.user?.id });
 
     // Validation des champs requis
     if (!name || name.trim() === '') {
@@ -1222,7 +1227,8 @@ app.post('/BussnessApp/stock', authenticateToken, async (req, res) => {
       quantity: parsedQuantity,
       unitPrice: parsedUnitPrice,
       minQuantity: parsedMinQuantity,
-      projectId
+      projectId,
+      productId: productId || undefined // Ajouter le productId s'il existe
     });
 
     await stock.save();
