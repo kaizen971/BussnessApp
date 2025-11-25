@@ -699,13 +699,13 @@ app.get('/BussnessApp/projects/:id', authenticateToken, async (req, res) => {
     // Vérifier que l'utilisateur a accès à ce projet
     // Responsables/Admins ne peuvent accéder qu'à leurs propres projets
     if ((req.user.role === 'admin' || req.user.role === 'manager' || req.user.role === 'responsable') &&
-        project.ownerId.toString() !== req.user.id) {
+      project.ownerId.toString() !== req.user.id) {
       return res.status(403).json({ error: 'Access denied to this project' });
     }
 
     // Les caissiers ne peuvent accéder qu'au projet qui leur est assigné
     if (req.user.role === 'cashier' &&
-        (!req.user.projectId || project._id.toString() !== req.user.projectId.toString())) {
+      (!req.user.projectId || project._id.toString() !== req.user.projectId.toString())) {
       return res.status(403).json({ error: 'Access denied to this project' });
     }
 
@@ -724,7 +724,7 @@ app.put('/BussnessApp/projects/:id', authenticateToken, checkRole('admin', 'mana
 
     // Vérifier que l'utilisateur est le propriétaire
     if ((req.user.role === 'admin' || req.user.role === 'manager' || req.user.role === 'responsable') &&
-        existingProject.ownerId.toString() !== req.user.id) {
+      existingProject.ownerId.toString() !== req.user.id) {
       return res.status(403).json({ error: 'You can only update your own projects' });
     }
 
@@ -956,7 +956,7 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
     const employee = await User.findById(req.user.id);
     if (employee && employee.commissionRate > 0) {
       const commissionAmount = (amount * employee.commissionRate) / 100;
-      
+
       // Créer l'enregistrement de commission
       const commission = new Commission({
         projectId,
@@ -983,6 +983,164 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
     res.status(201).json({ data: populatedSale });
   } catch (error) {
     console.error('Error creating sale:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Refund a sale
+app.post('/BussnessApp/sales/:id/refund', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+  try {
+    const saleId = req.params.id;
+
+    // Récupérer la vente originale
+    const originalSale = await Sale.findById(saleId)
+      .populate('productId')
+      .populate('customerId')
+      .populate('employeeId');
+
+    if (!originalSale) {
+      return res.status(404).json({ error: 'Vente non trouvée' });
+    }
+
+    // Vérifier que la vente n'a pas déjà été remboursée
+    const existingRefund = await Sale.findOne({
+      description: { $regex: `Remboursement.*${saleId}` }
+    });
+
+    if (existingRefund) {
+      return res.status(400).json({ error: 'Cette vente a déjà été remboursée' });
+    }
+
+    // Créer une vente négative (remboursement)
+    const refundSale = new Sale({
+      projectId: originalSale.projectId,
+      productId: originalSale.productId._id,
+      customerId: originalSale.customerId?._id,
+      employeeId: req.user.id, // L'employé qui effectue le remboursement
+      quantity: -originalSale.quantity, // Quantité négative
+      unitPrice: originalSale.unitPrice,
+      amount: -originalSale.amount, // Montant négatif
+      discount: 0,
+      description: `Remboursement de la vente #${saleId} - ${originalSale.description || 'Vente'}`,
+      date: new Date()
+    });
+
+    await refundSale.save();
+
+    // Remettre le stock
+    const stockItem = await Stock.findOne({
+      projectId: originalSale.projectId,
+      $or: [
+        { productId: originalSale.productId._id },
+        { name: originalSale.productId.name }
+      ]
+    });
+
+    if (stockItem) {
+      const previousQuantity = stockItem.quantity;
+      const newQuantity = previousQuantity + originalSale.quantity; // Ajouter la quantité remboursée
+
+      stockItem.quantity = newQuantity;
+      stockItem.updatedAt = Date.now();
+      await stockItem.save();
+
+      // Enregistrer le mouvement de stock
+      const movement = new StockMovement({
+        projectId: originalSale.projectId,
+        stockId: stockItem._id,
+        productId: originalSale.productId._id,
+        type: 'return',
+        quantity: originalSale.quantity, // Positif pour un retour
+        previousQuantity,
+        newQuantity,
+        unitPrice: originalSale.unitPrice,
+        reason: 'Remboursement',
+        saleId: refundSale._id,
+        userId: req.user.id,
+        notes: `Remboursement de la vente #${saleId}`
+      });
+      await movement.save();
+
+      console.log(`Stock restauré: ${stockItem.name} - ${previousQuantity} → ${newQuantity}`);
+    }
+
+    // Ajuster les points de fidélité du client
+    if (originalSale.customerId) {
+      const customer = await Customer.findById(originalSale.customerId._id);
+      if (customer) {
+        customer.totalPurchases -= originalSale.amount;
+        const pointsToRemove = Math.floor(originalSale.amount / 10);
+        customer.loyaltyPoints = Math.max(0, customer.loyaltyPoints - pointsToRemove);
+
+        // Réajuster le niveau de fidélité
+        if (customer.loyaltyPoints >= 1000) {
+          customer.loyaltyLevel = 'platinum';
+          customer.discount = 15;
+        } else if (customer.loyaltyPoints >= 500) {
+          customer.loyaltyLevel = 'gold';
+          customer.discount = 10;
+        } else if (customer.loyaltyPoints >= 200) {
+          customer.loyaltyLevel = 'silver';
+          customer.discount = 5;
+        } else if (customer.loyaltyPoints >= 50) {
+          customer.loyaltyLevel = 'bronze';
+          customer.discount = 2;
+        } else {
+          customer.loyaltyLevel = 'bronze';
+          customer.discount = 0;
+        }
+
+        customer.history.push({
+          date: new Date(),
+          amount: -originalSale.amount,
+          description: `Remboursement - ${originalSale.description || 'Vente'}`,
+          saleId: refundSale._id
+        });
+
+        await customer.save();
+        console.log(`Points de fidélité ajustés pour ${customer.name}: -${pointsToRemove} points`);
+      }
+    }
+
+    // Ajuster les commissions de l'employé original
+    const originalCommission = await Commission.findOne({
+      saleId: originalSale._id
+    });
+
+    if (originalCommission) {
+      // Créer une commission négative
+      const refundCommission = new Commission({
+        projectId: originalSale.projectId,
+        userId: originalSale.employeeId._id,
+        saleId: refundSale._id,
+        amount: -originalCommission.amount,
+        rate: originalCommission.rate,
+        saleAmount: -originalSale.amount,
+        status: 'pending'
+      });
+      await refundCommission.save();
+
+      // Mettre à jour le total des commissions de l'employé
+      const employee = await User.findById(originalSale.employeeId._id);
+      if (employee) {
+        employee.totalCommissions = Math.max(0, employee.totalCommissions - originalCommission.amount);
+        await employee.save();
+        console.log(`Commission ajustée pour ${employee.fullName}: -${originalCommission.amount}€`);
+      }
+    }
+
+    const populatedRefund = await Sale.findById(refundSale._id)
+      .populate('productId', 'name unitPrice')
+      .populate('customerId', 'name phone')
+      .populate('employeeId', 'username fullName');
+
+    res.status(201).json({
+      message: 'Remboursement effectué avec succès',
+      data: populatedRefund,
+      originalSale: originalSale
+    });
+  } catch (error) {
+    console.error('Error refunding sale:', error);
     res.status(400).json({ error: error.message });
   }
 });
@@ -1520,7 +1678,7 @@ app.get('/BussnessApp/schedules', authenticateToken, async (req, res) => {
     const filter = {};
 
     if (projectId) filter.projectId = projectId;
-    
+
     // Les salariés ne voient que leur propre planning
     if (req.user.role === 'cashier') {
       filter.userId = req.user.id;
@@ -1623,7 +1781,7 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
       let currentDate = new Date(startDate);
       while (currentDate <= finalEndDate) {
         const dayOfWeek = currentDate.getDay(); // 0 = Dimanche, 1 = Lundi, etc.
-        
+
         // Si ce jour est dans la liste des jours récurrents
         if (recurringDays.includes(dayOfWeek)) {
           const schedule = new Schedule({
@@ -1639,7 +1797,7 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
           await schedule.save();
           createdSchedules.push(schedule);
         }
-        
+
         // Passer au jour suivant
         currentDate.setDate(currentDate.getDate() + 1);
       }
@@ -1650,7 +1808,7 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
         .populate('userId', 'username fullName role')
         .populate('createdBy', 'username fullName');
 
-      res.status(201).json({ 
+      res.status(201).json({
         data: populatedSchedules,
         count: createdSchedules.length,
         message: `${createdSchedules.length} planning(s) créé(s) avec succès`
@@ -1729,7 +1887,7 @@ app.put('/BussnessApp/schedules/:id', authenticateToken, checkRole('admin', 'man
 app.delete('/BussnessApp/schedules/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const schedule = await Schedule.findByIdAndDelete(req.params.id);
-    
+
     if (!schedule) {
       return res.status(404).json({ error: 'Planning non trouvé' });
     }
@@ -1881,7 +2039,7 @@ app.get('/BussnessApp/users/:id/salary-stats', authenticateToken, async (req, re
 
     // Définir la période
     let periodStart, periodEnd;
-    
+
     if (month && year) {
       // Mois spécifique
       periodStart = new Date(year, month - 1, 1);
@@ -2022,8 +2180,8 @@ app.post('/BussnessApp/simulation', authenticateToken, async (req, res) => {
     const marginPercentage = ((unitMargin / unitPrice) * 100).toFixed(2);
 
     const totalMonthlyFixed = monthlyRent + monthlySalaries + monthlyMarketing +
-                              monthlySupplies + monthlySubscriptions +
-                              monthlyUtilities + otherMonthlyExpenses;
+      monthlySupplies + monthlySubscriptions +
+      monthlyUtilities + otherMonthlyExpenses;
 
     // Point mort (Break-even point) = nombre de ventes pour couvrir les charges fixes
     const breakEvenUnits = unitMargin > 0 ? Math.ceil(totalMonthlyFixed / unitMargin) : 0;
@@ -2239,8 +2397,8 @@ app.post('/BussnessApp/export-excel/:projectId', authenticateToken, async (req, 
     // ===== FEUILLE DÉPENSES =====
     const expensesData = expenses.map(expense => ({
       'Date': new Date(expense.date).toLocaleDateString('fr-FR'),
-      'Catégorie': expense.category === 'purchase' ? 'Achat' : 
-                   expense.category === 'variable' ? 'Variable' : 'Fixe',
+      'Catégorie': expense.category === 'purchase' ? 'Achat' :
+        expense.category === 'variable' ? 'Variable' : 'Fixe',
       'Montant': expense.amount.toFixed(2) + ' €',
       'Description': expense.description || ''
     }));
@@ -2267,9 +2425,9 @@ app.post('/BussnessApp/export-excel/:projectId', authenticateToken, async (req, 
       'Nom complet': employee.fullName || 'N/A',
       'Username': employee.username,
       'Email': employee.email,
-      'Rôle': employee.role === 'admin' ? 'Administrateur' : 
-              employee.role === 'manager' ? 'Responsable' : 
-              employee.role === 'responsable' ? 'Responsable' : 'Caissier',
+      'Rôle': employee.role === 'admin' ? 'Administrateur' :
+        employee.role === 'manager' ? 'Responsable' :
+          employee.role === 'responsable' ? 'Responsable' : 'Caissier',
       'Taux commission': employee.commissionRate + ' %',
       'Commissions totales': employee.totalCommissions.toFixed(2) + ' €',
       'Taux horaire': employee.hourlyRate.toFixed(2) + ' €/h',
@@ -2297,7 +2455,7 @@ app.post('/BussnessApp/export-excel/:projectId', authenticateToken, async (req, 
       const duration = schedule.duration || 0;
       const hourlyRate = employee?.hourlyRate || 0;
       const salary = duration * hourlyRate;
-      
+
       return {
         'Date': new Date(schedule.date).toLocaleDateString('fr-FR'),
         'Employé': employee?.fullName || employee?.username || 'N/A',
@@ -2306,9 +2464,9 @@ app.post('/BussnessApp/export-excel/:projectId', authenticateToken, async (req, 
         'Durée (heures)': duration,
         'Taux horaire': hourlyRate.toFixed(2) + ' €/h',
         'Salaire': salary.toFixed(2) + ' €',
-        'Statut': schedule.status === 'completed' ? 'Complété' : 
-                  schedule.status === 'absent' ? 'Absent' : 
-                  schedule.status === 'cancelled' ? 'Annulé' : 'Planifié',
+        'Statut': schedule.status === 'completed' ? 'Complété' :
+          schedule.status === 'absent' ? 'Absent' :
+            schedule.status === 'cancelled' ? 'Annulé' : 'Planifié',
         'Notes': schedule.notes || ''
       };
     });
@@ -2322,11 +2480,11 @@ app.post('/BussnessApp/export-excel/:projectId', authenticateToken, async (req, 
       'Téléphone': customer.phone || 'N/A',
       'Achats totaux': customer.totalPurchases.toFixed(2) + ' €',
       'Points fidélité': customer.loyaltyPoints,
-      'Niveau': customer.loyaltyLevel === 'bronze' ? 'Bronze' : 
-                customer.loyaltyLevel === 'silver' ? 'Argent' : 
-                customer.loyaltyLevel === 'gold' ? 'Or' : 'Platine',
+      'Niveau': customer.loyaltyLevel === 'bronze' ? 'Bronze' :
+        customer.loyaltyLevel === 'silver' ? 'Argent' :
+          customer.loyaltyLevel === 'gold' ? 'Or' : 'Platine',
       'Remise': customer.discount + ' %',
-      'Dernier achat': customer.lastPurchaseDate ? 
+      'Dernier achat': customer.lastPurchaseDate ?
         new Date(customer.lastPurchaseDate).toLocaleDateString('fr-FR') : 'N/A',
       'Date création': new Date(customer.createdAt).toLocaleDateString('fr-FR'),
       'Notes': customer.notes || ''

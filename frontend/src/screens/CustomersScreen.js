@@ -97,8 +97,14 @@ export const CustomersScreen = () => {
     setModalVisible(true);
   };
 
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'responsable';
+
   const renderCustomerItem = ({ item }) => (
-    <Card style={styles.customerItem} onPress={() => openCustomerModal(item)}>
+    <Card
+      style={styles.customerItem}
+      onPress={isAdmin ? () => openCustomerModal(item) : undefined}
+      activeOpacity={isAdmin ? 0.7 : 1}
+    >
       <View style={styles.customerHeader}>
         <View style={styles.customerIcon}>
           <Ionicons name="person-outline" size={24} color={colors.primary} />

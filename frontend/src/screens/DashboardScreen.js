@@ -37,6 +37,7 @@ export const DashboardScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [statsModalVisible, setStatsModalVisible] = useState(false);
   const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [commerceModalVisible, setCommerceModalVisible] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1)); // Début de l'année
   const [endDate, setEndDate] = useState(new Date()); // Aujourd'hui
@@ -46,6 +47,7 @@ export const DashboardScreen = ({ navigation }) => {
   const slideAnim = useRef(new Animated.Value(50)).current;
   const modalSlideAnim = useRef(new Animated.Value(0)).current;
   const exportModalSlideAnim = useRef(new Animated.Value(0)).current;
+  const commerceModalSlideAnim = useRef(new Animated.Value(0)).current;
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   console.log(user)
@@ -148,9 +150,29 @@ export const DashboardScreen = ({ navigation }) => {
     });
   };
 
+  const openCommerceModal = () => {
+    setCommerceModalVisible(true);
+    Animated.spring(commerceModalSlideAnim, {
+      toValue: 1,
+      tension: 50,
+      friction: 8,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeCommerceModal = () => {
+    Animated.timing(commerceModalSlideAnim, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      setCommerceModalVisible(false);
+    });
+  };
+
   const handleExportExcel = async () => {
     const projectId = selectedProjectId || user?.projectId;
-    
+
     if (!projectId) {
       Alert.alert('Erreur', 'Aucun projet sélectionné');
       return;
@@ -158,45 +180,63 @@ export const DashboardScreen = ({ navigation }) => {
 
     try {
       setExportLoading(true);
-      
+
       // Définir le chemin du fichier
       const fileName = `export_${projectId}_${Date.now()}.xlsx`;
       const fileUri = FileSystem.documentDirectory + fileName;
 
-      // Télécharger directement le fichier Excel avec FileSystem
-      const downloadResult = await FileSystem.downloadAsync(
+      // Faire une requête POST pour récupérer le fichier
+      const token = await AsyncStorage.getItem('userToken');
+      const response = await fetch(
         `https://mabouya.servegame.com/BussnessApp/BussnessApp/export-excel/${projectId}`,
-        fileUri,
         {
+          method: 'POST',
           headers: {
-            'Authorization': `Bearer ${await AsyncStorage.getItem('userToken')}`,
+            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             startDate: startDate.toISOString(),
             endDate: endDate.toISOString()
           }),
-          method: 'POST',
         }
       );
 
-      if (downloadResult.status === 200) {
-        // Partager le fichier
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(downloadResult.uri, {
-            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            dialogTitle: 'Exporter les données',
-            UTI: 'com.microsoft.excel.xlsx'
-          });
-          Alert.alert('Succès', 'Export Excel créé avec succès !');
-        } else {
-          Alert.alert('Succès', `Fichier sauvegardé : ${downloadResult.uri}`);
-        }
-        
-        closeExportModal();
-      } else {
-        throw new Error('Échec du téléchargement');
+      console.log('Response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Erreur réponse:', errorText);
+        throw new Error(`Erreur serveur: ${response.status}`);
       }
+
+      // Récupérer les données brutes et les convertir en base64
+      const arrayBuffer = await response.arrayBuffer();
+      const base64 = btoa(
+        new Uint8Array(arrayBuffer).reduce(
+          (data, byte) => data + String.fromCharCode(byte),
+          ''
+        )
+      );
+
+      // Écrire le fichier localement
+      await FileSystem.writeAsStringAsync(fileUri, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Partager le fichier
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          dialogTitle: 'Exporter les données',
+          UTI: 'com.microsoft.excel.xlsx'
+        });
+        Alert.alert('Succès', 'Export Excel créé avec succès !');
+      } else {
+        Alert.alert('Succès', `Fichier sauvegardé : ${fileUri}`);
+      }
+
+      closeExportModal();
     } catch (error) {
       console.error('Erreur export Excel:', error);
       Alert.alert('Erreur', 'Impossible de générer l\'export Excel. Vérifiez votre connexion et réessayez.');
@@ -322,98 +362,165 @@ export const DashboardScreen = ({ navigation }) => {
           </Card>
         )}
 
-      {stats && isAdmin && (
-        <TouchableOpacity style={styles.statsButton} onPress={openStatsModal} activeOpacity={0.8}>
-          <LinearGradient
-            colors={[colors.primary, colors.accent]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.statsButtonGradient}
-          >
-            <View style={styles.statsButtonContent}>
-              <View style={styles.statsButtonLeft}>
-                <Ionicons name="stats-chart" size={28} color={colors.background} />
-                <View style={styles.statsButtonTextContainer}>
-                  <Text style={styles.statsButtonTitle}>Statistiques détaillées</Text>
-                  <Text style={styles.statsButtonSubtitle}>Voir toutes les analyses</Text>
+        {stats && isAdmin && (
+          <TouchableOpacity style={styles.statsButton} onPress={openStatsModal} activeOpacity={0.8}>
+            <LinearGradient
+              colors={[colors.primary, colors.accent]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.statsButtonGradient}
+            >
+              <View style={styles.statsButtonContent}>
+                <View style={styles.statsButtonLeft}>
+                  <Ionicons name="stats-chart" size={28} color={colors.background} />
+                  <View style={styles.statsButtonTextContainer}>
+                    <Text style={styles.statsButtonTitle}>Statistiques détaillées</Text>
+                    <Text style={styles.statsButtonSubtitle}>Voir toutes les analyses</Text>
+                  </View>
                 </View>
+                <Ionicons name="chevron-up" size={24} color={colors.background} />
               </View>
-              <Ionicons name="chevron-up" size={24} color={colors.background} />
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
-      )}
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
 
-      <Text style={styles.sectionTitle}>Actions rapides</Text>
-      <View style={styles.actionsGrid}>
-        {isAdmin && <QuickActionButton
-          title="Simulation"
-          icon="calculator-outline"
-          color={colors.primary}
-          onPress={() => navigation.navigate('Simulation')}
-        />}
-        <QuickActionButton
-          title="Ventes"
-          icon="cart-outline"
-          color={colors.success}
-          onPress={() => navigation.navigate('Sales')}
-        />
-        <QuickActionButton
-          title="Dépenses"
-          icon="wallet-outline"
-          color={colors.error}
-          onPress={() => navigation.navigate('Expenses')}
-        />
-        <QuickActionButton
-          title="Stock"
-          icon="cube-outline"
-          color={colors.info}
-          onPress={() => navigation.navigate('Stock')}
-        />
-        <QuickActionButton
-          title="Clients"
-          icon="people-outline"
-          color={colors.accent}
-          onPress={() => navigation.navigate('Customers')}
-        />
-        <QuickActionButton
-          title="Produits"
-          icon="pricetag-outline"
-          color={colors.warning}
-          onPress={() => navigation.navigate('Products')}
-        />
-        {isAdmin && <QuickActionButton
-          title="Équipe"
-          icon="people"
-          color={colors.info}
-          onPress={() => navigation.navigate('Team')}
-        />}
-        <QuickActionButton
-          title="Planning"
-          icon="calendar"
-          color={colors.primary}
-          onPress={() => navigation.navigate('Planning')}
-        />
-        <QuickActionButton
-          title="Commissions"
-          icon="cash"
-          color={colors.success}
-          onPress={() => navigation.navigate('Commissions')}
-        />
-        <QuickActionButton
-          title="Feedback"
-          icon="chatbubble-outline"
-          color={colors.primary}
-          onPress={() => navigation.navigate('Feedback')}
-        />
-        {isAdmin && <QuickActionButton
-          title="Export Excel"
-          icon="cloud-download-outline"
-          color={colors.accent}
-          onPress={openExportModal}
-        />}
-      </View>
+        <Text style={styles.sectionTitle}>Gestion</Text>
+        <View style={styles.actionsGrid}>
+          <QuickActionButton
+            title="Ventes"
+            icon="cart-outline"
+            color={colors.success}
+            onPress={() => navigation.navigate('Sales')}
+          />
+          <QuickActionButton
+            title="Dépenses"
+            icon="wallet-outline"
+            color={colors.error}
+            onPress={() => navigation.navigate('Expenses')}
+          />
+          <QuickActionButton
+            title="Stock"
+            icon="cube-outline"
+            color={colors.info}
+            onPress={() => navigation.navigate('Stock')}
+          />
+          <QuickActionButton
+            title="Clients"
+            icon="people-outline"
+            color={colors.accent}
+            onPress={() => navigation.navigate('Customers')}
+          />
+          <QuickActionButton
+            title="Produits"
+            icon="pricetag-outline"
+            color={colors.warning}
+            onPress={() => navigation.navigate('Products')}
+          />
+          {isAdmin && <QuickActionButton
+            title="Équipe"
+            icon="people"
+            color={colors.info}
+            onPress={() => navigation.navigate('Team')}
+          />}
+          <QuickActionButton
+            title="Commerce"
+            icon="business-outline"
+            color={colors.primary}
+            onPress={openCommerceModal}
+          />
+        </View>
       </ScrollView>
+
+      <Modal
+        visible={commerceModalVisible}
+        transparent={true}
+        animationType="none"
+        onRequestClose={closeCommerceModal}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={closeCommerceModal}
+          />
+          <Animated.View
+            style={[
+              styles.modalContainer,
+              {
+                transform: [
+                  {
+                    translateY: commerceModalSlideAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [600, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={styles.modalHandle}>
+              <View style={styles.modalHandleLine} />
+            </View>
+
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>💼 Outils Commerce</Text>
+              <TouchableOpacity onPress={closeCommerceModal} style={styles.closeButton}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalContent}>
+              <View style={styles.actionsGrid}>
+                {isAdmin && <QuickActionButton
+                  title="Simulation"
+                  icon="calculator-outline"
+                  color={colors.primary}
+                  onPress={() => {
+                    closeCommerceModal();
+                    navigation.navigate('Simulation');
+                  }}
+                />}
+                <QuickActionButton
+                  title="Planning"
+                  icon="calendar"
+                  color={colors.primary}
+                  onPress={() => {
+                    closeCommerceModal();
+                    navigation.navigate('Planning');
+                  }}
+                />
+                <QuickActionButton
+                  title="Commissions"
+                  icon="cash"
+                  color={colors.success}
+                  onPress={() => {
+                    closeCommerceModal();
+                    navigation.navigate('Commissions');
+                  }}
+                />
+                <QuickActionButton
+                  title="Feedback"
+                  icon="chatbubble-outline"
+                  color={colors.primary}
+                  onPress={() => {
+                    closeCommerceModal();
+                    navigation.navigate('Feedback');
+                  }}
+                />
+                {isAdmin && <QuickActionButton
+                  title="Export Excel"
+                  icon="cloud-download-outline"
+                  color={colors.accent}
+                  onPress={() => {
+                    closeCommerceModal();
+                    setTimeout(openExportModal, 500);
+                  }}
+                />}
+              </View>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
 
       <Modal
         visible={statsModalVisible}
@@ -422,12 +529,12 @@ export const DashboardScreen = ({ navigation }) => {
         onRequestClose={closeStatsModal}
       >
         <View style={styles.modalOverlay}>
-          <TouchableOpacity 
-            style={styles.modalBackdrop} 
-            activeOpacity={1} 
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
             onPress={closeStatsModal}
           />
-          <Animated.View 
+          <Animated.View
             style={[
               styles.modalContainer,
               {
@@ -445,7 +552,7 @@ export const DashboardScreen = ({ navigation }) => {
             <View style={styles.modalHandle}>
               <View style={styles.modalHandleLine} />
             </View>
-            
+
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>📊 Statistiques complètes</Text>
               <TouchableOpacity onPress={closeStatsModal} style={styles.closeButton}>
@@ -453,7 +560,7 @@ export const DashboardScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView 
+            <ScrollView
               style={styles.modalContent}
               showsVerticalScrollIndicator={false}
             >
@@ -675,12 +782,12 @@ export const DashboardScreen = ({ navigation }) => {
         onRequestClose={closeExportModal}
       >
         <View style={styles.modalOverlay}>
-          <TouchableOpacity 
-            style={styles.modalBackdrop} 
-            activeOpacity={1} 
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
             onPress={closeExportModal}
           />
-          <Animated.View 
+          <Animated.View
             style={[
               styles.exportModalContainer,
               {
@@ -698,7 +805,7 @@ export const DashboardScreen = ({ navigation }) => {
             <View style={styles.modalHandle}>
               <View style={styles.modalHandleLine} />
             </View>
-            
+
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>📊 Export Excel</Text>
               <TouchableOpacity onPress={closeExportModal} style={styles.closeButton}>
@@ -706,7 +813,7 @@ export const DashboardScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView 
+            <ScrollView
               style={styles.exportModalContent}
               showsVerticalScrollIndicator={false}
             >
@@ -717,7 +824,7 @@ export const DashboardScreen = ({ navigation }) => {
               <Card style={styles.dateCard}>
                 <View style={styles.dateRow}>
                   <Text style={styles.dateLabel}>Date de début :</Text>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.dateButton}
                     onPress={() => setShowStartDatePicker(true)}
                   >
@@ -742,7 +849,7 @@ export const DashboardScreen = ({ navigation }) => {
               <Card style={styles.dateCard}>
                 <View style={styles.dateRow}>
                   <Text style={styles.dateLabel}>Date de fin :</Text>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.dateButton}
                     onPress={() => setShowEndDatePicker(true)}
                   >
@@ -807,7 +914,7 @@ export const DashboardScreen = ({ navigation }) => {
                 </View>
               </Card>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.exportButton, exportLoading && styles.exportButtonDisabled]}
                 onPress={handleExportExcel}
                 disabled={exportLoading}
@@ -1097,6 +1204,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
+    marginBottom: 24,
+  },
+  commerceCard: {
+    padding: 12,
     marginBottom: 24,
   },
   actionButton: {

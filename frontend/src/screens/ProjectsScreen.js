@@ -58,7 +58,7 @@ export const ProjectsScreen = ({ navigation }) => {
 
   const handleSelectProject = async (projectId) => {
     await selectProject(projectId);
-    Alert.alert('Succès', 'Projet sélectionné avec succès');
+    navigation.navigate('Dashboard');
   };
 
   const openAddModal = () => {

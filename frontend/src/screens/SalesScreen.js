@@ -13,7 +13,6 @@ import {
   Dimensions,
   TextInput,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
@@ -39,6 +38,11 @@ export const SalesScreen = () => {
   const [flashingProduct, setFlashingProduct] = useState(null);
   const flashAnim = useRef(new Animated.Value(1)).current;
   const [submitting, setSubmitting] = useState(false);
+
+  // Nouveaux états pour la recherche et l'affichage
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  const [productViewMode, setProductViewMode] = useState('grid'); // 'grid' ou 'list'
 
   useEffect(() => {
     // Log pour déboguer le projectId
@@ -213,24 +217,66 @@ export const SalesScreen = () => {
     }
   };
 
+  // Fonction pour rembourser une vente
+  const handleRefund = (saleId) => {
+    Alert.alert(
+      'Confirmer le remboursement',
+      'Êtes-vous sûr de vouloir rembourser cette vente ? Cette action créera une vente négative et remettra le stock.',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Rembourser',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await salesAPI.refund(saleId);
+              playSound('success');
+              await loadData();
+              Alert.alert('Succès', 'Remboursement effectué avec succès');
+            } catch (error) {
+              console.error('Error refunding sale:', error);
+              playSound('error');
+              Alert.alert('Erreur', error.response?.data?.error || 'Impossible de rembourser cette vente');
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Déterminer si l'utilisateur est admin/manager
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'responsable';
+
+  // Fonction pour afficher les ventes (uniquement pour les admins)
   const renderSaleItem = ({ item }) => {
     // Vérifier que item existe avant d'accéder à ses propriétés
     if (!item) return null;
 
     const product = (item.productId && products && Array.isArray(products)) ? products.find(p => p._id === item.productId) : null;
     const customer = (item.customerId && customers && Array.isArray(customers)) ? customers.find(c => c._id === item.customerId) : null;
+    const isRefund = item.amount < 0;
+    const isRefunded = item.description?.includes('Remboursement');
 
     return (
-      <Card style={styles.saleItem}>
+      <Card style={[styles.saleItem, isRefund && styles.saleItemRefund]}>
         <View style={styles.saleHeader}>
-          <View style={styles.saleIcon}>
-            <Ionicons name="cash-outline" size={24} color={colors.primary} />
+          <View style={[styles.saleIcon, isRefund && styles.saleIconRefund]}>
+            <Ionicons
+              name={isRefund ? "arrow-undo-outline" : "cash-outline"}
+              size={24}
+              color={isRefund ? colors.danger : colors.primary}
+            />
           </View>
           <View style={styles.saleInfo}>
-            <Text style={styles.saleAmount}>+{item.amount?.toFixed(2) || '0.00'} €</Text>
-            {product ? (
+            <Text style={[styles.saleAmount, isRefund && styles.saleAmountRefund]}>
+              {isRefund ? '' : '+'}{item.amount?.toFixed(2) || '0.00'} €
+            </Text>
+            {item.productId ? (
               <Text style={styles.saleProduct}>
-                {product.name} x{item.quantity || 1}
+                {item.productId?.name} x{item.quantity || 1}
               </Text>
             ) : (
               <Text style={styles.saleProduct}>
@@ -244,7 +290,9 @@ export const SalesScreen = () => {
               </View>
             )}
             {item.description && (
-              <Text style={styles.saleDescription}>{item.description}</Text>
+              <Text style={[styles.saleDescription, isRefund && styles.saleDescriptionRefund]}>
+                {item.description}
+              </Text>
             )}
             <Text style={styles.saleDate}>
               {new Date(item.date).toLocaleDateString('fr-FR', {
@@ -256,6 +304,14 @@ export const SalesScreen = () => {
               })}
             </Text>
           </View>
+          {!isRefund && !isRefunded && (
+            <TouchableOpacity
+              style={styles.refundButton}
+              onPress={() => handleRefund(item._id)}
+            >
+              <Ionicons name="arrow-undo" size={20} color={colors.danger} />
+            </TouchableOpacity>
+          )}
         </View>
       </Card>
     );
@@ -269,6 +325,27 @@ export const SalesScreen = () => {
     sum + (item.quantity * item.unitPrice - (item.discount || 0)), 0
   );
 
+  // Filtrage des clients selon la recherche
+  const filteredCustomers = customers.filter(customer => {
+    if (!customerSearch) return true;
+    const searchLower = customerSearch.toLowerCase();
+    return (
+      customer.name?.toLowerCase().includes(searchLower) ||
+      customer.phone?.toLowerCase().includes(searchLower) ||
+      customer.email?.toLowerCase().includes(searchLower)
+    );
+  });
+
+  // Filtrage des produits selon la recherche
+  const filteredProducts = products.filter(product => {
+    if (!productSearch) return true;
+    const searchLower = productSearch.toLowerCase();
+    return (
+      product.name?.toLowerCase().includes(searchLower) ||
+      product.description?.toLowerCase().includes(searchLower)
+    );
+  });
+
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -277,37 +354,100 @@ export const SalesScreen = () => {
       >
         <View style={styles.headerContent}>
           <View style={styles.titleSection}>
-            <Text style={styles.headerTitle}>Ventes</Text>
-            <Text style={styles.headerSubtitle}>{(sales && Array.isArray(sales)) ? sales.length : 0} vente(s)</Text>
+            <Text style={styles.headerTitle}>
+              {isAdmin ? 'Ventes' : 'Point de Vente'}
+            </Text>
+            <Text style={styles.headerSubtitle}>
+              {isAdmin
+                ? `${(sales && Array.isArray(sales)) ? sales.length : 0} vente(s)`
+                : 'Effectuez vos ventes rapidement'}
+            </Text>
           </View>
         </View>
-        <LinearGradient
-          colors={[colors.primary + '25', colors.primary + '10']}
-          style={styles.totalCard}
-        >
-          <View style={styles.totalCardContent}>
-            <Ionicons name="wallet" size={32} color={colors.primary} />
-            <View style={styles.totalTextContainer}>
-              <Text style={styles.totalLabel}>Total des ventes</Text>
-              <Text style={styles.totalAmount}>{totalSales.toFixed(2)} €</Text>
+
+        {/* Afficher le total uniquement pour les admins */}
+        {isAdmin && (
+          <LinearGradient
+            colors={[colors.primary + '25', colors.primary + '10']}
+            style={styles.totalCard}
+          >
+            <View style={styles.totalCardContent}>
+              <Ionicons name="wallet" size={32} color={colors.primary} />
+              <View style={styles.totalTextContainer}>
+                <Text style={styles.totalLabel}>Total des ventes</Text>
+                <Text style={styles.totalAmount}>{totalSales.toFixed(2)} €</Text>
+              </View>
             </View>
-          </View>
-        </LinearGradient>
+          </LinearGradient>
+        )}
       </LinearGradient>
 
-      <FlatList
-        data={sales}
-        renderItem={renderSaleItem}
-        keyExtractor={(item) => item._id}
-        contentContainerStyle={styles.listContainer}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="cart-outline" size={64} color={colors.textLight} />
-            <Text style={styles.emptyText}>Aucune vente enregistrée</Text>
-          </View>
-        }
-      />
+      {/* Interface pour les admins : liste des ventes */}
+      {isAdmin ? (
+        <FlatList
+          data={sales}
+          renderItem={renderSaleItem}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={styles.listContainer}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="cart-outline" size={64} color={colors.textLight} />
+              <Text style={styles.emptyText}>Aucune vente enregistrée</Text>
+            </View>
+          }
+        />
+      ) : (
+        /* Interface pour les salariés : écran simplifié */
+        <View style={styles.centerContainer}>
+          <LinearGradient
+            colors={[colors.primary + '20', colors.primary + '10']}
+            style={styles.welcomeCard}
+          >
+            <View style={styles.welcomeIconContainer}>
+              <Ionicons name="cart" size={64} color={colors.primary} />
+            </View>
+            <Text style={styles.welcomeTitle}>Bienvenue, {user?.fullName || user?.username}</Text>
+            <Text style={styles.welcomeText}>
+              Cliquez sur le bouton ci-dessous pour commencer une nouvelle vente
+            </Text>
 
+            <TouchableOpacity
+              style={styles.mainSaleButtonWrapper}
+              onPress={() => setModalVisible(true)}
+            >
+              <LinearGradient
+                colors={[colors.primary, colors.primaryDark]}
+                style={styles.mainSaleButton}
+              >
+                <Ionicons name="add-circle" size={28} color="#000" />
+                <Text style={styles.mainSaleButtonText}>Nouvelle Vente</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </LinearGradient>
+          {/* Statistiques rapides du jour (optionnel) */}
+          <View style={styles.quickStatsContainer}>
+            <LinearGradient
+              colors={[colors.surface, colors.background]}
+              style={styles.quickStatCard}
+            >
+              <Ionicons name="checkmark-circle" size={32} color={colors.success} />
+              <Text style={styles.quickStatValue}>
+                {sales.filter(s => {
+                  const today = new Date();
+                  const saleDate = new Date(s.date);
+                  return saleDate.toDateString() === today.toDateString();
+                }).length}
+              </Text>
+              <Text style={styles.quickStatLabel}>Ventes aujourd'hui</Text>
+            </LinearGradient>
+          </View>
+
+        </View>
+
+      )}
+
+
+      {/* Bouton FAB (toujours accessible) */}
       <View style={styles.fabContainer}>
         <TouchableOpacity
           style={styles.fabWrapper}
@@ -353,7 +493,7 @@ export const SalesScreen = () => {
                   <Text style={styles.modalSubtitle}>Ajoutez des produits au panier</Text>
                 </View>
               </LinearGradient>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.closeButton}
                 onPress={() => setModalVisible(false)}
               >
@@ -361,7 +501,7 @@ export const SalesScreen = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView 
+            <ScrollView
               style={styles.modalForm}
               showsVerticalScrollIndicator={false}
             >
@@ -376,33 +516,88 @@ export const SalesScreen = () => {
               </LinearGradient>
 
               {/* Sélection du client (optionnel) */}
+
+              {/* Sélection du client (optionnel) */}
               <Text style={styles.fieldLabel}>Client (optionnel)</Text>
-              {selectedCustomer && (
-                <View style={styles.selectedItemBadge}>
-                  <Ionicons name="person" size={16} color={colors.primary} />
-                  <Text style={styles.selectedItemText}>
-                    {selectedCustomer.name} - {selectedCustomer.phone || 'N/A'}
-                  </Text>
+
+              {/* Badge du client sélectionné */}
+              {selectedCustomer ? (
+                <View style={styles.selectedClientContainer}>
+                  <LinearGradient
+                    colors={[colors.primary + '20', colors.primary + '10']}
+                    style={styles.selectedClientCard}
+                  >
+                    <View style={styles.selectedClientInfo}>
+                      <View style={styles.selectedClientIcon}>
+                        <Ionicons name="person" size={20} color={colors.primary} />
+                      </View>
+                      <View>
+                        <Text style={styles.selectedClientName}>{selectedCustomer.name}</Text>
+                        <Text style={styles.selectedClientPhone}>{selectedCustomer.phone || 'Pas de téléphone'}</Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.removeClientButton}
+                      onPress={() => {
+                        setFormData({ ...formData, customerId: '' });
+                        setCustomerSearch('');
+                      }}
+                    >
+                      <Ionicons name="close" size={20} color={colors.danger} />
+                    </TouchableOpacity>
+                  </LinearGradient>
+                </View>
+              ) : (
+                /* Champ de recherche et liste d'autocomplete */
+                <View style={styles.autocompleteContainer}>
+                  <View style={styles.searchContainer}>
+                    <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Rechercher un client (nom, téléphone)..."
+                      placeholderTextColor={colors.textLight}
+                      value={customerSearch}
+                      onChangeText={setCustomerSearch}
+                    />
+                    {customerSearch.length > 0 && (
+                      <TouchableOpacity onPress={() => setCustomerSearch('')}>
+                        <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Liste des résultats d'autocomplete */}
+                  {customerSearch.length > 0 && (
+                    <View style={styles.autocompleteList}>
+                      {filteredCustomers.length > 0 ? (
+                        filteredCustomers.slice(0, 5).map(customer => (
+                          <TouchableOpacity
+                            key={customer._id}
+                            style={styles.autocompleteItem}
+                            onPress={() => {
+                              setFormData({ ...formData, customerId: customer._id });
+                              setCustomerSearch(''); // Optionnel : vider la recherche ou garder le nom
+                            }}
+                          >
+                            <View style={styles.autocompleteItemIcon}>
+                              <Ionicons name="person-outline" size={18} color={colors.textSecondary} />
+                            </View>
+                            <View style={styles.autocompleteItemContent}>
+                              <Text style={styles.autocompleteItemName}>{customer.name}</Text>
+                              <Text style={styles.autocompleteItemSub}>{customer.phone || customer.email || 'N/A'}</Text>
+                            </View>
+                            <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+                          </TouchableOpacity>
+                        ))
+                      ) : (
+                        <View style={styles.autocompleteEmpty}>
+                          <Text style={styles.autocompleteEmptyText}>Aucun client trouvé</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
                 </View>
               )}
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={formData.customerId}
-                  onValueChange={(customerId) => setFormData({ customerId })}
-                  style={styles.picker}
-                >
-                  <Picker.Item label="Aucun client" value="" />
-                  {customers && customers.length > 0 && customers.map(customer => (
-                    customer && customer._id ? (
-                      <Picker.Item
-                        key={customer._id}
-                        label={`${customer.name || 'Client'} - ${customer.phone || 'N/A'}`}
-                        value={customer._id}
-                      />
-                    ) : null
-                  ))}
-                </Picker>
-              </View>
 
               {selectedCustomer && (
                 <LinearGradient
@@ -421,11 +616,56 @@ export const SalesScreen = () => {
               {/* Sélection des produits */}
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Produits</Text>
-                <Text style={styles.sectionSubtitle}>Cliquez sur un produit pour l'ajouter au panier</Text>
+                <View style={styles.viewModeToggle}>
+                  <TouchableOpacity
+                    style={[styles.viewModeButton, productViewMode === 'grid' && styles.viewModeButtonActive]}
+                    onPress={() => setProductViewMode('grid')}
+                  >
+                    <Ionicons
+                      name="grid"
+                      size={20}
+                      color={productViewMode === 'grid' ? colors.primary : colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.viewModeButton, productViewMode === 'list' && styles.viewModeButtonActive]}
+                    onPress={() => setProductViewMode('list')}
+                  >
+                    <Ionicons
+                      name="list"
+                      size={20}
+                      color={productViewMode === 'list' ? colors.primary : colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                </View>
               </View>
 
-              <View style={styles.productsGrid}>
-                {products && products.length > 0 ? products.map(product => {
+              {/* Champ de recherche pour les produits */}
+              <View style={styles.searchContainer}>
+                <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Rechercher un produit..."
+                  placeholderTextColor={colors.textLight}
+                  value={productSearch}
+                  onChangeText={setProductSearch}
+                />
+                {productSearch.length > 0 && (
+                  <TouchableOpacity onPress={() => setProductSearch('')}>
+                    <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {productSearch && (
+                <Text style={styles.searchResultText}>
+                  {filteredProducts.length} produit(s) trouvé(s)
+                </Text>
+              )}
+
+              {/* Affichage des produits selon le mode */}
+              <View style={productViewMode === 'grid' ? styles.productsGrid : styles.productsList}>
+                {filteredProducts && filteredProducts.length > 0 ? filteredProducts.map(product => {
                   if (!product || !product._id) return null;
                   const isFlashing = flashingProduct === product._id;
                   const animStyle = isFlashing ? {
@@ -433,6 +673,46 @@ export const SalesScreen = () => {
                   } : {};
 
                   const inCart = cart.find(item => item.productId === product._id);
+
+                  // Vue Liste
+                  if (productViewMode === 'list') {
+                    return (
+                      <Animated.View key={product._id} style={animStyle}>
+                        <TouchableOpacity
+                          style={[
+                            styles.productListItem,
+                            isFlashing && styles.productCardFlashing
+                          ]}
+                          onPress={() => handleAddToCart(product._id)}
+                          activeOpacity={0.8}
+                        >
+                          <View style={styles.productListIconContainer}>
+                            <Ionicons name="cube" size={24} color={colors.primary} />
+                          </View>
+                          <View style={styles.productListInfo}>
+                            <Text style={styles.productListName} numberOfLines={1}>
+                              {product.name}
+                            </Text>
+                            <Text style={styles.productListPrice}>{product.unitPrice}€</Text>
+                          </View>
+                          {inCart && (
+                            <View style={styles.productListBadge}>
+                              <Text style={styles.productBadgeText}>
+                                {inCart.quantity}
+                              </Text>
+                            </View>
+                          )}
+                          <Ionicons
+                            name={inCart ? "checkmark-circle" : "add-circle-outline"}
+                            size={28}
+                            color={inCart ? colors.success : colors.primary}
+                          />
+                        </TouchableOpacity>
+                      </Animated.View>
+                    );
+                  }
+
+                  // Vue Grille (existante)
                   return (
                     <Animated.View key={product._id} style={animStyle}>
                       <TouchableOpacity
@@ -530,7 +810,7 @@ export const SalesScreen = () => {
                     <Text style={styles.cartTotalValue}>{cartTotal.toFixed(2)} €</Text>
                   </View>
 
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.validateButtonWrapper}
                     onPress={handleValidateCart}
                     disabled={submitting}
@@ -552,7 +832,7 @@ export const SalesScreen = () => {
                     </LinearGradient>
                   </TouchableOpacity>
 
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.clearButton}
                     onPress={handleClearCart}
                     disabled={submitting}
@@ -566,7 +846,7 @@ export const SalesScreen = () => {
           </LinearGradient>
         </View>
       </Modal>
-    </View>
+    </View >
   );
 };
 
@@ -629,6 +909,104 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.primary,
   },
+  centerContainer: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center',
+  },
+  welcomeCard: {
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    marginBottom: 24,
+  },
+  welcomeIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+    borderWidth: 2,
+    borderColor: colors.primary + '40',
+  },
+  welcomeTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  welcomeText: {
+    fontSize: 15,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 28,
+    lineHeight: 22,
+    paddingHorizontal: 16,
+  },
+  mainSaleButtonWrapper: {
+    width: '100%',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  mainSaleButton: {
+    paddingVertical: 20,
+    paddingHorizontal: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  mainSaleButtonText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  quickStatsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  quickStatCard: {
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    minWidth: 180,
+  },
+  quickStatValue: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  quickStatLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   listContainer: {
     padding: 16,
     paddingBottom: 80,
@@ -682,6 +1060,31 @@ const styles = StyleSheet.create({
   saleDate: {
     fontSize: 11,
     color: colors.textLight,
+  },
+  // Styles pour les remboursements
+  saleItemRefund: {
+    borderColor: colors.danger + '30',
+    borderWidth: 1,
+    backgroundColor: colors.danger + '05',
+  },
+  saleIconRefund: {
+    backgroundColor: colors.danger + '20',
+  },
+  saleAmountRefund: {
+    color: colors.danger,
+  },
+  saleDescriptionRefund: {
+    color: colors.danger,
+    fontStyle: 'italic',
+  },
+  refundButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.danger + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -803,8 +1206,102 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     backgroundColor: colors.background,
   },
-  picker: {
-    height: 50,
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+    padding: 0,
+  },
+  searchResultText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
+  viewModeToggle: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  viewModeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewModeButtonActive: {
+    backgroundColor: colors.primary + '20',
+    borderColor: colors.primary,
+  },
+  productsList: {
+    gap: 8,
+  },
+  productListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  productListIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  productListInfo: {
+    flex: 1,
+  },
+  productListName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  productListPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  productListBadge: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
   },
   infoBox: {
     flexDirection: 'row',
@@ -1058,6 +1555,113 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
+  },
+  // Styles Autocomplete Client
+  selectedClientContainer: {
+    marginBottom: 16,
+  },
+  selectedClientCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  selectedClientInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  selectedClientIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  selectedClientName: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  selectedClientPhone: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  removeClientButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.danger + '10',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  autocompleteContainer: {
+    position: 'relative',
+    zIndex: 10,
+  },
+  autocompleteList: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    maxHeight: 250,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+    zIndex: 1000,
+    marginTop: -8,
+    overflow: 'hidden',
+  },
+  autocompleteItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '50',
+  },
+  autocompleteItemIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  autocompleteItemContent: {
+    flex: 1,
+  },
+  autocompleteItemName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  autocompleteItemSub: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  autocompleteEmpty: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  autocompleteEmptyText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
   },
   cartTotal: {
     backgroundColor: colors.primary + '10',

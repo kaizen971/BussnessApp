@@ -8,6 +8,7 @@ import {
   ScrollView,
   Alert,
   Animated,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +17,7 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
 import { colors, gradients } from '../utils/colors';
+import logo from '../assets/icon/dashboard.png';
 
 export const LoginScreen = ({ navigation }) => {
   const [username, setUsername] = useState('');
@@ -98,7 +100,7 @@ export const LoginScreen = ({ navigation }) => {
             ]}
           >
             <View style={styles.iconContainer}>
-              <Ionicons name="business-outline" size={60} color="#fff" />
+              <Image source={logo} style={styles.logo} />
             </View>
             <Text style={styles.title}>BizFlow</Text>
             <Text style={styles.subtitle}>Gérez votre business intelligemment</Text>
@@ -226,5 +228,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255, 255, 255, 0.8)',
     textAlign: 'center',
+  },
+  logo: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    overflow: 'hidden',
   },
 });

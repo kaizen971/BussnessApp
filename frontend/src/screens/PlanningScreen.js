@@ -261,12 +261,14 @@ export const PlanningScreen = ({ navigation }) => {
     try {
       setLoading(true);
       const now = new Date();
-      const response = await api.get(`/users/${user.id}/salary-stats`, {
+      console.log(user);
+      const response = await api.get(`/users/${user._id}/salary-stats`, {
         params: {
           month: now.getMonth() + 1,
           year: now.getFullYear()
         }
       });
+      console.log(response.data);
       setSalaryStats(response.data);
       setSalaryModalVisible(true);
     } catch (error) {

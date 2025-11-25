@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../utils/colors';
+import logo from '../assets/icon/dashboard.png';
 
 export const OnboardingScreen = ({ navigation }) => {
   const handleModuleChoice = (module) => {
@@ -17,7 +18,7 @@ export const OnboardingScreen = ({ navigation }) => {
     <LinearGradient colors={[colors.primary, colors.secondary]} style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Ionicons name="briefcase" size={80} color="#fff" />
+          <Image source={logo} style={styles.logo} />
           <Text style={styles.appName}>BizFlow</Text>
           <Text style={styles.slogan}>Valide ton idée. Pilote ton business. Simplement.</Text>
         </View>
@@ -133,5 +134,12 @@ const styles = StyleSheet.create({
   cardArrow: {
     alignItems: 'flex-end',
     marginTop: 10,
+  },
+  logo: {
+    width: 100,
+    height: 100,
+    resizeMode: 'contain',
+    borderRadius: 50,
+    overflow: 'hidden',
   },
 });

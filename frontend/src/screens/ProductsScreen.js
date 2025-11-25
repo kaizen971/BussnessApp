@@ -49,7 +49,7 @@ export const ProductsScreen = ({ navigation }) => {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/products', { params: { projectId: user?.projectId } } );
+      const response = await api.get('/products', { params: { projectId: user?.projectId } });
       console.log(response.data);
       setProducts(response.data?.data);
     } catch (error) {
@@ -144,6 +144,8 @@ export const ProductsScreen = ({ navigation }) => {
     return margin.toFixed(2);
   };
 
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'responsable';
+
   const renderProduct = ({ item }) => {
     const margin = calculateMargin(item.unitPrice, item.costPrice);
     const marginColor = margin > 30 ? colors.success : margin > 15 ? colors.warning : colors.error;
@@ -186,14 +188,16 @@ export const ProductsScreen = ({ navigation }) => {
               </View>
             )}
           </View>
-          <View style={styles.productActions}>
-            <TouchableOpacity onPress={() => handleEdit(item)} style={styles.actionButton}>
-              <Ionicons name="pencil" size={20} color={colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => handleDelete(item)} style={styles.actionButton}>
-              <Ionicons name="trash" size={20} color={colors.error} />
-            </TouchableOpacity>
-          </View>
+          {isAdmin && (
+            <View style={styles.productActions}>
+              <TouchableOpacity onPress={() => handleEdit(item)} style={styles.actionButton}>
+                <Ionicons name="pencil" size={20} color={colors.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleDelete(item)} style={styles.actionButton}>
+                <Ionicons name="trash" size={20} color={colors.error} />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <View style={styles.productPricing}>
@@ -290,10 +294,10 @@ export const ProductsScreen = ({ navigation }) => {
                     colors={[colors.primary, colors.primaryDark]}
                     style={styles.modalIcon}
                   >
-                    <Ionicons 
-                      name={editingProduct ? "create-outline" : "add-circle-outline"} 
-                      size={28} 
-                      color="#000" 
+                    <Ionicons
+                      name={editingProduct ? "create-outline" : "add-circle-outline"}
+                      size={28}
+                      color="#000"
                     />
                   </LinearGradient>
                 </View>
@@ -306,7 +310,7 @@ export const ProductsScreen = ({ navigation }) => {
                   </Text>
                 </View>
               </LinearGradient>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.closeButton}
                 onPress={() => setModalVisible(false)}
               >
@@ -314,7 +318,7 @@ export const ProductsScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView 
+            <ScrollView
               style={styles.modalForm}
               showsVerticalScrollIndicator={false}
             >
@@ -371,13 +375,13 @@ export const ProductsScreen = ({ navigation }) => {
             </ScrollView>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.cancelButton}
                 onPress={() => setModalVisible(false)}
               >
                 <Text style={styles.cancelButtonText}>Annuler</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.saveButtonWrapper}
                 onPress={handleSave}
                 disabled={loading}

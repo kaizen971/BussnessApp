@@ -67,6 +67,7 @@ export const projectsAPI = {
 export const salesAPI = {
   getAll: (projectId) => api.get('/sales', { params: { projectId } }),
   create: (data) => api.post('/sales', data),
+  refund: (saleId) => api.post(`/sales/${saleId}/refund`),
 };
 
 // Expenses API
@@ -129,15 +130,16 @@ export const simulationAPI = {
 export const exportAPI = {
   exportToExcel: async (projectId, startDate, endDate) => {
     try {
-      const response = await api.post(`/export-excel/${projectId}`, 
+      const response = await api.post(`/export-excel/${projectId}`,
         { startDate, endDate },
-        { 
+        {
           responseType: 'blob',
           headers: {
             'Content-Type': 'application/json',
           }
         }
       );
+      console.log('Export response:', response);
       return response;
     } catch (error) {
       console.error('Export error:', error);
