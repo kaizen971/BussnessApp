@@ -2341,10 +2341,11 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
 });
 
 // Export Excel Route
-app.post('/BussnessApp/export-excel/:projectId', authenticateToken, async (req, res) => {
+app.post('/BussnessApp/export-excel/:projectId',  async (req, res) => {
   try {
     const { projectId } = req.params;
     const { startDate, endDate } = req.body;
+      console.log("test",projectId,startDate,endDate)
 
     // Validation des dates
     const start = startDate ? new Date(startDate) : new Date(0);
