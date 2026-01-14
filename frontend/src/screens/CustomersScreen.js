@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
@@ -18,6 +19,7 @@ import { colors } from '../utils/colors';
 
 export const CustomersScreen = () => {
   const { user } = useAuth();
+  const { format: formatPrice } = useCurrency();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -125,7 +127,7 @@ export const CustomersScreen = () => {
           )}
           <View style={styles.statsRow}>
             <View style={styles.statBadge}>
-              <Text style={styles.statValue}>{item.totalPurchases?.toFixed(2) || 0} €</Text>
+              <Text style={styles.statValue}>{formatPrice(item.totalPurchases || 0)}</Text>
               <Text style={styles.statLabel}>Total achats</Text>
             </View>
 

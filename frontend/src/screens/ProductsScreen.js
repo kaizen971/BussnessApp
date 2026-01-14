@@ -19,14 +19,19 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 
 export const ProductsScreen = ({ navigation }) => {
   const { user, setSelectedProjectId } = useAuth();
+  const { format: formatPrice } = useCurrency();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -44,7 +49,30 @@ export const ProductsScreen = ({ navigation }) => {
       userObject: user
     });
     loadProducts();
+    loadCategories();
   }, []);
+
+  const loadCategories = async () => {
+    try {
+      const response = await api.get('/categories', { params: { projectId: user?.projectId } });
+      setCategories(response.data?.data || []);
+    } catch (error) {
+      console.error('Error loading categories', error);
+    }
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    try {
+      await api.post('/categories', { name: newCategoryName, projectId: user?.projectId });
+      setNewCategoryName('');
+      setShowCategoryModal(false);
+      loadCategories();
+      Alert.alert('Succès', 'Catégorie créée');
+    } catch (error) {
+      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de créer la catégorie');
+    }
+  };
 
   const loadProducts = async () => {
     try {
@@ -203,11 +231,11 @@ export const ProductsScreen = ({ navigation }) => {
         <View style={styles.productPricing}>
           <View style={styles.priceRow}>
             <Text style={styles.priceLabel}>Prix de vente:</Text>
-            <Text style={styles.priceValue}>{item.unitPrice.toFixed(2)} €</Text>
+            <Text style={styles.priceValue}>{formatPrice(item.unitPrice)}</Text>
           </View>
           <View style={styles.priceRow}>
             <Text style={styles.priceLabel}>Prix de revient:</Text>
-            <Text style={styles.priceValue}>{item.costPrice.toFixed(2)} €</Text>
+            <Text style={styles.priceValue}>{formatPrice(item.costPrice)}</Text>
           </View>
           <View style={styles.priceRow}>
             <Text style={styles.priceLabel}>Marge:</Text>
@@ -336,11 +364,42 @@ export const ProductsScreen = ({ navigation }) => {
                 numberOfLines={3}
               />
 
-              <Input
-                placeholder="Catégorie"
-                value={formData.category}
-                onChangeText={(text) => setFormData({ ...formData, category: text })}
-              />
+              <View style={styles.categoryContainer}>
+                <Text style={styles.label}>Catégorie</Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.categoryList}
+                  contentContainerStyle={styles.categoryContent}
+                >
+                  <TouchableOpacity
+                    style={[
+                      styles.categoryChip,
+                      styles.addCategoryChip
+                    ]}
+                    onPress={() => setShowCategoryModal(true)}
+                  >
+                    <Ionicons name="add" size={20} color={colors.primary} />
+                    <Text style={[styles.categoryChipText, { color: colors.primary }]}>Nouveau</Text>
+                  </TouchableOpacity>
+
+                  {categories.map((cat) => (
+                    <TouchableOpacity
+                      key={cat._id}
+                      style={[
+                        styles.categoryChip,
+                        formData.category === cat.name && styles.selectedCategoryChip
+                      ]}
+                      onPress={() => setFormData({ ...formData, category: cat.name })}
+                    >
+                      <Text style={[
+                        styles.categoryChipText,
+                        formData.category === cat.name && styles.selectedCategoryChipText
+                      ]}>{cat.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
 
               <Input
                 placeholder="Prix de vente unitaire *"
@@ -404,6 +463,33 @@ export const ProductsScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
           </LinearGradient>
+        </View>
+      </Modal>
+      <Modal visible={showCategoryModal} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.smallModalContent}>
+            <Text style={styles.smallModalTitle}>Nouvelle catégorie</Text>
+            <Input
+              placeholder="Nom de la catégorie"
+              value={newCategoryName}
+              onChangeText={setNewCategoryName}
+              autoFocus
+            />
+            <View style={styles.smallModalActions}>
+              <TouchableOpacity
+                style={styles.smallButtonCancel}
+                onPress={() => setShowCategoryModal(false)}
+              >
+                <Text style={styles.smallButtonTextCancel}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.smallButtonSave}
+                onPress={handleAddCategory}
+              >
+                <Text style={styles.smallButtonTextSave}>Créer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </Modal>
     </View>
@@ -697,5 +783,101 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#000',
+  },
+  categoryContainer: {
+    marginBottom: 15,
+  },
+  label: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  categoryList: {
+    flexGrow: 0,
+  },
+  categoryContent: {
+    paddingRight: 20,
+    gap: 10,
+  },
+  categoryChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  selectedCategoryChip: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  addCategoryChip: {
+    borderStyle: 'dashed',
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '10',
+  },
+  categoryChipText: {
+    fontSize: 14,
+    color: colors.text,
+  },
+  selectedCategoryChipText: {
+    color: '#000',
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  smallModalContent: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  smallModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  smallModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  smallButtonCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  smallButtonSave: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+  },
+  smallButtonTextCancel: {
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  smallButtonTextSave: {
+    color: '#000',
+    fontWeight: 'bold',
   },
 });

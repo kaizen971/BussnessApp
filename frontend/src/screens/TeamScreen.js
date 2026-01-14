@@ -9,36 +9,48 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Picker } from '@react-native-picker/picker';
+import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../utils/colors';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useCurrency } from '../contexts/CurrencyContext';
+import { getQuickSelectValues } from '../utils/currency';
 import { usersAPI } from '../services/api';
 
 export const TeamScreen = ({ navigation }) => {
   const { user } = useAuth();
+  const { format: formatPrice, currency } = useCurrency();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [roleModalVisible, setRoleModalVisible] = useState(false);
   const [commissionModalVisible, setCommissionModalVisible] = useState(false);
   const [salaryModalVisible, setSalaryModalVisible] = useState(false);
+  const [editInfoModalVisible, setEditInfoModalVisible] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [commissionRate, setCommissionRate] = useState('0');
   const [hourlyRate, setHourlyRate] = useState('0');
+  const [editInfoData, setEditInfoData] = useState({
+    fullName: '',
+    email: '',
+  });
   const [formData, setFormData] = useState({
     username: '',
     email: '',
     password: '',
     fullName: '',
     role: 'cashier',
+    photo: null,
   });
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
 
   useEffect(() => {
     loadUsers();
@@ -157,6 +169,44 @@ export const TeamScreen = ({ navigation }) => {
     }
   };
 
+  const openEditInfoModal = (user) => {
+    setSelectedUser(user);
+    setEditInfoData({
+      fullName: user.fullName || '',
+      email: user.email || '',
+    });
+    setEditInfoModalVisible(true);
+  };
+
+  const handleUpdateUserInfo = async () => {
+    if (!selectedUser) return;
+
+    if (!editInfoData.fullName.trim() || !editInfoData.email.trim()) {
+      Alert.alert('Erreur', 'Veuillez remplir tous les champs');
+      return;
+    }
+
+    // Validation email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(editInfoData.email)) {
+      Alert.alert('Erreur', 'Veuillez entrer un email valide');
+      return;
+    }
+
+    try {
+      await api.put(`/users/${selectedUser._id}/info`, {
+        fullName: editInfoData.fullName,
+        email: editInfoData.email,
+      });
+      setEditInfoModalVisible(false);
+      setSelectedUser(null);
+      loadUsers();
+      Alert.alert('Succès', 'Informations modifiées avec succès');
+    } catch (error) {
+      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de modifier les informations');
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       username: '',
@@ -164,7 +214,106 @@ export const TeamScreen = ({ navigation }) => {
       password: '',
       fullName: '',
       role: 'cashier',
+      photo: null,
     });
+  };
+
+  const convertImageToBase64 = async (uri) => {
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error('Erreur conversion base64:', error);
+      throw error;
+    }
+  };
+
+  const pickImage = async (userForPhoto = null) => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission refusée', 'Nous avons besoin de votre permission pour accéder à vos photos');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      try {
+        const base64Image = await convertImageToBase64(result.assets[0].uri);
+        if (userForPhoto) {
+          await updateUserPhoto(userForPhoto._id, base64Image);
+        } else {
+          setFormData({ ...formData, photo: base64Image });
+        }
+      } catch (error) {
+        Alert.alert('Erreur', 'Impossible de traiter l\'image');
+      }
+    }
+  };
+
+  const takePhoto = async (userForPhoto = null) => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission refusée', 'Nous avons besoin de votre permission pour utiliser la caméra');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      try {
+        const base64Image = await convertImageToBase64(result.assets[0].uri);
+        if (userForPhoto) {
+          await updateUserPhoto(userForPhoto._id, base64Image);
+        } else {
+          setFormData({ ...formData, photo: base64Image });
+        }
+      } catch (error) {
+        Alert.alert('Erreur', 'Impossible de traiter l\'image');
+      }
+    }
+  };
+
+  const showImageOptions = (userForPhoto = null) => {
+    Alert.alert(
+      'Ajouter une photo',
+      'Choisissez une option',
+      [
+        { text: 'Galerie', onPress: () => pickImage(userForPhoto) },
+        { text: 'Prendre une photo', onPress: () => takePhoto(userForPhoto) },
+        { text: 'Annuler', style: 'cancel' },
+      ]
+    );
+  };
+
+  const updateUserPhoto = async (userId, photoUri) => {
+    try {
+      setLoading(true);
+      const response = await api.put(`/users/${userId}/photo`, { photo: photoUri });
+      console.log('Photo update response:', response.data);
+      await loadUsers();
+      Alert.alert('Succès', 'Photo mise à jour avec succès');
+    } catch (error) {
+      console.error('Photo update error:', error.response?.data || error.message);
+      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de mettre à jour la photo');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getRoleInfo = (role) => {
@@ -199,9 +348,34 @@ export const TeamScreen = ({ navigation }) => {
     return (
       <Card style={styles.userCard}>
         <View style={styles.userHeader}>
-          <View style={styles.userAvatar}>
-            <Ionicons name={roleInfo.icon} size={30} color={roleInfo.color} />
-          </View>
+          <TouchableOpacity 
+            style={styles.userAvatarContainer}
+            onPress={() => user?.role === 'admin' && showImageOptions(item)}
+            disabled={user?.role !== 'admin'}
+          >
+            {item.photo ? (
+              <View style={styles.userAvatarWithPhoto}>
+                <Image
+                  source={{ uri: item.photo }}
+                  style={styles.userPhotoImage}
+                />
+                {user?.role === 'admin' && (
+                  <View style={styles.photoEditBadge}>
+                    <Ionicons name="camera" size={12} color={colors.background} />
+                  </View>
+                )}
+              </View>
+            ) : (
+              <View style={styles.userAvatar}>
+                <Ionicons name={roleInfo.icon} size={30} color={roleInfo.color} />
+                {user?.role === 'admin' && (
+                  <View style={styles.photoAddBadge}>
+                    <Ionicons name="add" size={12} color={colors.background} />
+                  </View>
+                )}
+              </View>
+            )}
+          </TouchableOpacity>
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{item.fullName}</Text>
             <Text style={styles.userUsername}>@{item.username}</Text>
@@ -235,7 +409,7 @@ export const TeamScreen = ({ navigation }) => {
               <Ionicons name="time-outline" size={20} color={colors.info} />
               <View style={styles.commissionTextContainer}>
                 <Text style={styles.commissionLabel}>Salaire horaire</Text>
-                <Text style={styles.commissionValue}>{(item.hourlyRate || 0).toFixed(2)} €/h</Text>
+                <Text style={styles.commissionValue}>{formatPrice(item.hourlyRate || 0)}/h</Text>
               </View>
             </View>
             <View style={styles.commissionInfo}>
@@ -251,7 +425,7 @@ export const TeamScreen = ({ navigation }) => {
               <Ionicons name="wallet-outline" size={20} color={colors.accent} />
               <View style={styles.commissionTextContainer}>
                 <Text style={styles.commissionLabel}>Total commissions</Text>
-                <Text style={styles.commissionValue}>{(item.totalCommissions || 0).toFixed(2)} €</Text>
+                <Text style={styles.commissionValue}>{formatPrice(item.totalCommissions || 0)}</Text>
               </View>
             </View>
           </View>
@@ -271,6 +445,16 @@ export const TeamScreen = ({ navigation }) => {
               {item.isActive ? 'Désactiver' : 'Activer'}
             </Text>
           </TouchableOpacity>
+
+          {(user?.role === 'admin' || user?.role === 'responsable') && item._id !== user.id && (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => openEditInfoModal(item)}
+            >
+              <Ionicons name="create-outline" size={20} color={colors.accent} />
+              <Text style={[styles.actionButtonText, { color: colors.accent }]}>Modifier infos</Text>
+            </TouchableOpacity>
+          )}
 
           {item.role !== 'admin' && (user?.role === 'admin') && (
             <TouchableOpacity
@@ -433,6 +617,35 @@ export const TeamScreen = ({ navigation }) => {
               style={styles.modalForm}
               showsVerticalScrollIndicator={false}
             >
+              {/* Photo Section */}
+              {user?.role === 'admin' && (
+                <View style={styles.photoSection}>
+                  <Text style={styles.photoLabel}>Photo du collaborateur</Text>
+                  <TouchableOpacity
+                    style={styles.photoPickerButton}
+                    onPress={() => showImageOptions(null)}
+                  >
+                    {formData.photo ? (
+                      <View style={styles.photoPreviewContainer}>
+                        <Image
+                          source={{ uri: formData.photo }}
+                          style={styles.photoPreview}
+                        />
+                        <View style={styles.photoOverlay}>
+                          <Ionicons name="camera" size={24} color={colors.background} />
+                          <Text style={styles.photoOverlayText}>Modifier</Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={styles.photoPlaceholder}>
+                        <Ionicons name="person-circle-outline" size={64} color={colors.primary} />
+                        <Text style={styles.photoPlaceholderText}>Ajouter une photo</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
               <Input
                 placeholder="Nom complet *"
                 value={formData.fullName}
@@ -680,7 +893,7 @@ export const TeamScreen = ({ navigation }) => {
                     <View style={styles.currentStatContent}>
                       <Text style={styles.currentStatLabel}>Total gagné</Text>
                       <Text style={styles.currentStatValue}>
-                        {(selectedUser.totalCommissions || 0).toFixed(2)} €
+                        {formatPrice(selectedUser.totalCommissions || 0)}
                       </Text>
                     </View>
                   </LinearGradient>
@@ -745,37 +958,33 @@ export const TeamScreen = ({ navigation }) => {
               </View>
 
               {/* Exemple de calcul */}
-              {commissionRate && parseFloat(commissionRate) > 0 && (
-                <View style={styles.exampleCalculation}>
-                  <LinearGradient
-                    colors={[colors.info + '15', colors.info + '05']}
-                    style={styles.exampleCard}
-                  >
-                    <View style={styles.exampleHeader}>
-                      <Ionicons name="calculator-outline" size={20} color={colors.info} />
-                      <Text style={styles.exampleTitle}>Exemple de calcul</Text>
-                    </View>
-                    <View style={styles.exampleRow}>
-                      <Text style={styles.exampleLabel}>Vente de 100 €</Text>
-                      <Text style={styles.exampleValue}>
-                        → {(100 * parseFloat(commissionRate) / 100).toFixed(2)} € de commission
-                      </Text>
-                    </View>
-                    <View style={styles.exampleRow}>
-                      <Text style={styles.exampleLabel}>Vente de 500 €</Text>
-                      <Text style={styles.exampleValue}>
-                        → {(500 * parseFloat(commissionRate) / 100).toFixed(2)} € de commission
-                      </Text>
-                    </View>
-                    <View style={styles.exampleRow}>
-                      <Text style={styles.exampleLabel}>Vente de 1000 €</Text>
-                      <Text style={styles.exampleValue}>
-                        → {(1000 * parseFloat(commissionRate) / 100).toFixed(2)} € de commission
-                      </Text>
-                    </View>
-                  </LinearGradient>
-                </View>
-              )}
+              {commissionRate && parseFloat(commissionRate) > 0 && (() => {
+                const exampleValues = currency.code === 'XOF' 
+                  ? [50000, 250000, 500000] 
+                  : [100, 500, 1000];
+                
+                return (
+                  <View style={styles.exampleCalculation}>
+                    <LinearGradient
+                      colors={[colors.info + '15', colors.info + '05']}
+                      style={styles.exampleCard}
+                    >
+                      <View style={styles.exampleHeader}>
+                        <Ionicons name="calculator-outline" size={20} color={colors.info} />
+                        <Text style={styles.exampleTitle}>Exemple de calcul</Text>
+                      </View>
+                      {exampleValues.map((value, index) => (
+                        <View key={index} style={styles.exampleRow}>
+                          <Text style={styles.exampleLabel}>Vente de {formatPrice(value)}</Text>
+                          <Text style={styles.exampleValue}>
+                            → {formatPrice(value * parseFloat(commissionRate) / 100)} de commission
+                          </Text>
+                        </View>
+                      ))}
+                    </LinearGradient>
+                  </View>
+                );
+              })()}
             </ScrollView>
 
             {/* Actions */}
@@ -870,7 +1079,7 @@ export const TeamScreen = ({ navigation }) => {
                     <Ionicons name="time-outline" size={24} color={colors.primary} />
                     <View style={styles.currentStatContent}>
                       <Text style={styles.currentStatLabel}>Actuel</Text>
-                      <Text style={styles.currentStatValue}>{(selectedUser.hourlyRate || 0).toFixed(2)} €/h</Text>
+                      <Text style={styles.currentStatValue}>{formatPrice(selectedUser.hourlyRate || 0)}/h</Text>
                     </View>
                   </LinearGradient>
                   <LinearGradient
@@ -881,7 +1090,7 @@ export const TeamScreen = ({ navigation }) => {
                     <View style={styles.currentStatContent}>
                       <Text style={styles.currentStatLabel}>Mensuel estimé</Text>
                       <Text style={styles.currentStatValue}>
-                        {((selectedUser.hourlyRate || 0) * 35 * 4.33).toFixed(2)} €
+                        {formatPrice((selectedUser.hourlyRate || 0) * 35 * 4.33)}
                       </Text>
                     </View>
                   </LinearGradient>
@@ -891,7 +1100,7 @@ export const TeamScreen = ({ navigation }) => {
               <View style={styles.quickSelectContainer}>
                 <Text style={styles.quickSelectTitle}>⚡ Sélection rapide</Text>
                 <View style={styles.quickSelectButtons}>
-                  {[10, 12, 15, 18, 20].map((rate) => (
+                  {getQuickSelectValues(currency.code).slice(0, 5).map((rate) => (
                     <TouchableOpacity
                       key={rate}
                       style={[
@@ -908,12 +1117,22 @@ export const TeamScreen = ({ navigation }) => {
                         }
                         style={styles.quickSelectButtonGradient}
                       >
-                        <Text style={[
-                          styles.quickSelectButtonText,
-                          hourlyRate === rate.toString() && styles.quickSelectButtonTextActive
-                        ]}>
-                          {rate}€
-                        </Text>
+                        <View style={styles.quickSelectTextContainer}>
+                          <Text style={[
+                            styles.quickSelectButtonText,
+                            currency.code === 'XOF' && styles.quickSelectButtonTextSmall,
+                            hourlyRate === rate.toString() && styles.quickSelectButtonTextActive
+                          ]}>
+                            {rate}
+                          </Text>
+                          <Text style={[
+                            styles.quickSelectButtonCurrency,
+                            currency.code === 'XOF' && styles.quickSelectButtonCurrencySmall,
+                            hourlyRate === rate.toString() && styles.quickSelectButtonTextActive
+                          ]}>
+                            {currency.symbol}
+                          </Text>
+                        </View>
                       </LinearGradient>
                     </TouchableOpacity>
                   ))}
@@ -935,7 +1154,7 @@ export const TeamScreen = ({ navigation }) => {
                       keyboardType="decimal-pad"
                       style={styles.commissionInput}
                     />
-                    <Text style={styles.commissionPercentSymbol}>€/h</Text>
+                    <Text style={styles.commissionPercentSymbol}>{currency.symbol}/h</Text>
                   </View>
                   <Text style={styles.commissionHint}>
                     Salaire par heure de travail
@@ -956,19 +1175,19 @@ export const TeamScreen = ({ navigation }) => {
                     <View style={styles.exampleRow}>
                       <Text style={styles.exampleLabel}>8h de travail</Text>
                       <Text style={styles.exampleValue}>
-                        → {(8 * parseFloat(hourlyRate)).toFixed(2)} € / jour
+                        → {formatPrice(8 * parseFloat(hourlyRate))} / jour
                       </Text>
                     </View>
                     <View style={styles.exampleRow}>
                       <Text style={styles.exampleLabel}>35h / semaine</Text>
                       <Text style={styles.exampleValue}>
-                        → {(35 * parseFloat(hourlyRate)).toFixed(2)} € / semaine
+                        → {formatPrice(35 * parseFloat(hourlyRate))} / semaine
                       </Text>
                     </View>
                     <View style={styles.exampleRow}>
                       <Text style={styles.exampleLabel}>151.67h / mois (35h)</Text>
                       <Text style={styles.exampleValue}>
-                        → {(151.67 * parseFloat(hourlyRate)).toFixed(2)} € / mois
+                        → {formatPrice(151.67 * parseFloat(hourlyRate))} / mois
                       </Text>
                     </View>
                   </LinearGradient>
@@ -997,6 +1216,165 @@ export const TeamScreen = ({ navigation }) => {
                 >
                   <Ionicons name="checkmark-circle" size={22} color="#fff" />
                   <Text style={styles.commissionSaveButtonText}>Valider le salaire</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de modification des informations */}
+      <Modal
+        visible={editInfoModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setEditInfoModalVisible(false)}
+      >
+        <View style={styles.commissionModalOverlay}>
+          <TouchableOpacity
+            style={styles.commissionModalBackdrop}
+            activeOpacity={1}
+            onPress={() => {
+              setEditInfoModalVisible(false);
+              setSelectedUser(null);
+            }}
+          />
+          <View style={styles.commissionModalContainer}>
+            <View style={styles.commissionModalHandle}>
+              <View style={styles.commissionModalHandleLine} />
+            </View>
+
+            <LinearGradient
+              colors={[colors.accent + '20', colors.accent + '05']}
+              style={styles.commissionModalHeader}
+            >
+              <View style={styles.commissionUserAvatar}>
+                <LinearGradient
+                  colors={[colors.accent, colors.accent + 'DD']}
+                  style={styles.commissionAvatarGradient}
+                >
+                  <Ionicons name="person" size={32} color="#fff" />
+                </LinearGradient>
+              </View>
+              <View style={styles.commissionHeaderText}>
+                <Text style={styles.commissionModalTitle}>✏️ Modifier les informations</Text>
+                {selectedUser && (
+                  <Text style={styles.commissionModalSubtitle}>{selectedUser.username}</Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={styles.commissionCloseButton}
+                onPress={() => {
+                  setEditInfoModalVisible(false);
+                  setSelectedUser(null);
+                }}
+              >
+                <Ionicons name="close-circle" size={28} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </LinearGradient>
+
+            <ScrollView
+              style={styles.commissionModalContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {selectedUser && (
+                <View style={styles.currentCommissionStats}>
+                  <LinearGradient
+                    colors={[colors.primary + '15', colors.primary + '05']}
+                    style={styles.currentStatCard}
+                  >
+                    <Ionicons name="person-outline" size={24} color={colors.primary} />
+                    <View style={styles.currentStatContent}>
+                      <Text style={styles.currentStatLabel}>Nom actuel</Text>
+                      <Text style={styles.currentStatValue}>{selectedUser.fullName}</Text>
+                    </View>
+                  </LinearGradient>
+                  <LinearGradient
+                    colors={[colors.info + '15', colors.info + '05']}
+                    style={styles.currentStatCard}
+                  >
+                    <Ionicons name="mail-outline" size={24} color={colors.info} />
+                    <View style={styles.currentStatContent}>
+                      <Text style={styles.currentStatLabel}>Email actuel</Text>
+                      <Text style={styles.currentStatValue}>{selectedUser.email}</Text>
+                    </View>
+                  </LinearGradient>
+                </View>
+              )}
+
+              <View style={styles.customInputSection}>
+                <Text style={styles.customInputTitle}>👤 Nom complet</Text>
+                <LinearGradient
+                  colors={[colors.accent + '15', colors.accent + '08']}
+                  style={styles.commissionInputContainer}
+                >
+                  <View style={styles.editInfoInputWrapper}>
+                    <Ionicons name="person-outline" size={24} color={colors.accent} />
+                    <Input
+                      placeholder="Nom complet"
+                      value={editInfoData.fullName}
+                      onChangeText={(text) => setEditInfoData({ ...editInfoData, fullName: text })}
+                      style={styles.editInfoInput}
+                    />
+                  </View>
+                </LinearGradient>
+              </View>
+
+              <View style={styles.customInputSection}>
+                <Text style={styles.customInputTitle}>📧 Adresse email</Text>
+                <LinearGradient
+                  colors={[colors.accent + '15', colors.accent + '08']}
+                  style={styles.commissionInputContainer}
+                >
+                  <View style={styles.editInfoInputWrapper}>
+                    <Ionicons name="mail-outline" size={24} color={colors.accent} />
+                    <Input
+                      placeholder="email@exemple.com"
+                      value={editInfoData.email}
+                      onChangeText={(text) => setEditInfoData({ ...editInfoData, email: text })}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      style={styles.editInfoInput}
+                    />
+                  </View>
+                </LinearGradient>
+              </View>
+
+              <LinearGradient
+                colors={[colors.warning + '15', colors.warning + '05']}
+                style={styles.exampleCard}
+              >
+                <View style={styles.exampleHeader}>
+                  <Ionicons name="information-circle" size={20} color={colors.warning} />
+                  <Text style={[styles.exampleTitle, { color: colors.warning }]}>Information</Text>
+                </View>
+                <Text style={styles.exampleLabel}>
+                  Ces informations seront utilisées pour identifier le collaborateur et communiquer avec lui.
+                </Text>
+              </LinearGradient>
+            </ScrollView>
+
+            <View style={styles.commissionModalActions}>
+              <TouchableOpacity
+                style={styles.commissionCancelButton}
+                onPress={() => {
+                  setEditInfoModalVisible(false);
+                  setSelectedUser(null);
+                }}
+              >
+                <Ionicons name="close-outline" size={22} color={colors.textSecondary} />
+                <Text style={styles.commissionCancelButtonText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.commissionSaveButtonWrapper}
+                onPress={handleUpdateUserInfo}
+              >
+                <LinearGradient
+                  colors={[colors.accent, colors.accent + 'DD']}
+                  style={styles.commissionSaveButton}
+                >
+                  <Ionicons name="checkmark-circle" size={22} color="#fff" />
+                  <Text style={styles.commissionSaveButtonText}>Enregistrer</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -1095,6 +1473,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 15,
   },
+  userAvatarContainer: {
+    marginRight: 15,
+    position: 'relative',
+  },
   userAvatar: {
     width: 60,
     height: 60,
@@ -1102,7 +1484,45 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 15,
+    position: 'relative',
+  },
+  userAvatarWithPhoto: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  userPhotoImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+  },
+  photoEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.background,
+  },
+  photoAddBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.background,
   },
   userInfo: {
     flex: 1,
@@ -1583,17 +2003,35 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   quickSelectButtonGradient: {
-    paddingVertical: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderRadius: 12,
     borderColor: colors.border,
+    minHeight: 56,
+  },
+  quickSelectTextContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   quickSelectButtonText: {
     fontSize: 16,
     fontWeight: 'bold',
     color: colors.text,
+  },
+  quickSelectButtonTextSmall: {
+    fontSize: 13,
+  },
+  quickSelectButtonCurrency: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 2,
+  },
+  quickSelectButtonCurrencySmall: {
+    fontSize: 9,
   },
   quickSelectButtonTextActive: {
     color: '#fff',
@@ -1636,6 +2074,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
   },
+  // Édition des informations
+  editInfoInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+  },
+  editInfoInput: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+  },
   // Exemple de calcul
   exampleCalculation: {
     marginBottom: 20,
@@ -1658,19 +2108,21 @@ const styles = StyleSheet.create({
     color: colors.info,
   },
   exampleRow: {
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: colors.border + '30',
   },
   exampleLabel: {
     fontSize: 13,
     color: colors.textSecondary,
-    marginBottom: 4,
+    marginBottom: 6,
+    lineHeight: 18,
   },
   exampleValue: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     color: colors.text,
+    lineHeight: 20,
   },
   // Actions
   commissionModalActions: {
@@ -1719,5 +2171,63 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  // Styles pour la section photo
+  photoSection: {
+    marginBottom: 20,
+  },
+  photoLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 10,
+  },
+  photoPickerButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.primary + '40',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  photoPreviewContainer: {
+    width: 150,
+    height: 150,
+    position: 'relative',
+  },
+  photoPreview: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  photoOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoOverlayText: {
+    color: colors.background,
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  photoPlaceholder: {
+    width: 150,
+    height: 150,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '10',
+  },
+  photoPlaceholderText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 8,
   },
 });

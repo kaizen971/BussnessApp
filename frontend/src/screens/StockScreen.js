@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
@@ -20,6 +21,7 @@ import api from '../services/api';
 
 export const StockScreen = () => {
   const { user } = useAuth();
+  const { format: formatPrice } = useCurrency();
   const [stock, setStock] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -213,12 +215,12 @@ export const StockScreen = () => {
               </View>
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>Prix unitaire</Text>
-                <Text style={styles.detailValue}>{item.unitPrice.toFixed(2)} €</Text>
+                <Text style={styles.detailValue}>{formatPrice(item.unitPrice)}</Text>
               </View>
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>Valeur totale</Text>
                 <Text style={[styles.detailValue, styles.totalValue]}>
-                  {totalValue.toFixed(2)} €
+                  {formatPrice(totalValue)}
                 </Text>
               </View>
             </View>
@@ -284,7 +286,7 @@ export const StockScreen = () => {
       <View style={styles.header}>
         <Card style={styles.totalCard}>
           <Text style={styles.totalLabel}>Valeur du stock</Text>
-          <Text style={styles.totalAmount}>{totalStockValue.toFixed(2)} €</Text>
+          <Text style={styles.totalAmount}>{formatPrice(totalStockValue)}</Text>
           <View style={styles.statsRow}>
             <Text style={styles.totalCount}>{stock.length} article(s)</Text>
             {lowStockItems.length > 0 && (
@@ -581,7 +583,7 @@ export const StockScreen = () => {
                   </View>
                   <View style={styles.productItemInfo}>
                     <Text style={styles.productItemName}>{item.name}</Text>
-                    <Text style={styles.productItemPrice}>{item.unitPrice.toFixed(2)} €</Text>
+                    <Text style={styles.productItemPrice}>{formatPrice(item.unitPrice)}</Text>
                     {item.description && (
                       <Text style={styles.productItemDescription} numberOfLines={1}>
                         {item.description}

@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
+import { CurrencyProvider } from './src/contexts/CurrencyContext';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
@@ -20,6 +21,7 @@ import { ProjectsScreen } from './src/screens/ProjectsScreen';
 import { PlanningScreen } from './src/screens/PlanningScreen';
 import { CommissionsScreen } from './src/screens/CommissionsScreen';
 import { TutorialScreen } from './src/screens/TutorialScreen';
+import { CategoriesScreen } from './src/screens/CategoriesScreen';
 import { colors } from './src/utils/colors';
 
 const Stack = createStackNavigator();
@@ -121,6 +123,11 @@ const MainStack = () => (
       component={TutorialScreen}
       options={{ headerShown: false }}
     />
+    <Stack.Screen
+      name="Categories"
+      component={CategoriesScreen}
+      options={{ headerShown: false }}
+    />
   </Stack.Navigator>
 );
 
@@ -141,8 +148,10 @@ const AppNavigator = () => {
 export default function App() {
   return (
     <AuthProvider>
-      <StatusBar style="light" />
-      <AppNavigator />
+      <CurrencyProvider>
+        <StatusBar style="light" />
+        <AppNavigator />
+      </CurrencyProvider>
     </AuthProvider>
   );
 }

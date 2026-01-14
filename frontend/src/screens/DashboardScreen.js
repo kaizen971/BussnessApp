@@ -13,6 +13,7 @@ import {
   PanResponder,
   Platform,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,22 +23,26 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useAuth } from '../contexts/AuthContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 import { Card } from '../components/Card';
 import { LoadingScreen } from '../components/LoadingScreen';
-import { dashboardAPI } from '../services/api';
+import { dashboardAPI, projectsAPI } from '../services/api';
 import { colors, gradients } from '../utils/colors';
 
 const screenWidth = Dimensions.get('window').width;
 
 export const DashboardScreen = ({ navigation }) => {
   const { user, logout, selectedProjectId, availableProjects } = useAuth();
+  const { format: formatPrice, currency, setProjectCurrency, availableCurrencies } = useCurrency();
   console.log(user)
   const [stats, setStats] = useState(null);
+  const [currentProject, setCurrentProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statsModalVisible, setStatsModalVisible] = useState(false);
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [commerceModalVisible, setCommerceModalVisible] = useState(false);
+  const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), 0, 1)); // Début de l'année
   const [endDate, setEndDate] = useState(new Date()); // Aujourd'hui
@@ -85,6 +90,14 @@ export const DashboardScreen = ({ navigation }) => {
     try {
       const response = await dashboardAPI.getStats(projectId);
       setStats(response.data);
+
+      // Charger les infos du projet pour obtenir la devise
+      const project = availableProjects.find(p => p._id === projectId);
+      if (project) {
+        setCurrentProject(project);
+        // Définir la devise du projet
+        setProjectCurrency(project.currency || 'EUR');
+      }
     } catch (error) {
       console.error('Error loading dashboard:', error);
       Alert.alert('Erreur', 'Impossible de charger les données');
@@ -188,7 +201,7 @@ export const DashboardScreen = ({ navigation }) => {
       // Faire une requête POST pour récupérer le fichier
       const token = await AsyncStorage.getItem('userToken');
       const response = await fetch(
-        `https://mabouya.servegame.com/BussnessApp/BussnessApp/export-excel/${projectId}`,
+        `http://localhost:3003/BussnessApp/BussnessApp/export-excel/${projectId}`,
         {
           method: 'POST',
           headers: {
@@ -318,9 +331,13 @@ export const DashboardScreen = ({ navigation }) => {
           >
             <View style={styles.headerContent}>
               <View style={styles.avatarContainer}>
-                <LinearGradient colors={[colors.primary, colors.accent]} style={styles.avatar}>
-                  <Text style={styles.avatarText}>{(user?.fullName || user?.username)?.charAt(0).toUpperCase()}</Text>
-                </LinearGradient>
+                {user?.photo ? (
+                  <Image source={{ uri: user.photo }} style={styles.avatarImage} />
+                ) : (
+                  <LinearGradient colors={[colors.primary, colors.accent]} style={styles.avatar}>
+                    <Text style={styles.avatarText}>{(user?.fullName || user?.username)?.charAt(0).toUpperCase()}</Text>
+                  </LinearGradient>
+                )}
               </View>
               <View style={styles.headerInfo}>
                 <Text style={styles.greeting}>Bonjour 👋</Text>
@@ -334,6 +351,7 @@ export const DashboardScreen = ({ navigation }) => {
               </View>
             </View>
             <View style={styles.headerActions}>
+
               <TouchableOpacity onPress={() => navigation.navigate('Projects')} style={styles.projectButton}>
                 <View style={styles.projectIconContainer}>
                   <Ionicons name="briefcase-outline" size={20} color={colors.background} />
@@ -392,36 +410,52 @@ export const DashboardScreen = ({ navigation }) => {
             color={colors.success}
             onPress={() => navigation.navigate('Sales')}
           />
-          <QuickActionButton
-            title="Dépenses"
-            icon="wallet-outline"
-            color={colors.error}
-            onPress={() => navigation.navigate('Expenses')}
-          />
-          <QuickActionButton
-            title="Stock"
-            icon="cube-outline"
-            color={colors.info}
-            onPress={() => navigation.navigate('Stock')}
-          />
-          <QuickActionButton
-            title="Clients"
-            icon="people-outline"
-            color={colors.accent}
-            onPress={() => navigation.navigate('Customers')}
-          />
-          <QuickActionButton
-            title="Produits"
-            icon="pricetag-outline"
-            color={colors.warning}
-            onPress={() => navigation.navigate('Products')}
-          />
+          {isAdmin && (
+            <QuickActionButton
+              title="Dépenses"
+              icon="wallet-outline"
+              color={colors.error}
+              onPress={() => navigation.navigate('Expenses')}
+            />
+          )}
+          {isAdmin && (
+            <QuickActionButton
+              title="Stock"
+              icon="cube-outline"
+              color={colors.info}
+              onPress={() => navigation.navigate('Stock')}
+            />
+          )}
+          {isAdmin && (
+            <QuickActionButton
+              title="Clients"
+              icon="people-outline"
+              color={colors.accent}
+              onPress={() => navigation.navigate('Customers')}
+            />
+          )}
+          {isAdmin && (
+            <QuickActionButton
+              title="Produits"
+              icon="pricetag-outline"
+              color={colors.warning}
+              onPress={() => navigation.navigate('Products')}
+            />
+          )}
           {isAdmin && <QuickActionButton
             title="Équipe"
             icon="people"
             color={colors.info}
             onPress={() => navigation.navigate('Team')}
           />}
+          {isAdmin && (
+            <QuickActionButton
+              title="Catégories"
+              icon="grid-outline"
+              color={colors.warning}
+              onPress={() => navigation.navigate('Categories')}
+            />
+          )}
           <QuickActionButton
             title="Commerce"
             icon="business-outline"
@@ -569,14 +603,14 @@ export const DashboardScreen = ({ navigation }) => {
                   <View style={styles.statsRow}>
                     <StatCard
                       title="Ventes totales"
-                      value={`${stats.totalSales?.toFixed(2) || 0} €`}
+                      value={formatPrice(stats.totalSales || 0)}
                       subtitle={`${stats.salesCount || 0} ventes`}
                       icon="cash"
                       color={colors.success}
                     />
                     <StatCard
                       title="Dépenses"
-                      value={`${stats.totalExpenses?.toFixed(2) || 0} €`}
+                      value={formatPrice(stats.totalExpenses || 0)}
                       subtitle={`${stats.expensesCount || 0} dépenses`}
                       icon="trending-down"
                       color={colors.error}
@@ -586,14 +620,14 @@ export const DashboardScreen = ({ navigation }) => {
                   <View style={styles.statsRow}>
                     <StatCard
                       title="Bénéfice Net"
-                      value={`${stats.netProfit?.toFixed(2) || 0} €`}
+                      value={formatPrice(stats.netProfit || 0)}
                       subtitle={stats.netProfit >= 0 ? "Positif" : "Négatif"}
                       icon="analytics"
                       color={stats.netProfit >= 0 ? colors.success : colors.error}
                     />
                     <StatCard
                       title="Valeur Stock"
-                      value={`${stats.totalStock?.toFixed(2) || 0} €`}
+                      value={formatPrice(stats.totalStock || 0)}
                       subtitle={`${stats.stockItems || 0} articles`}
                       icon="cube"
                       color={colors.primary}
@@ -762,7 +796,7 @@ export const DashboardScreen = ({ navigation }) => {
                               <Text style={styles.productQuantity}>{product.quantity} ventes</Text>
                             </View>
                           </View>
-                          <Text style={styles.productRevenue} numberOfLines={1}>{product.revenue.toFixed(2)} €</Text>
+                          <Text style={styles.productRevenue} numberOfLines={1}>{formatPrice(product.revenue)}</Text>
                         </View>
                       ))}
                     </Card>
@@ -943,6 +977,89 @@ export const DashboardScreen = ({ navigation }) => {
           </Animated.View>
         </View>
       </Modal>
+
+      {/* Modal de sélection de devise */}
+      <Modal
+        visible={currencyModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setCurrencyModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setCurrencyModalVisible(false)}
+          />
+          <View style={styles.currencyModalContainer}>
+            <View style={styles.currencyModalHeader}>
+              <Text style={styles.currencyModalTitle}>💱 Choisir la devise</Text>
+              <TouchableOpacity onPress={() => setCurrencyModalVisible(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.currencyOptionsContainer}>
+              {availableCurrencies.map((curr) => (
+                <TouchableOpacity
+                  key={curr.code}
+                  style={[
+                    styles.currencyOption,
+                    currency.code === curr.code && styles.currencyOptionSelected
+                  ]}
+                  onPress={async () => {
+                    try {
+                      const projectId = selectedProjectId || user?.projectId;
+                      if (!projectId) {
+                        Alert.alert('Erreur', 'Aucun projet sélectionné');
+                        return;
+                      }
+
+                      // Mettre à jour la devise du projet dans le backend
+                      await projectsAPI.updateCurrency(projectId, curr.code);
+                      
+                      // Mettre à jour localement
+                      setProjectCurrency(curr.code);
+                      
+                      // Mettre à jour le projet dans la liste
+                      if (currentProject) {
+                        setCurrentProject({ ...currentProject, currency: curr.code });
+                      }
+
+                      setCurrencyModalVisible(false);
+                      Alert.alert(
+                        'Devise changée',
+                        `La devise du projet a été changée en ${curr.name} (${curr.symbol}). Toute l'équipe verra cette devise.`
+                      );
+                      
+                      // Recharger les données du dashboard
+                      loadDashboardData();
+                    } catch (error) {
+                      console.error('Error updating currency:', error);
+                      Alert.alert('Erreur', 'Impossible de changer la devise');
+                    }
+                  }}
+                >
+                  <View style={styles.currencyOptionContent}>
+                    <Text style={styles.currencySymbol}>{curr.symbol}</Text>
+                    <View style={styles.currencyInfo}>
+                      <Text style={styles.currencyName}>{curr.name}</Text>
+                      <Text style={styles.currencyCode}>{curr.code}</Text>
+                    </View>
+                  </View>
+                  {currency.code === curr.code && (
+                    <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.currencyModalFooter}>
+              <Text style={styles.currencyModalNote}>
+                ℹ️ La devise sera appliquée à ce projet. Toute l'équipe verra les montants dans cette devise.
+              </Text>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Animated.View>
   );
 };
@@ -990,6 +1107,13 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.background,
+  },
+  avatarImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     borderWidth: 2,
     borderColor: colors.background,
   },
@@ -1505,5 +1629,83 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.background,
     letterSpacing: 0.3,
+  },
+  currencyButtonText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.background,
+  },
+  currencyModalContainer: {
+    backgroundColor: colors.background,
+    borderRadius: 20,
+    margin: 20,
+    padding: 20,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  currencyModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  currencyModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  currencyOptionsContainer: {
+    gap: 12,
+  },
+  currencyOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  currencyOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '10',
+  },
+  currencyOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  currencySymbol: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  currencyInfo: {
+    gap: 4,
+  },
+  currencyName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  currencyCode: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  currencyModalFooter: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  currencyModalNote: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

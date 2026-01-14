@@ -23,7 +23,10 @@ export const RegisterScreen = ({ navigation }) => {
     password: '',
     confirmPassword: '',
     fullName: '',
+    invitationCode: '',
   });
+
+  const VALID_INVITATION_CODE = 'EAS2026!';
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
 
@@ -32,10 +35,15 @@ export const RegisterScreen = ({ navigation }) => {
   };
 
   const handleRegister = async () => {
-    const { username, email, password, confirmPassword, fullName } = formData;
+    const { username, email, password, confirmPassword, fullName, invitationCode } = formData;
 
-    if (!username || !email || !password || !fullName) {
+    if (!username || !email || !password || !fullName || !invitationCode) {
       Alert.alert('Erreur', 'Veuillez remplir tous les champs');
+      return;
+    }
+
+    if (invitationCode !== VALID_INVITATION_CODE) {
+      Alert.alert('Erreur', 'Code d\'invitation invalide');
       return;
     }
 
@@ -91,6 +99,15 @@ export const RegisterScreen = ({ navigation }) => {
           </View>
 
           <Card style={styles.registerCard}>
+            <Input
+              label="Code d'invitation"
+              value={formData.invitationCode}
+              onChangeText={(value) => updateField('invitationCode', value)}
+              placeholder="Entrez votre code d'invitation"
+              icon="key-outline"
+              autoCapitalize="none"
+            />
+
             <Input
               label="Nom complet"
               value={formData.fullName}

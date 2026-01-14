@@ -3,6 +3,6 @@
   "server_port": 8081,
   "expo_port": 19000,
   "project_type": "expo react native +server node js"
-  "JWT_SECRET"="votre_super_secret_jwt_qui_doit_etre_tres_long_et_complexe_123!"
+  "JWT_SECRET": "votre_super_secret_jwt_qui_doit_etre_tres_long_et_complexe_123!"
 
 }

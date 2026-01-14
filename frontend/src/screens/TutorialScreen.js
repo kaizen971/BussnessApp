@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, LayoutAnimation, Platform, UIManager } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, gradients } from '../utils/colors';
@@ -23,7 +23,7 @@ export const TutorialScreen = ({ navigation }) => {
             details: [
                 'Depuis l\'écran "Projets", cliquez sur "Créer un business".',
                 'Renseignez le nom, la devise et le secteur d\'activité.',
-                'Ajoutez un logo pour personnaliser votre espace.'
+                '(Admin uniquement) Ajoutez un logo pour personnaliser votre espace.'
             ],
             action: 'Aller aux Projets',
             route: 'Projects'
@@ -36,7 +36,8 @@ export const TutorialScreen = ({ navigation }) => {
             details: [
                 'Accédez au menu "Équipe".',
                 'Ajoutez un membre avec son rôle (manager, vendeur...).',
-                'Définissez son niveau d\'accès (lecture, ventes, admin).'
+                'Définissez son niveau d\'accès (lecture, ventes, admin).',
+                '(Admin uniquement) Personnalisez la photo de profil de chaque membre.'
             ],
             action: 'Gérer l\'équipe',
             route: 'Team'
@@ -51,8 +52,8 @@ export const TutorialScreen = ({ navigation }) => {
                 'Créez des familles : Soins, Boissons, Accessoires...',
                 'Cela facilitera la navigation lors des ventes.'
             ],
-            action: 'Aller aux Produits',
-            route: 'Products'
+            action: 'Créer une catégorie',
+            route: 'CREATE_CATEGORY'
         },
         {
             id: 4,
@@ -127,7 +128,11 @@ export const TutorialScreen = ({ navigation }) => {
     };
 
     const handleAction = (route) => {
-        navigation.navigate(route);
+        if (route === 'CREATE_CATEGORY') {
+            navigation.navigate('Categories');
+        } else {
+            navigation.navigate(route);
+        }
     };
 
     const renderStep = (step, index) => {

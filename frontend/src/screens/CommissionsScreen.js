@@ -13,10 +13,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../utils/colors';
 import { Card } from '../components/Card';
 import { useAuth } from '../contexts/AuthContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 import api from '../services/api';
 
 export const CommissionsScreen = ({ navigation }) => {
   const { user, selectedProjectId } = useAuth();
+  const { format: formatPrice } = useCurrency();
   const [commissions, setCommissions] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -117,7 +119,7 @@ export const CommissionsScreen = ({ navigation }) => {
           <View style={styles.detailRow}>
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Montant de la vente</Text>
-              <Text style={styles.detailValue}>{item.saleAmount?.toFixed(2)} €</Text>
+              <Text style={styles.detailValue}>{formatPrice(item.saleAmount || 0)}</Text>
             </View>
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Taux</Text>
@@ -126,7 +128,7 @@ export const CommissionsScreen = ({ navigation }) => {
           </View>
           <View style={styles.commissionAmountContainer}>
             <Text style={styles.commissionAmountLabel}>Commission</Text>
-            <Text style={styles.commissionAmount}>{item.amount?.toFixed(2)} €</Text>
+            <Text style={styles.commissionAmount}>{formatPrice(item.amount || 0)}</Text>
           </View>
         </View>
 
@@ -183,7 +185,7 @@ export const CommissionsScreen = ({ navigation }) => {
             style={styles.statCard}
           >
             <Ionicons name="cash" size={28} color={colors.success} />
-            <Text style={styles.statValue}>{stats.total?.toFixed(2)} €</Text>
+            <Text style={styles.statValue}>{formatPrice(stats.total || 0)}</Text>
             <Text style={styles.statLabel}>Total</Text>
           </LinearGradient>
           <LinearGradient
@@ -191,7 +193,7 @@ export const CommissionsScreen = ({ navigation }) => {
             style={styles.statCard}
           >
             <Ionicons name="time" size={28} color={colors.warning} />
-            <Text style={styles.statValue}>{stats.pending?.toFixed(2)} €</Text>
+            <Text style={styles.statValue}>{formatPrice(stats.pending || 0)}</Text>
             <Text style={styles.statLabel}>En attente</Text>
           </LinearGradient>
           <LinearGradient
@@ -199,7 +201,7 @@ export const CommissionsScreen = ({ navigation }) => {
             style={styles.statCard}
           >
             <Ionicons name="checkmark-circle" size={28} color={colors.primary} />
-            <Text style={styles.statValue}>{stats.paid?.toFixed(2)} €</Text>
+            <Text style={styles.statValue}>{formatPrice(stats.paid || 0)}</Text>
             <Text style={styles.statLabel}>Payées</Text>
           </LinearGradient>
         </LinearGradient>

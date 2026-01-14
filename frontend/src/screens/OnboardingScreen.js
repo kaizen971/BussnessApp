@@ -3,9 +3,13 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'rea
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../utils/colors';
+import { useAuth } from '../contexts/AuthContext';
 import logo from '../assets/icon/dashboard.png';
 
 export const OnboardingScreen = ({ navigation }) => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
+
   const handleModuleChoice = (module) => {
     if (module === 'simulation') {
       navigation.navigate('Simulation');
@@ -27,40 +31,42 @@ export const OnboardingScreen = ({ navigation }) => {
 
         <View style={styles.content}>
           <Text style={styles.question}>Que veux-tu faire aujourd'hui ?</Text>
-          <TouchableOpacity
-            style={styles.card}
-            onPress={() => handleModuleChoice('tutorial')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.cardIcon}>
-              <Ionicons name="school-outline" size={50} color={colors.accent} />
-            </View>
-            <Text style={styles.cardTitle}>Tutoriel de Démarrage</Text>
-            <Text style={styles.cardDescription}>
-              Guide étape par étape pour configurer votre business (Recommandé)
-            </Text>
-            <View style={styles.cardArrow}>
-              <Ionicons name="arrow-forward" size={24} color={colors.accent} />
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.card}
-            onPress={() => handleModuleChoice('simulation')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.cardIcon}>
-              <Ionicons name="bulb" size={50} color={colors.primary} />
-            </View>
-            <Text style={styles.cardTitle}>Valider une idée de business ou de produit</Text>
-            <Text style={styles.cardDescription}>
-              Simule la rentabilité, calcule ton point mort et crée ton business plan
-            </Text>
-            <View style={styles.cardArrow}>
-              <Ionicons name="arrow-forward" size={24} color={colors.primary} />
-            </View>
-          </TouchableOpacity>
-
-
+          {isAdmin && (
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() => handleModuleChoice('tutorial')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.cardIcon}>
+                <Ionicons name="school-outline" size={50} color={colors.accent} />
+              </View>
+              <Text style={styles.cardTitle}>Tutoriel de Démarrage</Text>
+              <Text style={styles.cardDescription}>
+                Guide étape par étape pour configurer votre business (Recommandé)
+              </Text>
+              <View style={styles.cardArrow}>
+                <Ionicons name="arrow-forward" size={24} color={colors.accent} />
+              </View>
+            </TouchableOpacity>
+          )}
+          {isAdmin && (
+            <TouchableOpacity
+              style={styles.card}
+              onPress={() => handleModuleChoice('simulation')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.cardIcon}>
+                <Ionicons name="bulb" size={50} color={colors.primary} />
+              </View>
+              <Text style={styles.cardTitle}>Valider une idée de business ou de produit</Text>
+              <Text style={styles.cardDescription}>
+                Simule la rentabilité, calcule ton point mort et crée ton business plan
+              </Text>
+              <View style={styles.cardArrow}>
+                <Ionicons name="arrow-forward" size={24} color={colors.primary} />
+              </View>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={styles.card}

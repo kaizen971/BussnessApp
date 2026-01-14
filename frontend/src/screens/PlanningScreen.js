@@ -9,6 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,16 +19,21 @@ import { colors } from '../utils/colors';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
 import { useAuth } from '../contexts/AuthContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 import api from '../services/api';
 
 export const PlanningScreen = ({ navigation }) => {
   const { user, selectedProjectId } = useAuth();
+  const { format: formatPrice, currency } = useCurrency();
   const [schedules, setSchedules] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [salaryModalVisible, setSalaryModalVisible] = useState(false);
   const [salaryStats, setSalaryStats] = useState(null);
+  const [editSalaryModalVisible, setEditSalaryModalVisible] = useState(false);
+  const [selectedSchedule, setSelectedSchedule] = useState(null);
+  const [editDailySalary, setEditDailySalary] = useState('');
   const [selectedWeek, setSelectedWeek] = useState(new Date());
   const [viewMode, setViewMode] = useState('week'); // 'week' ou 'list'
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -279,6 +285,41 @@ export const PlanningScreen = ({ navigation }) => {
     }
   };
 
+  const openEditSalaryModal = (schedule) => {
+    setSelectedSchedule(schedule);
+    setEditDailySalary(schedule.dailySalary !== null && schedule.dailySalary !== undefined
+      ? schedule.dailySalary.toString()
+      : '');
+    setEditSalaryModalVisible(true);
+  };
+
+  const handleUpdateDailySalary = async () => {
+    if (!selectedSchedule) return;
+
+    try {
+      setLoading(true);
+      const dailySalaryValue = editDailySalary.trim() === '' ? null : parseFloat(editDailySalary);
+
+      await api.put(`/schedules/${selectedSchedule._id}`, {
+        dailySalary: dailySalaryValue
+      });
+
+      Alert.alert('Succès', dailySalaryValue !== null
+        ? `Salaire journalier modifié à ${formatPrice(dailySalaryValue)}`
+        : 'Salaire remis au calcul par défaut (taux horaire)');
+
+      setEditSalaryModalVisible(false);
+      setSelectedSchedule(null);
+      setEditDailySalary('');
+      loadSchedules();
+    } catch (error) {
+      console.error('Erreur mise à jour salaire:', error);
+      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de modifier le salaire');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const renderWeekView = () => {
     const weekDays = getWeekDays();
     
@@ -327,34 +368,61 @@ export const PlanningScreen = ({ navigation }) => {
                   {daySchedules.map((schedule) => {
                     const statusInfo = getStatusInfo(schedule.status);
                     const userName = schedule.userId?.fullName || schedule.userId?.username || 'Inconnu';
-                    
+                    const canEditSalary = isAdmin;
+
                     return (
-                      <LinearGradient
+                      <TouchableOpacity
                         key={schedule._id}
-                        colors={[statusInfo.color + '20', statusInfo.color + '08']}
-                        style={styles.scheduleItem}
+                        onPress={() => canEditSalary && openEditSalaryModal(schedule)}
+                        activeOpacity={canEditSalary ? 0.7 : 1}
                       >
-                        <View style={styles.scheduleItemHeader}>
-                          <View style={styles.scheduleUserInfo}>
-                            <Ionicons name="person-circle" size={20} color={statusInfo.color} />
-                            <Text style={styles.scheduleUserName}>{userName}</Text>
+                        <LinearGradient
+                          colors={[statusInfo.color + '20', statusInfo.color + '08']}
+                          style={styles.scheduleItem}
+                        >
+                          <View style={styles.scheduleItemHeader}>
+                            <View style={styles.scheduleUserInfo}>
+                              {schedule.userId?.photo ? (
+                                <Image
+                                  source={{ uri: schedule.userId.photo }}
+                                  style={styles.scheduleUserPhoto}
+                                />
+                              ) : (
+                                <Ionicons name="person-circle" size={24} color={statusInfo.color} />
+                              )}
+                              <Text style={styles.scheduleUserName}>{userName}</Text>
+                            </View>
+                            {isAdmin && (
+                              <TouchableOpacity onPress={() => handleDelete(schedule._id)}>
+                                <Ionicons name="trash-outline" size={18} color={colors.error} />
+                              </TouchableOpacity>
+                            )}
                           </View>
-                          {isAdmin && (
-                            <TouchableOpacity onPress={() => handleDelete(schedule._id)}>
-                              <Ionicons name="trash-outline" size={18} color={colors.error} />
-                            </TouchableOpacity>
+                          <View style={styles.scheduleTime}>
+                            <Ionicons name="time-outline" size={16} color={statusInfo.color} />
+                            <Text style={styles.scheduleTimeText}>
+                              {schedule.startTime} - {schedule.endTime} ({schedule.duration}h)
+                            </Text>
+                          </View>
+                          {schedule.dailySalary !== null && schedule.dailySalary !== undefined && (
+                            <View style={styles.dailySalaryBadge}>
+                              <Ionicons name="cash-outline" size={14} color={colors.accent} />
+                              <Text style={styles.dailySalaryText}>
+                                Salaire fixé: {formatPrice(schedule.dailySalary)}
+                              </Text>
+                            </View>
                           )}
-                        </View>
-                        <View style={styles.scheduleTime}>
-                          <Ionicons name="time-outline" size={16} color={statusInfo.color} />
-                          <Text style={styles.scheduleTimeText}>
-                            {schedule.startTime} - {schedule.endTime} ({schedule.duration}h)
-                          </Text>
-                        </View>
-                        {schedule.notes && (
-                          <Text style={styles.scheduleNotes}>📝 {schedule.notes}</Text>
-                        )}
-                      </LinearGradient>
+                          {schedule.notes && (
+                            <Text style={styles.scheduleNotes}>📝 {schedule.notes}</Text>
+                          )}
+                          {canEditSalary && (
+                            <View style={styles.editSalaryHint}>
+                              <Ionicons name="create-outline" size={12} color={colors.textSecondary} />
+                              <Text style={styles.editSalaryHintText}>Appuyer pour modifier le salaire</Text>
+                            </View>
+                          )}
+                        </LinearGradient>
+                      </TouchableOpacity>
                     );
                   })}
                 </View>
@@ -765,11 +833,11 @@ export const PlanningScreen = ({ navigation }) => {
                       >
                         <Ionicons name="cash" size={32} color={colors.primary} />
                         <Text style={styles.salaryStatValue}>
-                          {salaryStats.salary.hourly.toFixed(2)} €
+                          {formatPrice(salaryStats.salary.hourly)}
                         </Text>
                         <Text style={styles.salaryStatLabel}>Salaire horaire</Text>
                         <Text style={styles.salaryStatDetail}>
-                          {salaryStats.hours.total}h × {salaryStats.user.hourlyRate}€/h
+                          {salaryStats.hours.total}h × {formatPrice(salaryStats.user.hourlyRate)}/h
                         </Text>
                       </LinearGradient>
 
@@ -779,7 +847,7 @@ export const PlanningScreen = ({ navigation }) => {
                       >
                         <Ionicons name="trending-up" size={32} color={colors.success} />
                         <Text style={styles.salaryStatValue}>
-                          {salaryStats.salary.commissions.toFixed(2)} €
+                          {formatPrice(salaryStats.salary.commissions)}
                         </Text>
                         <Text style={styles.salaryStatLabel}>Commissions</Text>
                         <Text style={styles.salaryStatDetail}>
@@ -797,7 +865,7 @@ export const PlanningScreen = ({ navigation }) => {
                         <View style={styles.totalSalaryText}>
                           <Text style={styles.totalSalaryLabel}>Salaire Total</Text>
                           <Text style={styles.totalSalaryValue}>
-                            {salaryStats.salary.total.toFixed(2)} €
+                            {formatPrice(salaryStats.salary.total)}
                           </Text>
                           <Text style={styles.totalSalarySubtext}>
                             Pour le mois de {salaryStats.period.label}
@@ -843,19 +911,19 @@ export const PlanningScreen = ({ navigation }) => {
                         <View style={styles.commissionDetailRow}>
                           <Text style={styles.commissionDetailLabel}>Total commissions</Text>
                           <Text style={styles.commissionDetailValue}>
-                            {salaryStats.commissions.total.toFixed(2)} €
+                            {formatPrice(salaryStats.commissions.total)}
                           </Text>
                         </View>
                         <View style={styles.commissionDetailRow}>
                           <Text style={styles.commissionDetailLabel}>En attente</Text>
                           <Text style={[styles.commissionDetailValue, { color: colors.warning }]}>
-                            {salaryStats.commissions.pending.toFixed(2)} €
+                            {formatPrice(salaryStats.commissions.pending)}
                           </Text>
                         </View>
                         <View style={styles.commissionDetailRow}>
                           <Text style={styles.commissionDetailLabel}>Payées</Text>
                           <Text style={[styles.commissionDetailValue, { color: colors.success }]}>
-                            {salaryStats.commissions.paid.toFixed(2)} €
+                            {formatPrice(salaryStats.commissions.paid)}
                           </Text>
                         </View>
                         <View style={styles.commissionDetailRow}>
@@ -881,7 +949,7 @@ export const PlanningScreen = ({ navigation }) => {
                           <View style={styles.weeklyStatHeader}>
                             <Text style={styles.weeklyStatWeek}>{week.week}</Text>
                             <Text style={styles.weeklyStatSalary}>
-                              {week.salary.toFixed(2)} €
+                              {formatPrice(week.salary)}
                             </Text>
                           </View>
                           <View style={styles.weeklyStatDetails}>
@@ -908,6 +976,138 @@ export const PlanningScreen = ({ navigation }) => {
                 >
                   <Ionicons name="checkmark" size={20} color="#fff" />
                   <Text style={styles.saveButtonText}>Fermer</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+        </View>
+      </Modal>
+
+      {/* Modal de modification du salaire journalier */}
+      <Modal visible={editSalaryModalVisible} animationType="slide" transparent>
+        <View style={styles.modalContainer}>
+          <LinearGradient
+            colors={[colors.surface, colors.background]}
+            style={styles.editSalaryModalContent}
+          >
+            <View style={styles.modalHeaderContainer}>
+              <LinearGradient
+                colors={[colors.accent + '30', colors.accent + '10']}
+                style={styles.modalHeaderGradient}
+              >
+                <View style={styles.modalIconContainer}>
+                  <LinearGradient
+                    colors={[colors.accent, colors.accent + 'DD']}
+                    style={styles.modalIcon}
+                  >
+                    <Ionicons name="cash" size={28} color="#fff" />
+                  </LinearGradient>
+                </View>
+                <View style={styles.modalTitleContainer}>
+                  <Text style={styles.modalTitle}>Modifier le Salaire</Text>
+                  <Text style={styles.modalSubtitle}>
+                    {selectedSchedule && new Date(selectedSchedule.date).toLocaleDateString('fr-FR', {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long'
+                    })}
+                  </Text>
+                </View>
+              </LinearGradient>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => {
+                  setEditSalaryModalVisible(false);
+                  setSelectedSchedule(null);
+                  setEditDailySalary('');
+                }}
+              >
+                <Ionicons name="close-circle" size={32} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.editSalaryForm}>
+              {selectedSchedule && (
+                <>
+                  <View style={styles.scheduleInfoCard}>
+                    <View style={styles.scheduleInfoRow}>
+                      <Ionicons name="person" size={20} color={colors.primary} />
+                      <Text style={styles.scheduleInfoText}>
+                        {selectedSchedule.userId?.fullName || selectedSchedule.userId?.username || 'Employé'}
+                      </Text>
+                    </View>
+                    <View style={styles.scheduleInfoRow}>
+                      <Ionicons name="time" size={20} color={colors.info} />
+                      <Text style={styles.scheduleInfoText}>
+                        {selectedSchedule.startTime} - {selectedSchedule.endTime} ({selectedSchedule.duration}h)
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.editSalaryLabel}>
+                    Salaire journalier ({formatPrice(currency.symbol)})
+                  </Text>
+                  <Text style={styles.editSalaryHelpText}>
+                    Laissez vide pour utiliser le calcul par défaut (taux horaire × heures)
+                  </Text>
+                  <Input
+                    placeholder="Ex: 80 (laisser vide = taux horaire)"
+                    value={editDailySalary}
+                    onChangeText={setEditDailySalary}
+                    keyboardType="numeric"
+                  />
+
+                  <View style={styles.salaryComparisonCard}>
+                    <Text style={styles.salaryComparisonTitle}>Comparaison</Text>
+                    <View style={styles.salaryComparisonRow}>
+                      <Text style={styles.salaryComparisonLabel}>Calcul par défaut:</Text>
+                      <Text style={styles.salaryComparisonValue}>
+                        {selectedSchedule.duration}h × taux horaire
+                      </Text>
+                    </View>
+                    {editDailySalary.trim() !== '' && (
+                      <View style={styles.salaryComparisonRow}>
+                        <Text style={styles.salaryComparisonLabel}>Salaire fixé:</Text>
+                        <Text style={[styles.salaryComparisonValue, { color: colors.accent, fontWeight: 'bold' }]}>
+                          {formatPrice(editDailySalary)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </>
+              )}
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setEditSalaryModalVisible(false);
+                  setSelectedSchedule(null);
+                  setEditDailySalary('');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.saveButtonWrapper}
+                onPress={handleUpdateDailySalary}
+                disabled={loading}
+              >
+                <LinearGradient
+                  colors={[colors.accent, colors.accent + 'DD']}
+                  style={styles.saveButton}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                      <Text style={[styles.saveButtonText, { color: '#fff' }]}>
+                        {editDailySalary.trim() === '' ? 'Remettre par défaut' : 'Enregistrer'}
+                      </Text>
+                    </>
+                  )}
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -1095,6 +1295,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flex: 1,
+  },
+  scheduleUserPhoto: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
   },
   scheduleUserName: {
     fontSize: 14,
@@ -1549,5 +1754,109 @@ const styles = StyleSheet.create({
   weeklyStatDetail: {
     fontSize: 13,
     color: colors.textSecondary,
+  },
+  // Styles pour le salaire journalier
+  dailySalaryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.accent + '20',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  dailySalaryText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  editSalaryHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border + '30',
+  },
+  editSalaryHintText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+  },
+  // Modal édition salaire
+  editSalaryModalContent: {
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingBottom: 30,
+    maxHeight: '70%',
+    borderTopWidth: 2,
+    borderColor: colors.accent + '40',
+  },
+  editSalaryForm: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  scheduleInfoCard: {
+    backgroundColor: colors.surface,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 12,
+  },
+  scheduleInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  scheduleInfoText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  editSalaryLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 6,
+  },
+  editSalaryHelpText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 12,
+    fontStyle: 'italic',
+  },
+  salaryComparisonCard: {
+    backgroundColor: colors.primary + '10',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  salaryComparisonTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  salaryComparisonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  salaryComparisonLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  salaryComparisonValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
   },
 });

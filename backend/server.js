@@ -14,8 +14,8 @@ app.set('trust proxy', 1);
 
 // Middleware
 app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json({ limit: '50mb' })); // Augmenter la limite pour les images base64
+app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
 // MongoDB Connection
 const connectDB = async () => {
@@ -37,6 +37,8 @@ const ProjectSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: String,
   category: String,
+  logo: String, // URL ou URI de l'image du logo
+  currency: { type: String, enum: ['EUR', 'XOF'], default: 'EUR' }, // Devise du business (EUR ou XOF/CFA)
   ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Propriétaire du business
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
@@ -135,6 +137,7 @@ const UserSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' }, // Projet actif (pour compatibilité)
   projectIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Project' }], // Liste des projets pour un responsable
   fullName: String,
+  photo: String, // URL ou URI de la photo de profil
   isActive: { type: Boolean, default: true },
   commissionRate: { type: Number, default: 0 }, // Taux de commission en % (ex: 5 pour 5%)
   totalCommissions: { type: Number, default: 0 }, // Total des commissions gagnées
@@ -159,6 +162,7 @@ const ScheduleSchema = new mongoose.Schema({
   startTime: { type: String, required: true }, // Heure de début (format: "09:00")
   endTime: { type: String, required: true }, // Heure de fin (format: "17:00")
   duration: { type: Number }, // Durée en heures (calculé automatiquement)
+  dailySalary: { type: Number, default: null }, // Salaire journalier ponctuel (si null, utilise hourlyRate * duration)
   status: { type: String, enum: ['scheduled', 'completed', 'absent', 'cancelled'], default: 'scheduled' },
   notes: String, // Notes supplémentaires
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Qui a créé ce planning
@@ -179,6 +183,13 @@ const CommissionSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+const CategorySchema = new mongoose.Schema({
+  projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
+  name: { type: String, required: true },
+  color: { type: String, default: '#4CAF50' },
+  createdAt: { type: Date, default: Date.now }
+});
+
 // Models
 const Project = mongoose.model('Project', ProjectSchema);
 const Product = mongoose.model('Product', ProductSchema);
@@ -191,6 +202,7 @@ const User = mongoose.model('User', UserSchema);
 const Feedback = mongoose.model('Feedback', FeedbackSchema);
 const Schedule = mongoose.model('Schedule', ScheduleSchema);
 const Commission = mongoose.model('Commission', CommissionSchema);
+const Category = mongoose.model('Category', CategorySchema);
 
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'bussnessapp_secret_key_2025';
@@ -753,6 +765,93 @@ app.delete('/BussnessApp/projects/:id', authenticateToken, checkRole('admin', 'm
 
     await Project.findByIdAndDelete(req.params.id);
     res.json({ message: 'Project deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update project currency
+app.put('/BussnessApp/projects/:id/currency', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+  try {
+    const { currency } = req.body;
+
+    if (!currency || !['EUR', 'XOF'].includes(currency)) {
+      return res.status(400).json({ error: 'Devise invalide. Utilisez EUR ou XOF' });
+    }
+
+    const project = await Project.findById(req.params.id);
+    if (!project) {
+      return res.status(404).json({ error: 'Projet non trouvé' });
+    }
+
+    // Vérifier que l'utilisateur est le propriétaire
+    if (project.ownerId.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'Vous ne pouvez modifier que vos propres projets' });
+    }
+
+    project.currency = currency;
+    project.updatedAt = Date.now();
+    await project.save();
+
+    res.json({ 
+      message: 'Devise mise à jour avec succès',
+      project 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Categories Routes
+app.get('/BussnessApp/categories', authenticateToken, async (req, res) => {
+  try {
+    const { projectId } = req.query;
+    const filter = projectId ? { projectId } : {};
+    const categories = await Category.find(filter).sort({ name: 1 });
+    res.json({ data: categories });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/BussnessApp/categories', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+  try {
+    const { name, color, projectId } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ error: 'Le nom de la catégorie est requis' });
+    }
+
+    // Vérifier si la catégorie existe déjà pour ce projet
+    const existingCategory = await Category.findOne({ 
+      projectId, 
+      name: { $regex: new RegExp(`^${name}$`, 'i') } 
+    });
+
+    if (existingCategory) {
+      return res.status(400).json({ error: 'Cette catégorie existe déjà' });
+    }
+
+    const category = new Category({
+      name,
+      color: color || '#4CAF50',
+      projectId
+    });
+
+    await category.save();
+    res.status(201).json({ data: category });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete('/BussnessApp/categories/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+  try {
+    const category = await Category.findByIdAndDelete(req.params.id);
+    if (!category) {
+      return res.status(404).json({ error: 'Catégorie non trouvée' });
+    }
+    res.json({ message: 'Catégorie supprimée avec succès' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1608,7 +1707,7 @@ app.get('/BussnessApp/users', authenticateToken, checkRole('admin', 'manager', '
 
 app.post('/BussnessApp/users', authenticateToken, checkRole('admin'), async (req, res) => {
   try {
-    const { username, email, password, fullName, role, projectId } = req.body;
+    const { username, email, password, fullName, role, projectId, photo } = req.body;
 
     // Vérifier si l'utilisateur existe déjà
     const existingUser = await User.findOne({ $or: [{ username }, { email }] });
@@ -1628,6 +1727,7 @@ app.post('/BussnessApp/users', authenticateToken, checkRole('admin'), async (req
       email,
       password: hashedPassword,
       fullName,
+      photo,
       role: role || 'cashier',
       projectId
     });
@@ -1705,7 +1805,7 @@ app.get('/BussnessApp/schedules', authenticateToken, async (req, res) => {
     }
 
     const schedules = await Schedule.find(filter)
-      .populate('userId', 'username fullName role')
+      .populate('userId', 'username fullName role photo')
       .populate('createdBy', 'username fullName')
       .sort({ date: 1, startTime: 1 });
 
@@ -1815,7 +1915,7 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
       const populatedSchedules = await Schedule.find({
         _id: { $in: createdSchedules.map(s => s._id) }
       })
-        .populate('userId', 'username fullName role')
+        .populate('userId', 'username fullName role photo')
         .populate('createdBy', 'username fullName');
 
       res.status(201).json({
@@ -1839,7 +1939,7 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
       await schedule.save();
 
       const populatedSchedule = await Schedule.findById(schedule._id)
-        .populate('userId', 'username fullName role')
+        .populate('userId', 'username fullName role photo')
         .populate('createdBy', 'username fullName');
 
       res.status(201).json({ data: populatedSchedule });
@@ -1851,13 +1951,21 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
 });
 
 // Mettre à jour un planning
-app.put('/BussnessApp/schedules/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+app.put('/BussnessApp/schedules/:id', authenticateToken, async (req, res) => {
   try {
-    const { date, startTime, endTime, status, notes } = req.body;
+    const { date, startTime, endTime, status, notes, dailySalary } = req.body;
     const schedule = await Schedule.findById(req.params.id);
 
     if (!schedule) {
       return res.status(404).json({ error: 'Planning non trouvé' });
+    }
+
+    // Vérifier les permissions : admin/manager peut tout modifier, salarié peut modifier son propre dailySalary
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'manager' || req.user.role === 'responsable';
+    const isOwnSchedule = schedule.userId.toString() === req.user.id;
+
+    if (!isAdmin && !isOwnSchedule) {
+      return res.status(403).json({ error: 'Non autorisé' });
     }
 
     // Calculer la nouvelle durée si les heures changent
@@ -1878,12 +1986,14 @@ app.put('/BussnessApp/schedules/:id', authenticateToken, checkRole('admin', 'man
     if (endTime) schedule.endTime = endTime;
     if (status) schedule.status = status;
     if (notes !== undefined) schedule.notes = notes;
+    // Permettre de définir dailySalary (null pour revenir au calcul par défaut)
+    if (dailySalary !== undefined) schedule.dailySalary = dailySalary;
     schedule.updatedAt = Date.now();
 
     await schedule.save();
 
     const populatedSchedule = await Schedule.findById(schedule._id)
-      .populate('userId', 'username fullName role')
+      .populate('userId', 'username fullName role photo')
       .populate('createdBy', 'username fullName');
 
     res.json({ data: populatedSchedule });
@@ -2031,6 +2141,66 @@ app.put('/BussnessApp/users/:id/hourly-rate', authenticateToken, checkRole('admi
   }
 });
 
+// Mettre à jour les informations d'un utilisateur (nom et email)
+app.put('/BussnessApp/users/:id/info', authenticateToken, checkRole('admin', 'responsable'), async (req, res) => {
+  try {
+    const { fullName, email } = req.body;
+
+    if (!fullName || !email) {
+      return res.status(400).json({ error: 'Le nom complet et l\'email sont requis' });
+    }
+
+    // Validation de l'email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Format d\'email invalide' });
+    }
+
+    // Vérifier si l'email est déjà utilisé par un autre utilisateur
+    const existingUser = await User.findOne({ email, _id: { $ne: req.params.id } });
+    if (existingUser) {
+      return res.status(400).json({ error: 'Cet email est déjà utilisé par un autre utilisateur' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { fullName, email },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    res.json({ data: user });
+  } catch (error) {
+    console.error('Error updating user info:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Modifier la photo d'un utilisateur (admin uniquement)
+app.put('/BussnessApp/users/:id/photo', authenticateToken, checkRole('admin'), async (req, res) => {
+  try {
+    const { photo } = req.body;
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { photo },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    res.json({ data: user });
+  } catch (error) {
+    console.error('Error updating user photo:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // Obtenir les statistiques de salaire pour un utilisateur
 app.get('/BussnessApp/users/:id/salary-stats', authenticateToken, async (req, res) => {
   try {
@@ -2077,7 +2247,13 @@ app.get('/BussnessApp/users/:id/salary-stats', authenticateToken, async (req, re
 
     // Calculer les heures totales et le salaire
     const totalHours = schedules.reduce((sum, s) => sum + (s.duration || 0), 0);
-    const totalSalary = totalHours * (user.hourlyRate || 0);
+    // Calcul du salaire : utilise dailySalary si défini, sinon hourlyRate * duration
+    const totalSalary = schedules.reduce((sum, s) => {
+      if (s.dailySalary !== null && s.dailySalary !== undefined) {
+        return sum + s.dailySalary;
+      }
+      return sum + ((s.duration || 0) * (user.hourlyRate || 0));
+    }, 0);
 
     // Récupérer les commissions de la période
     const commissions = await Commission.find({
@@ -2108,7 +2284,12 @@ app.get('/BussnessApp/users/:id/salary-stats', authenticateToken, async (req, re
         };
       }
       weeklyStats[weekNumber].hours += schedule.duration || 0;
-      weeklyStats[weekNumber].salary += (schedule.duration || 0) * (user.hourlyRate || 0);
+      // Utilise dailySalary si défini, sinon hourlyRate * duration
+      if (schedule.dailySalary !== null && schedule.dailySalary !== undefined) {
+        weeklyStats[weekNumber].salary += schedule.dailySalary;
+      } else {
+        weeklyStats[weekNumber].salary += (schedule.duration || 0) * (user.hourlyRate || 0);
+      }
       weeklyStats[weekNumber].days += 1;
     });
 
@@ -2146,7 +2327,10 @@ app.get('/BussnessApp/users/:id/salary-stats', authenticateToken, async (req, re
         startTime: s.startTime,
         endTime: s.endTime,
         duration: s.duration,
-        salary: (s.duration || 0) * (user.hourlyRate || 0)
+        dailySalary: s.dailySalary,
+        salary: s.dailySalary !== null && s.dailySalary !== undefined
+          ? s.dailySalary
+          : (s.duration || 0) * (user.hourlyRate || 0)
       }))
     });
   } catch (error) {
@@ -2574,5 +2758,5 @@ process.on('uncaughtException', (error) => {
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`API accessible at http://localhost:${PORT}/BussnessApp`);
-  console.log(`Public URL: https://mabouya.servegame.com/BussnessApp/BussnessApp`);
+  console.log(`Public URL: http://localhost:3003/BussnessApp/BussnessApp`);
 });

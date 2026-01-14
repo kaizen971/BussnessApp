@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
@@ -26,6 +27,7 @@ const { width } = Dimensions.get('window');
 
 export const SalesScreen = () => {
   const { user } = useAuth();
+  const { format: formatPrice } = useCurrency();
   const [sales, setSales] = useState([]);
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -272,7 +274,7 @@ export const SalesScreen = () => {
           </View>
           <View style={styles.saleInfo}>
             <Text style={[styles.saleAmount, isRefund && styles.saleAmountRefund]}>
-              {isRefund ? '' : '+'}{item.amount?.toFixed(2) || '0.00'} €
+              {isRefund ? '' : '+'}{formatPrice(item.amount || 0)}
             </Text>
             {item.productId ? (
               <Text style={styles.saleProduct}>
@@ -375,7 +377,7 @@ export const SalesScreen = () => {
               <Ionicons name="wallet" size={32} color={colors.primary} />
               <View style={styles.totalTextContainer}>
                 <Text style={styles.totalLabel}>Total des ventes</Text>
-                <Text style={styles.totalAmount}>{totalSales.toFixed(2)} €</Text>
+                <Text style={styles.totalAmount}>{formatPrice(totalSales)}</Text>
               </View>
             </View>
           </LinearGradient>
@@ -681,7 +683,7 @@ export const SalesScreen = () => {
                             <Text style={styles.productListName} numberOfLines={1}>
                               {product.name}
                             </Text>
-                            <Text style={styles.productListPrice}>{product.unitPrice}€</Text>
+                            <Text style={styles.productListPrice}>{formatPrice(product.unitPrice)}</Text>
                           </View>
                           {inCart && (
                             <View style={styles.productListBadge}>
@@ -718,7 +720,7 @@ export const SalesScreen = () => {
                           {product.name}
                         </Text>
                         <View style={styles.productPriceContainer}>
-                          <Text style={styles.productPrice}>{product.unitPrice}€</Text>
+                          <Text style={styles.productPrice}>{formatPrice(product.unitPrice)}</Text>
                           {inCart && (
                             <Ionicons name="checkmark-circle" size={18} color={colors.success} style={{ marginLeft: 6 }} />
                           )}
@@ -750,7 +752,7 @@ export const SalesScreen = () => {
                       <View style={styles.cartItemInfo}>
                         <Text style={styles.cartItemName}>{item.productName}</Text>
                         <Text style={styles.cartItemPrice}>
-                          {item.unitPrice}€ x {item.quantity} = {(item.unitPrice * item.quantity).toFixed(2)}€
+                          {formatPrice(item.unitPrice)} x {item.quantity} = {formatPrice(item.unitPrice * item.quantity)}
                         </Text>
                       </View>
                       <View style={styles.cartItemActions}>
@@ -795,7 +797,7 @@ export const SalesScreen = () => {
 
                   <View style={styles.cartTotal}>
                     <Text style={styles.cartTotalLabel}>Total du panier:</Text>
-                    <Text style={styles.cartTotalValue}>{cartTotal.toFixed(2)} €</Text>
+                    <Text style={styles.cartTotalValue}>{formatPrice(cartTotal)}</Text>
                   </View>
 
                   <TouchableOpacity

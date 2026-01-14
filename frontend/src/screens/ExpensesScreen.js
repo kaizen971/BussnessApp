@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import { useAuth } from '../contexts/AuthContext';
+import { useCurrency } from '../contexts/CurrencyContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
@@ -19,6 +20,7 @@ import { colors } from '../utils/colors';
 
 export const ExpensesScreen = () => {
   const { user } = useAuth();
+  const { format: formatPrice } = useCurrency();
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -90,7 +92,7 @@ export const ExpensesScreen = () => {
           </View>
           <View style={styles.expenseInfo}>
             <View style={styles.headerRow}>
-              <Text style={styles.expenseAmount}>-{item.amount.toFixed(2)} €</Text>
+              <Text style={styles.expenseAmount}>-{formatPrice(item.amount)}</Text>
               <View style={[styles.categoryBadge, { backgroundColor: categoryInfo.color + '20' }]}>
                 <Text style={[styles.categoryText, { color: categoryInfo.color }]}>
                   {categoryInfo.label}
@@ -122,7 +124,7 @@ export const ExpensesScreen = () => {
       <View style={styles.header}>
         <Card style={styles.totalCard}>
           <Text style={styles.totalLabel}>Total des dépenses</Text>
-          <Text style={styles.totalAmount}>{totalExpenses.toFixed(2)} €</Text>
+          <Text style={styles.totalAmount}>{formatPrice(totalExpenses)}</Text>
           <Text style={styles.totalCount}>{expenses.length} dépense(s)</Text>
         </Card>
       </View>
