@@ -17,7 +17,8 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
 import { colors, gradients } from '../utils/colors';
-import logo from '../assets/icon/dashboard.png';
+
+const logo = require('../assets/icon/dashboard.png');
 
 export const LoginScreen = ({ navigation }) => {
   const [username, setUsername] = useState('');
