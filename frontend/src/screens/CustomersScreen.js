@@ -128,10 +128,7 @@ export const CustomersScreen = () => {
               <Text style={styles.statValue}>{item.totalPurchases?.toFixed(2) || 0} €</Text>
               <Text style={styles.statLabel}>Total achats</Text>
             </View>
-            <View style={styles.statBadge}>
-              <Text style={styles.statValue}>{item.loyaltyPoints || 0}</Text>
-              <Text style={styles.statLabel}>Points fidélité</Text>
-            </View>
+
           </View>
         </View>
       </View>

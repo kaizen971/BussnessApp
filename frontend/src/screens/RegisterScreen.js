@@ -87,7 +87,7 @@ export const RegisterScreen = ({ navigation }) => {
               <Ionicons name="person-add-outline" size={50} color="#fff" />
             </View>
             <Text style={styles.title}>Créer un compte</Text>
-            <Text style={styles.subtitle}>Rejoignez BizFlow dès aujourd'hui</Text>
+            <Text style={styles.subtitle}>Rejoignez EAS dès aujourd'hui</Text>
           </View>
 
           <Card style={styles.registerCard}>
@@ -186,6 +186,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: 8,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,

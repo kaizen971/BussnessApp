@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "Entreprendre Avec Succès",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -16,12 +16,13 @@
       "supportsTablet": true
     },
     "android": {
+      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.kaizen971.BizFlow"
+      "package": "com.kaizen971.EntreprendreAvecSuccesEAS"
     },
     "web": {
       "favicon": "./assets/favicon.png"

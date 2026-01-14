@@ -102,7 +102,7 @@ export const LoginScreen = ({ navigation }) => {
             <View style={styles.iconContainer}>
               <Image source={logo} style={styles.logo} />
             </View>
-            <Text style={styles.title}>BizFlow</Text>
+            <Text style={styles.title}>Entreprendre avec succès - EAS</Text>
             <Text style={styles.subtitle}>Gérez votre business intelligemment</Text>
           </Animated.View>
 
@@ -115,37 +115,37 @@ export const LoginScreen = ({ navigation }) => {
             <Card style={styles.loginCard}>
               <Text style={styles.loginTitle}>Connexion</Text>
 
-            <Input
-              label="Nom d'utilisateur ou Email"
-              value={username}
-              onChangeText={setUsername}
-              placeholder="Entrez votre identifiant"
-              icon="person-outline"
-              autoCapitalize="none"
-            />
+              <Input
+                label="Nom d'utilisateur ou Email"
+                value={username}
+                onChangeText={setUsername}
+                placeholder="Entrez votre identifiant"
+                icon="person-outline"
+                autoCapitalize="none"
+              />
 
-            <Input
-              label="Mot de passe"
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Entrez votre mot de passe"
-              icon="lock-closed-outline"
-              secureTextEntry
-            />
+              <Input
+                label="Mot de passe"
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Entrez votre mot de passe"
+                icon="lock-closed-outline"
+                secureTextEntry
+              />
 
-            <Button
-              title="Se connecter"
-              onPress={handleLogin}
-              loading={loading}
-              style={styles.loginButton}
-            />
+              <Button
+                title="Se connecter"
+                onPress={handleLogin}
+                loading={loading}
+                style={styles.loginButton}
+              />
 
-            <Button
-              title="Créer un compte"
-              onPress={() => navigation.navigate('Register')}
-              variant="outline"
-              style={styles.registerButton}
-            />
+              <Button
+                title="Créer un compte"
+                onPress={() => navigation.navigate('Register')}
+                variant="outline"
+                style={styles.registerButton}
+              />
             </Card>
           </Animated.View>
 
@@ -199,6 +199,7 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 17,

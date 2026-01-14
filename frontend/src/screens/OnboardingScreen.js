@@ -11,6 +11,8 @@ export const OnboardingScreen = ({ navigation }) => {
       navigation.navigate('Simulation');
     } else if (module === 'business') {
       navigation.navigate('Dashboard');
+    } else if (module === 'tutorial') {
+      navigation.navigate('Tutorial');
     }
   };
 
@@ -19,13 +21,28 @@ export const OnboardingScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Image source={logo} style={styles.logo} />
-          <Text style={styles.appName}>BizFlow</Text>
+          <Text style={styles.appName}>Entreprendre avec succès - EAS</Text>
           <Text style={styles.slogan}>Valide ton idée. Pilote ton business. Simplement.</Text>
         </View>
 
         <View style={styles.content}>
           <Text style={styles.question}>Que veux-tu faire aujourd'hui ?</Text>
-
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => handleModuleChoice('tutorial')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.cardIcon}>
+              <Ionicons name="school-outline" size={50} color={colors.accent} />
+            </View>
+            <Text style={styles.cardTitle}>Tutoriel de Démarrage</Text>
+            <Text style={styles.cardDescription}>
+              Guide étape par étape pour configurer votre business (Recommandé)
+            </Text>
+            <View style={styles.cardArrow}>
+              <Ionicons name="arrow-forward" size={24} color={colors.accent} />
+            </View>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.card}
             onPress={() => handleModuleChoice('simulation')}
@@ -42,6 +59,8 @@ export const OnboardingScreen = ({ navigation }) => {
               <Ionicons name="arrow-forward" size={24} color={colors.primary} />
             </View>
           </TouchableOpacity>
+
+
 
           <TouchableOpacity
             style={styles.card}
@@ -83,6 +102,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
     marginTop: 20,
+    textAlign: 'center',
   },
   slogan: {
     fontSize: 16,

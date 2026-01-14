@@ -599,19 +599,7 @@ export const SalesScreen = () => {
                 </View>
               )}
 
-              {selectedCustomer && (
-                <LinearGradient
-                  colors={[colors.primary + '20', colors.primary + '10']}
-                  style={styles.infoBox}
-                >
-                  <Ionicons name="star" size={20} color={colors.primary} />
-                  <View style={styles.infoTextContainer}>
-                    <Text style={styles.infoText}>
-                      {selectedCustomer.loyaltyLevel || 'Bronze'} • {selectedCustomer.loyaltyPoints || 0} pts • {selectedCustomer.discount || 0}% remise
-                    </Text>
-                  </View>
-                </LinearGradient>
-              )}
+
 
               {/* Sélection des produits */}
               <View style={styles.sectionHeader}>
