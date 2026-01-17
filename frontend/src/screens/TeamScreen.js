@@ -41,6 +41,8 @@ export const TeamScreen = ({ navigation }) => {
   const [editInfoData, setEditInfoData] = useState({
     fullName: '',
     email: '',
+    newPassword: '',
+    confirmPassword: '',
   });
   const [formData, setFormData] = useState({
     username: '',
@@ -174,6 +176,8 @@ export const TeamScreen = ({ navigation }) => {
     setEditInfoData({
       fullName: user.fullName || '',
       email: user.email || '',
+      newPassword: '',
+      confirmPassword: '',
     });
     setEditInfoModalVisible(true);
   };
@@ -182,7 +186,7 @@ export const TeamScreen = ({ navigation }) => {
     if (!selectedUser) return;
 
     if (!editInfoData.fullName.trim() || !editInfoData.email.trim()) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs');
+      Alert.alert('Erreur', 'Veuillez remplir le nom et l\'email');
       return;
     }
 
@@ -193,11 +197,32 @@ export const TeamScreen = ({ navigation }) => {
       return;
     }
 
+    // Validation mot de passe si renseigné
+    if (editInfoData.newPassword) {
+      if (editInfoData.newPassword.length < 6) {
+        Alert.alert('Erreur', 'Le mot de passe doit contenir au moins 6 caractères');
+        return;
+      }
+      if (editInfoData.newPassword !== editInfoData.confirmPassword) {
+        Alert.alert('Erreur', 'Les mots de passe ne correspondent pas');
+        return;
+      }
+    }
+
     try {
+      // Mise à jour des infos
       await api.put(`/users/${selectedUser._id}/info`, {
         fullName: editInfoData.fullName,
         email: editInfoData.email,
       });
+
+      // Mise à jour du mot de passe si renseigné (admin uniquement)
+      if (editInfoData.newPassword && user?.role === 'admin') {
+        await api.put(`/users/${selectedUser._id}/password`, {
+          newPassword: editInfoData.newPassword,
+        });
+      }
+
       setEditInfoModalVisible(false);
       setSelectedUser(null);
       loadUsers();
@@ -432,19 +457,21 @@ export const TeamScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.userActions}>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleToggleStatus(item)}
-          >
-            <Ionicons
-              name={item.isActive ? 'lock-closed' : 'lock-open'}
-              size={20}
-              color={item.isActive ? colors.error : colors.success}
-            />
-            <Text style={[styles.actionButtonText, { color: item.isActive ? colors.error : colors.success }]}>
-              {item.isActive ? 'Désactiver' : 'Activer'}
-            </Text>
-          </TouchableOpacity>
+          {user?.role === 'admin' && item._id !== user.id && (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleToggleStatus(item)}
+            >
+              <Ionicons
+                name={item.isActive ? 'lock-closed' : 'lock-open'}
+                size={20}
+                color={item.isActive ? colors.error : colors.success}
+              />
+              <Text style={[styles.actionButtonText, { color: item.isActive ? colors.error : colors.success }]}>
+                {item.isActive ? 'Désactiver' : 'Activer'}
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {(user?.role === 'admin' || user?.role === 'responsable') && item._id !== user.id && (
             <TouchableOpacity
@@ -1340,6 +1367,54 @@ export const TeamScreen = ({ navigation }) => {
                 </LinearGradient>
               </View>
 
+              {user?.role === 'admin' && selectedUser?._id !== user?.id && (
+                <>
+                  <View style={styles.passwordSectionDivider}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>Mot de passe</Text>
+                    <View style={styles.dividerLine} />
+                  </View>
+
+                  <View style={styles.customInputSection}>
+                    <Text style={styles.customInputTitle}>🔑 Nouveau mot de passe</Text>
+                    <LinearGradient
+                      colors={[colors.warning + '15', colors.warning + '08']}
+                      style={styles.commissionInputContainer}
+                    >
+                      <View style={styles.editInfoInputWrapper}>
+                        <Ionicons name="lock-closed-outline" size={24} color={colors.warning} />
+                        <Input
+                          placeholder="Laisser vide pour ne pas modifier"
+                          value={editInfoData.newPassword}
+                          onChangeText={(text) => setEditInfoData({ ...editInfoData, newPassword: text })}
+                          secureTextEntry
+                          style={styles.editInfoInput}
+                        />
+                      </View>
+                    </LinearGradient>
+                  </View>
+
+                  <View style={styles.customInputSection}>
+                    <Text style={styles.customInputTitle}>🔑 Confirmer le mot de passe</Text>
+                    <LinearGradient
+                      colors={[colors.warning + '15', colors.warning + '08']}
+                      style={styles.commissionInputContainer}
+                    >
+                      <View style={styles.editInfoInputWrapper}>
+                        <Ionicons name="lock-closed-outline" size={24} color={colors.warning} />
+                        <Input
+                          placeholder="Confirmer le nouveau mot de passe"
+                          value={editInfoData.confirmPassword}
+                          onChangeText={(text) => setEditInfoData({ ...editInfoData, confirmPassword: text })}
+                          secureTextEntry
+                          style={styles.editInfoInput}
+                        />
+                      </View>
+                    </LinearGradient>
+                  </View>
+                </>
+              )}
+
               <LinearGradient
                 colors={[colors.warning + '15', colors.warning + '05']}
                 style={styles.exampleCard}
@@ -2229,5 +2304,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginTop: 8,
+  },
+  passwordSectionDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+    gap: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 });

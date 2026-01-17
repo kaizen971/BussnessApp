@@ -32,8 +32,14 @@ export const PlanningScreen = ({ navigation }) => {
   const [salaryModalVisible, setSalaryModalVisible] = useState(false);
   const [salaryStats, setSalaryStats] = useState(null);
   const [editSalaryModalVisible, setEditSalaryModalVisible] = useState(false);
+  const [editScheduleModalVisible, setEditScheduleModalVisible] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [editDailySalary, setEditDailySalary] = useState('');
+  const [editScheduleData, setEditScheduleData] = useState({
+    startTime: '',
+    endTime: '',
+    notes: '',
+  });
   const [selectedWeek, setSelectedWeek] = useState(new Date());
   const [viewMode, setViewMode] = useState('week'); // 'week' ou 'list'
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -317,6 +323,40 @@ export const PlanningScreen = ({ navigation }) => {
     setEditSalaryModalVisible(true);
   };
 
+  const openEditScheduleModal = (schedule) => {
+    setSelectedSchedule(schedule);
+    setEditScheduleData({
+      startTime: schedule.startTime || '09:00',
+      endTime: schedule.endTime || '17:00',
+      notes: schedule.notes || '',
+    });
+    setEditScheduleModalVisible(true);
+  };
+
+  const handleUpdateSchedule = async () => {
+    if (!selectedSchedule) return;
+
+    try {
+      setLoading(true);
+      await api.put(`/schedules/${selectedSchedule._id}`, {
+        startTime: editScheduleData.startTime,
+        endTime: editScheduleData.endTime,
+        notes: editScheduleData.notes,
+      });
+
+      Alert.alert('Succès', 'Horaires modifiés avec succès');
+      setEditScheduleModalVisible(false);
+      setSelectedSchedule(null);
+      setEditScheduleData({ startTime: '', endTime: '', notes: '' });
+      loadSchedules();
+    } catch (error) {
+      console.error('Erreur mise à jour horaires:', error);
+      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de modifier les horaires');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleUpdateDailySalary = async () => {
     if (!selectedSchedule) return;
 
@@ -409,14 +449,9 @@ export const PlanningScreen = ({ navigation }) => {
                   {daySchedules.map((schedule) => {
                     const statusInfo = getStatusInfo(schedule.status);
                     const userName = schedule.userId?.fullName || schedule.userId?.username || 'Inconnu';
-                    const canEditSalary = isAdmin;
 
                     return (
-                      <TouchableOpacity
-                        key={schedule._id}
-                        onPress={() => canEditSalary && openEditSalaryModal(schedule)}
-                        activeOpacity={canEditSalary ? 0.7 : 1}
-                      >
+                      <View key={schedule._id}>
                         <LinearGradient
                           colors={[statusInfo.color + '20', statusInfo.color + '08']}
                           style={styles.scheduleItem}
@@ -434,9 +469,26 @@ export const PlanningScreen = ({ navigation }) => {
                               <Text style={styles.scheduleUserName}>{userName}</Text>
                             </View>
                             {isAdmin && (
-                              <TouchableOpacity onPress={() => handleDelete(schedule._id)}>
-                                <Ionicons name="trash-outline" size={18} color={colors.error} />
-                              </TouchableOpacity>
+                              <View style={styles.scheduleActions}>
+                                <TouchableOpacity
+                                  style={styles.scheduleActionButton}
+                                  onPress={() => openEditScheduleModal(schedule)}
+                                >
+                                  <Ionicons name="time-outline" size={18} color={colors.info} />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.scheduleActionButton}
+                                  onPress={() => openEditSalaryModal(schedule)}
+                                >
+                                  <Ionicons name="cash-outline" size={18} color={colors.accent} />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.scheduleActionButton}
+                                  onPress={() => handleDelete(schedule._id)}
+                                >
+                                  <Ionicons name="trash-outline" size={18} color={colors.error} />
+                                </TouchableOpacity>
+                              </View>
                             )}
                           </View>
                           <View style={styles.scheduleTime}>
@@ -502,14 +554,8 @@ export const PlanningScreen = ({ navigation }) => {
                               </View>
                             </View>
                           )}
-                          {canEditSalary && (
-                            <View style={styles.editSalaryHint}>
-                              <Ionicons name="create-outline" size={12} color={colors.textSecondary} />
-                              <Text style={styles.editSalaryHintText}>Appuyer pour modifier le salaire</Text>
-                            </View>
-                          )}
                         </LinearGradient>
-                      </TouchableOpacity>
+                      </View>
                     );
                   })}
                 </View>
@@ -1145,18 +1191,27 @@ export const PlanningScreen = ({ navigation }) => {
                   />
 
                   <View style={styles.salaryComparisonCard}>
-                    <Text style={styles.salaryComparisonTitle}>Comparaison</Text>
-                    <View style={styles.salaryComparisonRow}>
-                      <Text style={styles.salaryComparisonLabel}>Calcul par défaut:</Text>
-                      <Text style={styles.salaryComparisonValue}>
-                        {selectedSchedule.duration}h × taux horaire
-                      </Text>
-                    </View>
-                    {editDailySalary.trim() !== '' && (
+                    <Text style={styles.salaryComparisonTitle}>Salaire actuel</Text>
+                    {selectedSchedule.dailySalary !== null && selectedSchedule.dailySalary !== undefined ? (
                       <View style={styles.salaryComparisonRow}>
-                        <Text style={styles.salaryComparisonLabel}>Salaire fixé:</Text>
+                        <Text style={styles.salaryComparisonLabel}>Salaire journalier fixé:</Text>
                         <Text style={[styles.salaryComparisonValue, { color: colors.accent, fontWeight: 'bold' }]}>
-                          {formatPrice(editDailySalary)}
+                          {formatPrice(selectedSchedule.dailySalary)}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.salaryComparisonRow}>
+                        <Text style={styles.salaryComparisonLabel}>Calcul par défaut:</Text>
+                        <Text style={styles.salaryComparisonValue}>
+                          {selectedSchedule.duration}h × {formatPrice(selectedSchedule.userId?.hourlyRate || 0)}/h = {formatPrice((selectedSchedule.duration || 0) * (selectedSchedule.userId?.hourlyRate || 0))}
+                        </Text>
+                      </View>
+                    )}
+                    {editDailySalary.trim() !== '' && (
+                      <View style={[styles.salaryComparisonRow, { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }]}>
+                        <Text style={styles.salaryComparisonLabel}>Nouveau salaire:</Text>
+                        <Text style={[styles.salaryComparisonValue, { color: colors.success, fontWeight: 'bold' }]}>
+                          {formatPrice(parseFloat(editDailySalary) || 0)}
                         </Text>
                       </View>
                     )}
@@ -1192,6 +1247,129 @@ export const PlanningScreen = ({ navigation }) => {
                       <Ionicons name="checkmark-circle" size={20} color="#fff" />
                       <Text style={[styles.saveButtonText, { color: '#fff' }]}>
                         {editDailySalary.trim() === '' ? 'Remettre par défaut' : 'Enregistrer'}
+                      </Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+        </View>
+      </Modal>
+
+      {/* Modal de modification des horaires */}
+      <Modal visible={editScheduleModalVisible} animationType="slide" transparent>
+        <View style={styles.modalContainer}>
+          <LinearGradient
+            colors={[colors.surface, colors.background]}
+            style={styles.editSalaryModalContent}
+          >
+            <View style={styles.modalHeaderContainer}>
+              <LinearGradient
+                colors={[colors.info + '30', colors.info + '10']}
+                style={styles.modalHeaderGradient}
+              >
+                <View style={styles.modalIconContainer}>
+                  <LinearGradient
+                    colors={[colors.info, colors.info + 'DD']}
+                    style={styles.modalIcon}
+                  >
+                    <Ionicons name="time" size={28} color="#fff" />
+                  </LinearGradient>
+                </View>
+                <View style={styles.modalTitleContainer}>
+                  <Text style={styles.modalTitle}>Modifier les Horaires</Text>
+                  <Text style={styles.modalSubtitle}>
+                    {selectedSchedule && new Date(selectedSchedule.date).toLocaleDateString('fr-FR', {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long'
+                    })}
+                  </Text>
+                </View>
+              </LinearGradient>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => {
+                  setEditScheduleModalVisible(false);
+                  setSelectedSchedule(null);
+                  setEditScheduleData({ startTime: '', endTime: '', notes: '' });
+                }}
+              >
+                <Ionicons name="close-circle" size={32} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.editSalaryForm}>
+              {selectedSchedule && (
+                <>
+                  <View style={styles.scheduleInfoCard}>
+                    <View style={styles.scheduleInfoRow}>
+                      <Ionicons name="person" size={20} color={colors.primary} />
+                      <Text style={styles.scheduleInfoText}>
+                        {selectedSchedule.userId?.fullName || selectedSchedule.userId?.username || 'Employé'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.timePickerRow}>
+                    <View style={styles.timePickerColumn}>
+                      <Text style={styles.pickerLabel}>Heure de début *</Text>
+                      <Input
+                        placeholder="09:00"
+                        value={editScheduleData.startTime}
+                        onChangeText={(text) => setEditScheduleData({ ...editScheduleData, startTime: text })}
+                      />
+                    </View>
+                    <View style={styles.timePickerColumn}>
+                      <Text style={styles.pickerLabel}>Heure de fin *</Text>
+                      <Input
+                        placeholder="17:00"
+                        value={editScheduleData.endTime}
+                        onChangeText={(text) => setEditScheduleData({ ...editScheduleData, endTime: text })}
+                      />
+                    </View>
+                  </View>
+
+                  <Text style={styles.pickerLabel}>Notes (optionnel)</Text>
+                  <Input
+                    placeholder="Notes..."
+                    value={editScheduleData.notes}
+                    onChangeText={(text) => setEditScheduleData({ ...editScheduleData, notes: text })}
+                    multiline
+                    numberOfLines={3}
+                  />
+                </>
+              )}
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setEditScheduleModalVisible(false);
+                  setSelectedSchedule(null);
+                  setEditScheduleData({ startTime: '', endTime: '', notes: '' });
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.saveButtonWrapper}
+                onPress={handleUpdateSchedule}
+                disabled={loading}
+              >
+                <LinearGradient
+                  colors={[colors.info, colors.info + 'DD']}
+                  style={styles.saveButton}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                      <Text style={[styles.saveButtonText, { color: '#fff' }]}>
+                        Enregistrer
                       </Text>
                     </>
                   )}
@@ -1382,6 +1560,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flex: 1,
+  },
+  scheduleActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  scheduleActionButton: {
+    padding: 4,
   },
   scheduleUserPhoto: {
     width: 24,

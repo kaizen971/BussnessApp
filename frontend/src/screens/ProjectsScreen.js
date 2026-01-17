@@ -261,7 +261,7 @@ export const ProjectsScreen = ({ navigation }) => {
           <Ionicons name="arrow-back" size={24} color={colors.background} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Mes Projets</Text>
-        {(isAdmin || isManager) && (
+        {(isAdmin) && (
           <TouchableOpacity onPress={openAddModal} style={styles.addButton}>
             <Ionicons name="add" size={24} color={colors.background} />
           </TouchableOpacity>
@@ -278,7 +278,7 @@ export const ProjectsScreen = ({ navigation }) => {
             <Ionicons name="folder-open-outline" size={64} color={colors.textLight} />
             <Text style={styles.emptyText}>Aucun projet disponible</Text>
             <Text style={styles.emptySubtext}>
-              {isAdmin || isManager ? 'Créez votre premier projet' : 'Contactez un administrateur'}
+              {isAdmin ? 'Créez votre premier projet' : 'Contactez un administrateur'}
             </Text>
           </Card>
         ) : (

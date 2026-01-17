@@ -1805,7 +1805,7 @@ app.get('/BussnessApp/schedules', authenticateToken, async (req, res) => {
     }
 
     const schedules = await Schedule.find(filter)
-      .populate('userId', 'username fullName role photo')
+      .populate('userId', 'username fullName role photo hourlyRate')
       .populate('createdBy', 'username fullName')
       .sort({ date: 1, startTime: 1 });
 
@@ -1915,7 +1915,7 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
       const populatedSchedules = await Schedule.find({
         _id: { $in: createdSchedules.map(s => s._id) }
       })
-        .populate('userId', 'username fullName role photo')
+        .populate('userId', 'username fullName role photo hourlyRate')
         .populate('createdBy', 'username fullName');
 
       res.status(201).json({
@@ -1939,7 +1939,7 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
       await schedule.save();
 
       const populatedSchedule = await Schedule.findById(schedule._id)
-        .populate('userId', 'username fullName role photo')
+        .populate('userId', 'username fullName role photo hourlyRate')
         .populate('createdBy', 'username fullName');
 
       res.status(201).json({ data: populatedSchedule });
@@ -1993,7 +1993,7 @@ app.put('/BussnessApp/schedules/:id', authenticateToken, async (req, res) => {
     await schedule.save();
 
     const populatedSchedule = await Schedule.findById(schedule._id)
-      .populate('userId', 'username fullName role photo')
+      .populate('userId', 'username fullName role photo hourlyRate')
       .populate('createdBy', 'username fullName');
 
     res.json({ data: populatedSchedule });
@@ -2197,6 +2197,39 @@ app.put('/BussnessApp/users/:id/photo', authenticateToken, checkRole('admin'), a
     res.json({ data: user });
   } catch (error) {
     console.error('Error updating user photo:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Modifier le mot de passe d'un utilisateur (admin uniquement)
+app.put('/BussnessApp/users/:id/password', authenticateToken, checkRole('admin'), async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 6 caractères' });
+    }
+
+    // Vérifier que l'admin ne modifie pas son propre mot de passe via cette route
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'Utilisez la fonctionnalité de changement de mot de passe personnel' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { password: hashedPassword },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    res.json({ message: 'Mot de passe modifié avec succès' });
+  } catch (error) {
+    console.error('Error updating user password:', error);
     res.status(400).json({ error: error.message });
   }
 });
@@ -2451,7 +2484,7 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
   try {
     const { projectId } = req.params;
 
-    const sales = await Sale.find({ projectId });
+    const sales = await Sale.find({ projectId }).populate('productId', 'name');
     const expenses = await Expense.find({ projectId });
     const stock = await Stock.find({ projectId });
 
