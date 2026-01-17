@@ -76,19 +76,43 @@ export const PlanningScreen = ({ navigation }) => {
       setLoading(true);
       const weekStart = getWeekStart(selectedWeek);
       const weekEnd = getWeekEnd(selectedWeek);
-      
+
       const params = {
         projectId: selectedProjectId || user?.projectId,
         startDate: weekStart.toISOString(),
         endDate: weekEnd.toISOString(),
       };
-      
+
       if (isCashier) {
         params.userId = user.id;
       }
 
       const response = await api.get('/schedules', { params });
-      setSchedules(response.data.data || []);
+      const schedulesData = response.data.data || [];
+
+      // Marquer automatiquement les plannings passés comme terminés
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const updatePromises = schedulesData
+        .filter(schedule => {
+          const scheduleDate = new Date(schedule.date);
+          scheduleDate.setHours(0, 0, 0, 0);
+          return scheduleDate < today && schedule.status === 'scheduled';
+        })
+        .map(schedule =>
+          api.put(`/schedules/${schedule._id}`, { status: 'completed' })
+            .catch(err => console.error('Erreur auto-complete:', err))
+        );
+
+      if (updatePromises.length > 0) {
+        await Promise.all(updatePromises);
+        // Recharger les données après mise à jour
+        const updatedResponse = await api.get('/schedules', { params });
+        setSchedules(updatedResponse.data.data || []);
+      } else {
+        setSchedules(schedulesData);
+      }
     } catch (error) {
       console.error('Erreur chargement planning:', error);
       Alert.alert('Erreur', 'Impossible de charger les plannings');
@@ -320,6 +344,23 @@ export const PlanningScreen = ({ navigation }) => {
     }
   };
 
+  const handleUpdateStatus = async (scheduleId, newStatus) => {
+    try {
+      await api.put(`/schedules/${scheduleId}`, { status: newStatus });
+      const statusLabels = {
+        completed: 'terminé',
+        scheduled: 'planifié',
+        absent: 'absent',
+        cancelled: 'annulé'
+      };
+      Alert.alert('Succès', `Planning marqué comme ${statusLabels[newStatus]}`);
+      loadSchedules();
+    } catch (error) {
+      console.error('Erreur mise à jour statut:', error);
+      Alert.alert('Erreur', 'Impossible de modifier le statut');
+    }
+  };
+
   const renderWeekView = () => {
     const weekDays = getWeekDays();
     
@@ -414,6 +455,52 @@ export const PlanningScreen = ({ navigation }) => {
                           )}
                           {schedule.notes && (
                             <Text style={styles.scheduleNotes}>📝 {schedule.notes}</Text>
+                          )}
+                          {/* Boutons de changement de statut */}
+                          {isAdmin && (
+                            <View style={styles.statusButtonsContainer}>
+                              <Text style={styles.statusButtonsLabel}>Statut:</Text>
+                              <View style={styles.statusButtons}>
+                                <TouchableOpacity
+                                  style={[
+                                    styles.statusButton,
+                                    schedule.status === 'completed' && styles.statusButtonActive,
+                                    { borderColor: colors.success }
+                                  ]}
+                                  onPress={() => handleUpdateStatus(schedule._id, 'completed')}
+                                >
+                                  <Ionicons
+                                    name="checkmark-circle"
+                                    size={16}
+                                    color={schedule.status === 'completed' ? '#fff' : colors.success}
+                                  />
+                                  <Text style={[
+                                    styles.statusButtonText,
+                                    schedule.status === 'completed' && styles.statusButtonTextActive,
+                                    { color: schedule.status === 'completed' ? '#fff' : colors.success }
+                                  ]}>Terminé</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={[
+                                    styles.statusButton,
+                                    schedule.status === 'absent' && styles.statusButtonActiveError,
+                                    { borderColor: colors.error }
+                                  ]}
+                                  onPress={() => handleUpdateStatus(schedule._id, 'absent')}
+                                >
+                                  <Ionicons
+                                    name="close-circle"
+                                    size={16}
+                                    color={schedule.status === 'absent' ? '#fff' : colors.error}
+                                  />
+                                  <Text style={[
+                                    styles.statusButtonText,
+                                    schedule.status === 'absent' && styles.statusButtonTextActive,
+                                    { color: schedule.status === 'absent' ? '#fff' : colors.error }
+                                  ]}>Absent</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
                           )}
                           {canEditSalary && (
                             <View style={styles.editSalaryHint}>
@@ -1858,5 +1945,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
+  },
+  // Styles pour les boutons de statut
+  statusButtonsContainer: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border + '30',
+  },
+  statusButtonsLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  statusButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  statusButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    backgroundColor: 'transparent',
+  },
+  statusButtonActive: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+  },
+  statusButtonActiveError: {
+    backgroundColor: colors.error,
+    borderColor: colors.error,
+  },
+  statusButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  statusButtonTextActive: {
+    color: '#fff',
   },
 });

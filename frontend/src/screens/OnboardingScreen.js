@@ -26,7 +26,9 @@ export const OnboardingScreen = ({ navigation }) => {
         <View style={styles.header}>
           <Image source={logo} style={styles.logo} />
           <Text style={styles.appName}>Entreprendre avec succès - EAS</Text>
-          <Text style={styles.slogan}>Valide ton idée. Pilote ton business. Simplement.</Text>
+          {isAdmin && (
+            <Text style={styles.slogan}>Valide ton idée. Pilote ton business. Simplement.</Text>
+          )}
         </View>
 
         <View style={styles.content}>

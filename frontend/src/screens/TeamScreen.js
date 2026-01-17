@@ -1090,7 +1090,7 @@ export const TeamScreen = ({ navigation }) => {
                     <View style={styles.currentStatContent}>
                       <Text style={styles.currentStatLabel}>Mensuel estimé</Text>
                       <Text style={styles.currentStatValue}>
-                        {formatPrice((selectedUser.hourlyRate || 0) * 35 * 4.33)}
+                        {formatPrice((selectedUser.hourlyRate || 0) * 60 * 4.33)}
                       </Text>
                     </View>
                   </LinearGradient>
@@ -1173,21 +1173,21 @@ export const TeamScreen = ({ navigation }) => {
                       <Text style={styles.exampleTitle}>Estimation de salaire</Text>
                     </View>
                     <View style={styles.exampleRow}>
-                      <Text style={styles.exampleLabel}>8h de travail</Text>
+                      <Text style={styles.exampleLabel}>10h de travail</Text>
                       <Text style={styles.exampleValue}>
-                        → {formatPrice(8 * parseFloat(hourlyRate))} / jour
+                        → {formatPrice(10 * parseFloat(hourlyRate))} / jour
                       </Text>
                     </View>
                     <View style={styles.exampleRow}>
-                      <Text style={styles.exampleLabel}>35h / semaine</Text>
+                      <Text style={styles.exampleLabel}>60h / semaine (6 jours)</Text>
                       <Text style={styles.exampleValue}>
-                        → {formatPrice(35 * parseFloat(hourlyRate))} / semaine
+                        → {formatPrice(60 * parseFloat(hourlyRate))} / semaine
                       </Text>
                     </View>
                     <View style={styles.exampleRow}>
-                      <Text style={styles.exampleLabel}>151.67h / mois (35h)</Text>
+                      <Text style={styles.exampleLabel}>260h / mois (6j x 4.33 sem)</Text>
                       <Text style={styles.exampleValue}>
-                        → {formatPrice(151.67 * parseFloat(hourlyRate))} / mois
+                        → {formatPrice(260 * parseFloat(hourlyRate))} / mois
                       </Text>
                     </View>
                   </LinearGradient>

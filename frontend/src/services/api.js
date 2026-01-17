@@ -61,6 +61,7 @@ export const projectsAPI = {
   create: (data) => api.post('/projects', data),
   update: (id, data) => api.put(`/projects/${id}`, data),
   delete: (id) => api.delete(`/projects/${id}`),
+  updateCurrency: (id, currency) => api.put(`/projects/${id}/currency`, { currency }),
 };
 
 // Sales API
