@@ -76,6 +76,10 @@ const ExpenseSchema = new mongoose.Schema({
   category: { type: String, enum: ['purchase', 'variable', 'fixed'], required: true },
   description: String,
   date: { type: Date, default: Date.now },
+  isRecurring: { type: Boolean, default: false },
+  recurringDay: { type: Number, min: 1, max: 28 }, // Jour du mois (1-28 pour éviter les problèmes de fin de mois)
+  lastRecurringDate: { type: Date }, // Dernière date où la dépense récurrente a été générée
+  parentExpenseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Expense' }, // Référence à la dépense récurrente parente
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -1265,11 +1269,66 @@ app.get('/BussnessApp/expenses', authenticateToken, async (req, res) => {
   }
 });
 
+// Obtenir les dépenses récurrentes
+app.get('/BussnessApp/recurring-expenses', authenticateToken, async (req, res) => {
+  try {
+    const { projectId } = req.query;
+    const filter = { isRecurring: true, parentExpenseId: { $exists: false } };
+    if (projectId) filter.projectId = projectId;
+    const recurringExpenses = await Expense.find(filter).sort({ recurringDay: 1 });
+    res.json({ data: recurringExpenses });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/BussnessApp/expenses', authenticateToken, async (req, res) => {
   try {
-    const expense = new Expense(req.body);
+    const expenseData = { ...req.body };
+
+    // Si c'est une dépense récurrente, définir la date de dernière génération
+    if (expenseData.isRecurring && expenseData.recurringDay) {
+      expenseData.lastRecurringDate = new Date();
+    }
+
+    const expense = new Expense(expenseData);
     await expense.save();
     res.status(201).json(expense);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Supprimer une dépense récurrente
+app.delete('/BussnessApp/recurring-expenses/:id', authenticateToken, async (req, res) => {
+  try {
+    const expense = await Expense.findById(req.params.id);
+    if (!expense) {
+      return res.status(404).json({ error: 'Dépense non trouvée' });
+    }
+    if (!expense.isRecurring) {
+      return res.status(400).json({ error: 'Cette dépense n\'est pas récurrente' });
+    }
+    await Expense.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Dépense récurrente supprimée' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Modifier une dépense récurrente
+app.put('/BussnessApp/recurring-expenses/:id', authenticateToken, async (req, res) => {
+  try {
+    const { amount, description, category, recurringDay } = req.body;
+    const expense = await Expense.findByIdAndUpdate(
+      req.params.id,
+      { amount, description, category, recurringDay },
+      { new: true }
+    );
+    if (!expense) {
+      return res.status(404).json({ error: 'Dépense non trouvée' });
+    }
+    res.json({ data: expense });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -2572,7 +2631,7 @@ app.post('/BussnessApp/export-excel/:projectId',  async (req, res) => {
   try {
     const { projectId } = req.params;
     const { startDate, endDate } = req.body;
-      console.log("test",projectId,startDate,endDate)
+    console.log("test",projectId,startDate,endDate)
 
     // Validation des dates
     const start = startDate ? new Date(startDate) : new Date(0);
@@ -2580,6 +2639,13 @@ app.post('/BussnessApp/export-excel/:projectId',  async (req, res) => {
 
     // Import du module xlsx
     const XLSX = require('xlsx');
+
+    // Récupérer le projet pour avoir la devise
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({ error: 'Projet non trouvé' });
+    }
+    const currencySymbol = project.currency === 'XOF' ? 'CFA' : '€';
 
     // Récupération de toutes les données avec filtrage par date
     const [sales, expenses, stocks, customers, employees, commissions, schedules] = await Promise.all([
@@ -2614,9 +2680,9 @@ app.post('/BussnessApp/export-excel/:projectId',  async (req, res) => {
       'Client': sale.customerId?.name || 'N/A',
       'Employé': sale.employeeId?.fullName || sale.employeeId?.username || 'N/A',
       'Quantité': sale.quantity,
-      'Prix Unitaire': sale.unitPrice.toFixed(2) + ' €',
+      'Prix Unitaire': sale.unitPrice.toFixed(2) + ' ' + currencySymbol,
       'Remise': sale.discount + ' %',
-      'Montant Total': sale.amount.toFixed(2) + ' €',
+      'Montant Total': sale.amount.toFixed(2) + ' ' + currencySymbol,
       'Description': sale.description || ''
     }));
     const salesSheet = XLSX.utils.json_to_sheet(salesData);
@@ -2627,8 +2693,9 @@ app.post('/BussnessApp/export-excel/:projectId',  async (req, res) => {
       'Date': new Date(expense.date).toLocaleDateString('fr-FR'),
       'Catégorie': expense.category === 'purchase' ? 'Achat' :
         expense.category === 'variable' ? 'Variable' : 'Fixe',
-      'Montant': expense.amount.toFixed(2) + ' €',
-      'Description': expense.description || ''
+      'Montant': expense.amount.toFixed(2) + ' ' + currencySymbol,
+      'Description': expense.description || '',
+      'Récurrent': expense.isRecurring ? 'Oui' : 'Non'
     }));
     const expensesSheet = XLSX.utils.json_to_sheet(expensesData);
     XLSX.utils.book_append_sheet(workbook, expensesSheet, 'Dépenses');
@@ -2639,8 +2706,8 @@ app.post('/BussnessApp/export-excel/:projectId',  async (req, res) => {
       'Produit lié': stock.productId?.name || 'N/A',
       'SKU': stock.sku || 'N/A',
       'Quantité': stock.quantity,
-      'Prix Unitaire': stock.unitPrice.toFixed(2) + ' €',
-      'Valeur Totale': (stock.quantity * stock.unitPrice).toFixed(2) + ' €',
+      'Prix Unitaire': stock.unitPrice.toFixed(2) + ' ' + currencySymbol,
+      'Valeur Totale': (stock.quantity * stock.unitPrice).toFixed(2) + ' ' + currencySymbol,
       'Quantité Minimale': stock.minQuantity,
       'Emplacement': stock.location || 'N/A',
       'Dernière MAJ': new Date(stock.updatedAt).toLocaleDateString('fr-FR')
@@ -2657,8 +2724,8 @@ app.post('/BussnessApp/export-excel/:projectId',  async (req, res) => {
         employee.role === 'manager' ? 'Responsable' :
           employee.role === 'responsable' ? 'Responsable' : 'Caissier',
       'Taux commission': employee.commissionRate + ' %',
-      'Commissions totales': employee.totalCommissions.toFixed(2) + ' €',
-      'Taux horaire': employee.hourlyRate.toFixed(2) + ' €/h',
+      'Commissions totales': employee.totalCommissions.toFixed(2) + ' ' + currencySymbol,
+      'Taux horaire': employee.hourlyRate.toFixed(2) + ' ' + currencySymbol + '/h',
       'Actif': employee.isActive ? 'Oui' : 'Non',
       'Date création': new Date(employee.createdAt).toLocaleDateString('fr-FR')
     }));
@@ -2669,9 +2736,9 @@ app.post('/BussnessApp/export-excel/:projectId',  async (req, res) => {
     const commissionsData = commissions.map(commission => ({
       'Date': new Date(commission.date).toLocaleDateString('fr-FR'),
       'Employé': commission.userId?.fullName || commission.userId?.username || 'N/A',
-      'Montant vente': commission.saleAmount.toFixed(2) + ' €',
+      'Montant vente': commission.saleAmount.toFixed(2) + ' ' + currencySymbol,
       'Taux': commission.rate + ' %',
-      'Montant commission': commission.amount.toFixed(2) + ' €',
+      'Montant commission': commission.amount.toFixed(2) + ' ' + currencySymbol,
       'Statut': commission.status === 'paid' ? 'Payée' : 'En attente'
     }));
     const commissionsSheet = XLSX.utils.json_to_sheet(commissionsData);
@@ -2690,8 +2757,8 @@ app.post('/BussnessApp/export-excel/:projectId',  async (req, res) => {
         'Heure début': schedule.startTime,
         'Heure fin': schedule.endTime,
         'Durée (heures)': duration,
-        'Taux horaire': hourlyRate.toFixed(2) + ' €/h',
-        'Salaire': salary.toFixed(2) + ' €',
+        'Taux horaire': hourlyRate.toFixed(2) + ' ' + currencySymbol + '/h',
+        'Salaire': salary.toFixed(2) + ' ' + currencySymbol,
         'Statut': schedule.status === 'completed' ? 'Complété' :
           schedule.status === 'absent' ? 'Absent' :
             schedule.status === 'cancelled' ? 'Annulé' : 'Planifié',
@@ -2706,7 +2773,7 @@ app.post('/BussnessApp/export-excel/:projectId',  async (req, res) => {
       'Nom': customer.name,
       'Email': customer.email || 'N/A',
       'Téléphone': customer.phone || 'N/A',
-      'Achats totaux': customer.totalPurchases.toFixed(2) + ' €',
+      'Achats totaux': customer.totalPurchases.toFixed(2) + ' ' + currencySymbol,
       'Points fidélité': customer.loyaltyPoints,
       'Niveau': customer.loyaltyLevel === 'bronze' ? 'Bronze' :
         customer.loyaltyLevel === 'silver' ? 'Argent' :
@@ -2725,19 +2792,20 @@ app.post('/BussnessApp/export-excel/:projectId',  async (req, res) => {
     const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
     const totalStock = stocks.reduce((sum, stock) => sum + (stock.quantity * stock.unitPrice), 0);
     const totalCommissions = commissions.reduce((sum, commission) => sum + commission.amount, 0);
-    const totalSalaries = salariesData.reduce((sum, s) => {
-      const salaryValue = parseFloat(s['Salaire'].replace(' €', '').replace(',', '.'));
-      return sum + (isNaN(salaryValue) ? 0 : salaryValue);
+    const totalSalaries = schedules.reduce((sum, schedule) => {
+      const duration = schedule.duration || 0;
+      const hourlyRate = schedule.userId?.hourlyRate || 0;
+      return sum + (duration * hourlyRate);
     }, 0);
-    const netProfit = totalSales - totalExpenses;
+    const netProfit = totalSales - totalExpenses - totalCommissions - totalSalaries;
 
     const bilanData = [
-      { 'Indicateur': 'Ventes totales', 'Montant': totalSales.toFixed(2) + ' €' },
-      { 'Indicateur': 'Dépenses totales', 'Montant': totalExpenses.toFixed(2) + ' €' },
-      { 'Indicateur': 'Commissions totales', 'Montant': totalCommissions.toFixed(2) + ' €' },
-      { 'Indicateur': 'Salaires totaux', 'Montant': totalSalaries.toFixed(2) + ' €' },
-      { 'Indicateur': 'Valeur du stock', 'Montant': totalStock.toFixed(2) + ' €' },
-      { 'Indicateur': 'Bénéfice net', 'Montant': netProfit.toFixed(2) + ' €' },
+      { 'Indicateur': 'Ventes totales', 'Montant': totalSales.toFixed(2) + ' ' + currencySymbol },
+      { 'Indicateur': 'Dépenses totales', 'Montant': totalExpenses.toFixed(2) + ' ' + currencySymbol },
+      { 'Indicateur': 'Commissions totales', 'Montant': totalCommissions.toFixed(2) + ' ' + currencySymbol },
+      { 'Indicateur': 'Salaires totaux', 'Montant': totalSalaries.toFixed(2) + ' ' + currencySymbol },
+      { 'Indicateur': 'Valeur du stock', 'Montant': totalStock.toFixed(2) + ' ' + currencySymbol },
+      { 'Indicateur': 'Bénéfice net (Ventes - Dépenses - Commissions - Salaires)', 'Montant': netProfit.toFixed(2) + ' ' + currencySymbol },
       { 'Indicateur': '', 'Montant': '' },
       { 'Indicateur': 'Nombre de ventes', 'Montant': sales.length },
       { 'Indicateur': 'Nombre de dépenses', 'Montant': expenses.length },
@@ -2787,9 +2855,64 @@ process.on('uncaughtException', (error) => {
   // Don't exit the process, just log the error
 });
 
+// Fonction pour générer les dépenses récurrentes
+async function generateRecurringExpenses() {
+  try {
+    const today = new Date();
+    const currentDay = today.getDate();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+
+    // Trouver toutes les dépenses récurrentes qui doivent être générées aujourd'hui
+    const recurringExpenses = await Expense.find({
+      isRecurring: true,
+      recurringDay: currentDay,
+      parentExpenseId: { $exists: false }
+    });
+
+    for (const recurring of recurringExpenses) {
+      // Vérifier si on a déjà généré cette dépense ce mois-ci
+      const lastDate = recurring.lastRecurringDate;
+      if (lastDate) {
+        const lastMonth = lastDate.getMonth();
+        const lastYear = lastDate.getFullYear();
+        if (lastMonth === currentMonth && lastYear === currentYear) {
+          continue; // Déjà généré ce mois-ci
+        }
+      }
+
+      // Créer la nouvelle dépense
+      const newExpense = new Expense({
+        projectId: recurring.projectId,
+        amount: recurring.amount,
+        category: recurring.category,
+        description: `${recurring.description} (Récurrent - ${today.toLocaleDateString('fr-FR')})`,
+        date: today,
+        isRecurring: false,
+        parentExpenseId: recurring._id
+      });
+      await newExpense.save();
+
+      // Mettre à jour la date de dernière génération
+      recurring.lastRecurringDate = today;
+      await recurring.save();
+
+      console.log(`Dépense récurrente générée: ${recurring.description} - ${recurring.amount}`);
+    }
+  } catch (error) {
+    console.error('Erreur lors de la génération des dépenses récurrentes:', error);
+  }
+}
+
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`API accessible at http://localhost:${PORT}/BussnessApp`);
   console.log(`Public URL: http://localhost:3003/BussnessApp/BussnessApp`);
+
+  // Générer les dépenses récurrentes au démarrage
+  await generateRecurringExpenses();
+
+  // Vérifier les dépenses récurrentes toutes les heures
+  setInterval(generateRecurringExpenses, 60 * 60 * 1000);
 });

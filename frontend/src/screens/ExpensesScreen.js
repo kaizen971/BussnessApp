@@ -7,6 +7,8 @@ import {
   Alert,
   Modal,
   TouchableOpacity,
+  Switch,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
@@ -22,16 +24,22 @@ export const ExpensesScreen = () => {
   const { user } = useAuth();
   const { format: formatPrice } = useCurrency();
   const [expenses, setExpenses] = useState([]);
+  const [recurringExpenses, setRecurringExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
+  const [recurringModalVisible, setRecurringModalVisible] = useState(false);
+  const [activeTab, setActiveTab] = useState('all'); // 'all' ou 'recurring'
   const [formData, setFormData] = useState({
     amount: '',
     category: 'variable',
     description: '',
+    isRecurring: false,
+    recurringDay: '1',
   });
 
   useEffect(() => {
     loadExpenses();
+    loadRecurringExpenses();
   }, []);
 
   const loadExpenses = async () => {
@@ -46,26 +54,72 @@ export const ExpensesScreen = () => {
     }
   };
 
+  const loadRecurringExpenses = async () => {
+    try {
+      const response = await expensesAPI.getRecurring(user?.projectId);
+      setRecurringExpenses(response.data.data || []);
+    } catch (error) {
+      console.error('Error loading recurring expenses:', error);
+    }
+  };
+
   const handleAddExpense = async () => {
     if (!formData.amount) {
       Alert.alert('Erreur', 'Veuillez saisir un montant');
       return;
     }
 
-    try {
-      await expensesAPI.create({
-        ...formData,
-        amount: parseFloat(formData.amount),
-        projectId: user?.projectId,
-      });
+    if (formData.isRecurring && (!formData.recurringDay || formData.recurringDay < 1 || formData.recurringDay > 28)) {
+      Alert.alert('Erreur', 'Veuillez saisir un jour valide (1-28)');
+      return;
+    }
 
-      setFormData({ amount: '', category: 'variable', description: '' });
+    try {
+      const expenseData = {
+        amount: parseFloat(formData.amount),
+        category: formData.category,
+        description: formData.description,
+        projectId: user?.projectId,
+        isRecurring: formData.isRecurring,
+      };
+
+      if (formData.isRecurring) {
+        expenseData.recurringDay = parseInt(formData.recurringDay);
+      }
+
+      await expensesAPI.create(expenseData);
+
+      setFormData({ amount: '', category: 'variable', description: '', isRecurring: false, recurringDay: '1' });
       setModalVisible(false);
       loadExpenses();
-      Alert.alert('Succès', 'Dépense ajoutée avec succès');
+      loadRecurringExpenses();
+      Alert.alert('Succès', formData.isRecurring ? 'Dépense récurrente ajoutée avec succès' : 'Dépense ajoutée avec succès');
     } catch (error) {
       Alert.alert('Erreur', 'Impossible d\'ajouter la dépense');
     }
+  };
+
+  const handleDeleteRecurring = async (id) => {
+    Alert.alert(
+      'Confirmer la suppression',
+      'Voulez-vous vraiment supprimer cette dépense récurrente ? Elle ne sera plus générée automatiquement.',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await expensesAPI.deleteRecurring(id);
+              loadRecurringExpenses();
+              Alert.alert('Succès', 'Dépense récurrente supprimée');
+            } catch (error) {
+              Alert.alert('Erreur', 'Impossible de supprimer la dépense récurrente');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const getCategoryInfo = (category) => {
@@ -93,10 +147,17 @@ export const ExpensesScreen = () => {
           <View style={styles.expenseInfo}>
             <View style={styles.headerRow}>
               <Text style={styles.expenseAmount}>-{formatPrice(item.amount)}</Text>
-              <View style={[styles.categoryBadge, { backgroundColor: categoryInfo.color + '20' }]}>
-                <Text style={[styles.categoryText, { color: categoryInfo.color }]}>
-                  {categoryInfo.label}
-                </Text>
+              <View style={styles.badgesRow}>
+                {item.parentExpenseId && (
+                  <View style={[styles.categoryBadge, { backgroundColor: colors.warning + '20', marginRight: 4 }]}>
+                    <Ionicons name="repeat" size={12} color={colors.warning} />
+                  </View>
+                )}
+                <View style={[styles.categoryBadge, { backgroundColor: categoryInfo.color + '20' }]}>
+                  <Text style={[styles.categoryText, { color: categoryInfo.color }]}>
+                    {categoryInfo.label}
+                  </Text>
+                </View>
               </View>
             </View>
             {item.description && (
@@ -117,7 +178,44 @@ export const ExpensesScreen = () => {
     );
   };
 
+  const renderRecurringItem = ({ item }) => {
+    const categoryInfo = getCategoryInfo(item.category);
+
+    return (
+      <Card style={styles.expenseItem}>
+        <View style={styles.expenseHeader}>
+          <View style={[styles.expenseIcon, { backgroundColor: colors.warning + '20' }]}>
+            <Ionicons name="repeat" size={24} color={colors.warning} />
+          </View>
+          <View style={styles.expenseInfo}>
+            <View style={styles.headerRow}>
+              <Text style={styles.expenseAmount}>-{formatPrice(item.amount)}</Text>
+              <View style={[styles.categoryBadge, { backgroundColor: categoryInfo.color + '20' }]}>
+                <Text style={[styles.categoryText, { color: categoryInfo.color }]}>
+                  {categoryInfo.label}
+                </Text>
+              </View>
+            </View>
+            {item.description && (
+              <Text style={styles.expenseDescription}>{item.description}</Text>
+            )}
+            <Text style={styles.expenseDate}>
+              Tous les {item.recurringDay} du mois
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() => handleDeleteRecurring(item._id)}
+          >
+            <Ionicons name="trash-outline" size={20} color={colors.error} />
+          </TouchableOpacity>
+        </View>
+      </Card>
+    );
+  };
+
   const totalExpenses = (expenses && Array.isArray(expenses)) ? expenses.reduce((sum, expense) => sum + expense.amount, 0) : 0;
+  const totalRecurring = (recurringExpenses && Array.isArray(recurringExpenses)) ? recurringExpenses.reduce((sum, expense) => sum + expense.amount, 0) : 0;
 
   return (
     <View style={styles.container}>
@@ -129,18 +227,69 @@ export const ExpensesScreen = () => {
         </Card>
       </View>
 
-      <FlatList
-        data={expenses}
-        renderItem={renderExpenseItem}
-        keyExtractor={(item) => item._id}
-        contentContainerStyle={styles.listContainer}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="wallet-outline" size={64} color={colors.textLight} />
-            <Text style={styles.emptyText}>Aucune dépense enregistrée</Text>
-          </View>
-        }
-      />
+      {/* Onglets */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'all' && styles.activeTab]}
+          onPress={() => setActiveTab('all')}
+        >
+          <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>
+            Toutes
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'recurring' && styles.activeTab]}
+          onPress={() => setActiveTab('recurring')}
+        >
+          <Ionicons
+            name="repeat"
+            size={16}
+            color={activeTab === 'recurring' ? colors.primary : colors.textSecondary}
+            style={{ marginRight: 4 }}
+          />
+          <Text style={[styles.tabText, activeTab === 'recurring' && styles.activeTabText]}>
+            Récurrentes ({recurringExpenses.length})
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {activeTab === 'all' ? (
+        <FlatList
+          data={expenses}
+          renderItem={renderExpenseItem}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={styles.listContainer}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="wallet-outline" size={64} color={colors.textLight} />
+              <Text style={styles.emptyText}>Aucune dépense enregistrée</Text>
+            </View>
+          }
+        />
+      ) : (
+        <FlatList
+          data={recurringExpenses}
+          renderItem={renderRecurringItem}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={styles.listContainer}
+          ListHeaderComponent={
+            recurringExpenses.length > 0 ? (
+              <Card style={[styles.totalCard, { backgroundColor: colors.warning + '10', marginBottom: 16 }]}>
+                <Text style={styles.totalLabel}>Total mensuel récurrent</Text>
+                <Text style={[styles.totalAmount, { color: colors.warning }]}>{formatPrice(totalRecurring)}</Text>
+                <Text style={styles.totalCount}>{recurringExpenses.length} dépense(s) récurrente(s)</Text>
+              </Card>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="repeat" size={64} color={colors.textLight} />
+              <Text style={styles.emptyText}>Aucune dépense récurrente</Text>
+              <Text style={styles.emptySubtext}>Les dépenses récurrentes sont générées automatiquement chaque mois</Text>
+            </View>
+          }
+        />
+      )}
 
       <View style={styles.fabContainer}>
         <TouchableOpacity
@@ -158,52 +307,91 @@ export const ExpensesScreen = () => {
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Nouvelle dépense</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.pickerContainer}>
-              <Text style={styles.pickerLabel}>Catégorie *</Text>
-              <View style={styles.pickerWrapper}>
-                <Picker
-                  selectedValue={formData.category}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
-                  style={styles.picker}
-                >
-                  <Picker.Item label="Achat" value="purchase" />
-                  <Picker.Item label="Variable" value="variable" />
-                  <Picker.Item label="Fixe" value="fixed" />
-                </Picker>
+          <ScrollView style={styles.modalScrollView}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Nouvelle dépense</Text>
+                <TouchableOpacity onPress={() => setModalVisible(false)}>
+                  <Ionicons name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
               </View>
+
+              <View style={styles.pickerContainer}>
+                <Text style={styles.pickerLabel}>Catégorie *</Text>
+                <View style={styles.pickerWrapper}>
+                  <Picker
+                    selectedValue={formData.category}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="Achat" value="purchase" />
+                    <Picker.Item label="Variable" value="variable" />
+                    <Picker.Item label="Fixe" value="fixed" />
+                  </Picker>
+                </View>
+              </View>
+
+              <Input
+                label="Montant *"
+                value={formData.amount}
+                onChangeText={(value) => setFormData(prev => ({ ...prev, amount: value }))}
+                placeholder="0.00"
+                keyboardType="numeric"
+                icon="cash-outline"
+              />
+
+              <Input
+                label="Description"
+                value={formData.description}
+                onChangeText={(value) => setFormData(prev => ({ ...prev, description: value }))}
+                placeholder="Détails de la dépense"
+                icon="document-text-outline"
+                multiline
+              />
+
+              {/* Option dépense récurrente */}
+              <View style={styles.recurringSection}>
+                <View style={styles.switchRow}>
+                  <View style={styles.switchLabel}>
+                    <Ionicons name="repeat" size={20} color={colors.warning} />
+                    <Text style={styles.switchText}>Dépense récurrente</Text>
+                  </View>
+                  <Switch
+                    value={formData.isRecurring}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, isRecurring: value }))}
+                    trackColor={{ false: colors.border, true: colors.warning + '60' }}
+                    thumbColor={formData.isRecurring ? colors.warning : colors.textLight}
+                  />
+                </View>
+                {formData.isRecurring && (
+                  <View style={styles.recurringOptions}>
+                    <Text style={styles.recurringInfo}>
+                      Cette dépense sera automatiquement créée chaque mois
+                    </Text>
+                    <View style={styles.dayPickerContainer}>
+                      <Text style={styles.pickerLabel}>Jour du mois (1-28)</Text>
+                      <View style={styles.pickerWrapper}>
+                        <Picker
+                          selectedValue={formData.recurringDay}
+                          onValueChange={(value) => setFormData(prev => ({ ...prev, recurringDay: value }))}
+                          style={styles.picker}
+                        >
+                          {[...Array(28)].map((_, i) => (
+                            <Picker.Item key={i + 1} label={`${i + 1}`} value={`${i + 1}`} />
+                          ))}
+                        </Picker>
+                      </View>
+                    </View>
+                  </View>
+                )}
+              </View>
+
+              <Button
+                title={formData.isRecurring ? "Ajouter la dépense récurrente" : "Ajouter la dépense"}
+                onPress={handleAddExpense}
+              />
             </View>
-
-            <Input
-              label="Montant *"
-              value={formData.amount}
-              onChangeText={(value) => setFormData(prev => ({ ...prev, amount: value }))}
-              placeholder="0.00"
-              keyboardType="numeric"
-              icon="cash-outline"
-            />
-
-            <Input
-              label="Description"
-              value={formData.description}
-              onChangeText={(value) => setFormData(prev => ({ ...prev, description: value }))}
-              placeholder="Détails de la dépense"
-              icon="document-text-outline"
-              multiline
-            />
-
-            <Button
-              title="Ajouter la dépense"
-              onPress={handleAddExpense}
-            />
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -357,5 +545,87 @@ const styles = StyleSheet.create({
   },
   picker: {
     height: 50,
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    gap: 8,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  activeTab: {
+    backgroundColor: colors.primary + '15',
+    borderColor: colors.primary,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  activeTabText: {
+    color: colors.primary,
+  },
+  badgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  deleteButton: {
+    padding: 8,
+    marginLeft: 8,
+  },
+  emptySubtext: {
+    fontSize: 13,
+    color: colors.textLight,
+    marginTop: 8,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+  },
+  modalScrollView: {
+    flex: 1,
+  },
+  recurringSection: {
+    marginVertical: 16,
+    padding: 16,
+    backgroundColor: colors.warning + '10',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.warning + '30',
+  },
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  switchLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  switchText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  recurringOptions: {
+    marginTop: 16,
+  },
+  recurringInfo: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 12,
+    fontStyle: 'italic',
+  },
+  dayPickerContainer: {
+    marginTop: 8,
   },
 });

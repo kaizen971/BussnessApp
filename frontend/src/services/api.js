@@ -75,6 +75,9 @@ export const salesAPI = {
 export const expensesAPI = {
   getAll: (projectId) => api.get('/expenses', { params: { projectId } }),
   create: (data) => api.post('/expenses', data),
+  getRecurring: (projectId) => api.get('/recurring-expenses', { params: { projectId } }),
+  deleteRecurring: (id) => api.delete(`/recurring-expenses/${id}`),
+  updateRecurring: (id, data) => api.put(`/recurring-expenses/${id}`, data),
 };
 
 // Stock API

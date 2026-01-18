@@ -26,7 +26,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { Card } from '../components/Card';
 import { LoadingScreen } from '../components/LoadingScreen';
-import { dashboardAPI, projectsAPI } from '../services/api';
+import api, { dashboardAPI, projectsAPI } from '../services/api';
 import { colors, gradients } from '../utils/colors';
 
 const screenWidth = Dimensions.get('window').width;
@@ -200,8 +200,9 @@ export const DashboardScreen = ({ navigation }) => {
 
       // Faire une requête POST pour récupérer le fichier
       const token = await AsyncStorage.getItem('userToken');
+      const baseURL = api.defaults.baseURL;
       const response = await fetch(
-        `http://localhost:3003/BussnessApp/BussnessApp/export-excel/${projectId}`,
+        `${baseURL}export-excel/${projectId}`,
         {
           method: 'POST',
           headers: {
