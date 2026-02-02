@@ -1,7 +1,8 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE_URL = 'https://mabouya.servegame.com/BussnessApp/BussnessApp/';
+// URL du serveur AWS Lightsail (HTTPS)
+const API_BASE_URL = 'https://businessapp.installpostiz.com/bussnessapp';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -75,6 +76,8 @@ export const salesAPI = {
 export const expensesAPI = {
   getAll: (projectId) => api.get('/expenses', { params: { projectId } }),
   create: (data) => api.post('/expenses', data),
+  update: (id, data) => api.put(`/expenses/${id}`, data),
+  delete: (id) => api.delete(`/expenses/${id}`),
   getRecurring: (projectId) => api.get('/recurring-expenses', { params: { projectId } }),
   deleteRecurring: (id) => api.delete(`/recurring-expenses/${id}`),
   updateRecurring: (id, data) => api.put(`/recurring-expenses/${id}`, data),

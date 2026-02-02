@@ -29,6 +29,7 @@ export const ExpensesScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [recurringModalVisible, setRecurringModalVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('all'); // 'all' ou 'recurring'
+  const [editingExpense, setEditingExpense] = useState(null); // null = création, objet = édition
   const [formData, setFormData] = useState({
     amount: '',
     category: 'variable',
@@ -97,6 +98,72 @@ export const ExpensesScreen = () => {
     } catch (error) {
       Alert.alert('Erreur', 'Impossible d\'ajouter la dépense');
     }
+  };
+
+  const handleOpenEditModal = (expense) => {
+    setEditingExpense(expense);
+    setFormData({
+      amount: expense.amount.toString(),
+      category: expense.category,
+      description: expense.description || '',
+      isRecurring: false,
+      recurringDay: '1',
+    });
+    setModalVisible(true);
+  };
+
+  const handleUpdateExpense = async () => {
+    if (!formData.amount) {
+      Alert.alert('Erreur', 'Veuillez saisir un montant');
+      return;
+    }
+
+    try {
+      const expenseData = {
+        amount: parseFloat(formData.amount),
+        category: formData.category,
+        description: formData.description,
+      };
+
+      await expensesAPI.update(editingExpense._id, expenseData);
+
+      setFormData({ amount: '', category: 'variable', description: '', isRecurring: false, recurringDay: '1' });
+      setEditingExpense(null);
+      setModalVisible(false);
+      loadExpenses();
+      Alert.alert('Succès', 'Dépense modifiée avec succès');
+    } catch (error) {
+      Alert.alert('Erreur', 'Impossible de modifier la dépense');
+    }
+  };
+
+  const handleDeleteExpense = async (id) => {
+    Alert.alert(
+      'Confirmer la suppression',
+      'Voulez-vous vraiment supprimer cette dépense ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await expensesAPI.delete(id);
+              loadExpenses();
+              Alert.alert('Succès', 'Dépense supprimée');
+            } catch (error) {
+              Alert.alert('Erreur', 'Impossible de supprimer la dépense');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleCloseModal = () => {
+    setModalVisible(false);
+    setEditingExpense(null);
+    setFormData({ amount: '', category: 'variable', description: '', isRecurring: false, recurringDay: '1' });
   };
 
   const handleDeleteRecurring = async (id) => {
@@ -172,6 +239,20 @@ export const ExpensesScreen = () => {
                 minute: '2-digit',
               })}
             </Text>
+          </View>
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleOpenEditModal(item)}
+            >
+              <Ionicons name="pencil-outline" size={18} color={colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleDeleteExpense(item._id)}
+            >
+              <Ionicons name="trash-outline" size={18} color={colors.error} />
+            </TouchableOpacity>
           </View>
         </View>
       </Card>
@@ -304,14 +385,16 @@ export const ExpensesScreen = () => {
         visible={modalVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={handleCloseModal}
       >
         <View style={styles.modalOverlay}>
           <ScrollView style={styles.modalScrollView}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Nouvelle dépense</Text>
-                <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Text style={styles.modalTitle}>
+                  {editingExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
+                </Text>
+                <TouchableOpacity onPress={handleCloseModal}>
                   <Ionicons name="close" size={24} color={colors.text} />
                 </TouchableOpacity>
               </View>
@@ -349,46 +432,50 @@ export const ExpensesScreen = () => {
                 multiline
               />
 
-              {/* Option dépense récurrente */}
-              <View style={styles.recurringSection}>
-                <View style={styles.switchRow}>
-                  <View style={styles.switchLabel}>
-                    <Ionicons name="repeat" size={20} color={colors.warning} />
-                    <Text style={styles.switchText}>Dépense récurrente</Text>
+              {/* Option dépense récurrente - uniquement en mode création */}
+              {!editingExpense && (
+                <View style={styles.recurringSection}>
+                  <View style={styles.switchRow}>
+                    <View style={styles.switchLabel}>
+                      <Ionicons name="repeat" size={20} color={colors.warning} />
+                      <Text style={styles.switchText}>Dépense récurrente</Text>
+                    </View>
+                    <Switch
+                      value={formData.isRecurring}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, isRecurring: value }))}
+                      trackColor={{ false: colors.border, true: colors.warning + '60' }}
+                      thumbColor={formData.isRecurring ? colors.warning : colors.textLight}
+                    />
                   </View>
-                  <Switch
-                    value={formData.isRecurring}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, isRecurring: value }))}
-                    trackColor={{ false: colors.border, true: colors.warning + '60' }}
-                    thumbColor={formData.isRecurring ? colors.warning : colors.textLight}
-                  />
-                </View>
-                {formData.isRecurring && (
-                  <View style={styles.recurringOptions}>
-                    <Text style={styles.recurringInfo}>
-                      Cette dépense sera automatiquement créée chaque mois
-                    </Text>
-                    <View style={styles.dayPickerContainer}>
-                      <Text style={styles.pickerLabel}>Jour du mois (1-28)</Text>
-                      <View style={styles.pickerWrapper}>
-                        <Picker
-                          selectedValue={formData.recurringDay}
-                          onValueChange={(value) => setFormData(prev => ({ ...prev, recurringDay: value }))}
-                          style={styles.picker}
-                        >
-                          {[...Array(28)].map((_, i) => (
-                            <Picker.Item key={i + 1} label={`${i + 1}`} value={`${i + 1}`} />
-                          ))}
-                        </Picker>
+                  {formData.isRecurring && (
+                    <View style={styles.recurringOptions}>
+                      <Text style={styles.recurringInfo}>
+                        Cette dépense sera automatiquement créée chaque mois
+                      </Text>
+                      <View style={styles.dayPickerContainer}>
+                        <Text style={styles.pickerLabel}>Jour du mois (1-28)</Text>
+                        <View style={styles.pickerWrapper}>
+                          <Picker
+                            selectedValue={formData.recurringDay}
+                            onValueChange={(value) => setFormData(prev => ({ ...prev, recurringDay: value }))}
+                            style={styles.picker}
+                          >
+                            {[...Array(28)].map((_, i) => (
+                              <Picker.Item key={i + 1} label={`${i + 1}`} value={`${i + 1}`} />
+                            ))}
+                          </Picker>
+                        </View>
                       </View>
                     </View>
-                  </View>
-                )}
-              </View>
+                  )}
+                </View>
+              )}
 
               <Button
-                title={formData.isRecurring ? "Ajouter la dépense récurrente" : "Ajouter la dépense"}
-                onPress={handleAddExpense}
+                title={editingExpense
+                  ? "Modifier la dépense"
+                  : (formData.isRecurring ? "Ajouter la dépense récurrente" : "Ajouter la dépense")}
+                onPress={editingExpense ? handleUpdateExpense : handleAddExpense}
               />
             </View>
           </ScrollView>
@@ -627,5 +714,14 @@ const styles = StyleSheet.create({
   },
   dayPickerContainer: {
     marginTop: 8,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  actionButton: {
+    padding: 8,
+    marginLeft: 4,
   },
 });

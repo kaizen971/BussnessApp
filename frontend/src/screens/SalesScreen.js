@@ -20,7 +20,7 @@ import { useCurrency } from '../contexts/CurrencyContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
-import { salesAPI, productsAPI, customersAPI } from '../services/api';
+import { salesAPI, productsAPI, customersAPI, usersAPI } from '../services/api';
 import { colors } from '../utils/colors';
 
 const { width } = Dimensions.get('window');
@@ -31,11 +31,13 @@ export const SalesScreen = () => {
   const [sales, setSales] = useState([]);
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [sellers, setSellers] = useState([]); // Liste des vendeurs pour les managers
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [cart, setCart] = useState([]); // Panier pour stocker les ventes avant validation
   const [formData, setFormData] = useState({
     customerId: '',
+    sellerId: '', // Vendeur sélectionné (obligatoire pour les managers)
   });
   const [flashingProduct, setFlashingProduct] = useState(null);
   const flashAnim = useRef(new Animated.Value(1)).current;
@@ -44,6 +46,7 @@ export const SalesScreen = () => {
   // Nouveaux états pour la recherche et l'affichage
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  const [sellerSearch, setSellerSearch] = useState(''); // Recherche vendeur pour managers
   const [productViewMode, setProductViewMode] = useState('grid'); // 'grid' ou 'list'
 
   useEffect(() => {
@@ -62,15 +65,17 @@ export const SalesScreen = () => {
 
   const loadData = async () => {
     try {
-      const [salesRes, productsRes, customersRes] = await Promise.all([
+      const [salesRes, productsRes, customersRes, usersRes] = await Promise.all([
         salesAPI.getAll(user?.projectId),
         productsAPI.getAll(user?.projectId),
         customersAPI.getAll(user?.projectId),
+        usersAPI.getAll(user?.projectId),
       ]);
       console.log(productsRes.data)
       setSales(salesRes.data?.data || []);
       setProducts(productsRes?.data?.data || []);
       setCustomers(customersRes?.data?.data || []);
+      setSellers(usersRes?.data || []);
     } catch (error) {
       console.error('Error loading data:', error);
       Alert.alert('Erreur', 'Impossible de charger les données');
@@ -187,6 +192,18 @@ export const SalesScreen = () => {
       return;
     }
 
+    // Validation obligatoire pour les managers : client + vendeur
+    if (isAdmin) {
+      if (!formData.customerId) {
+        Alert.alert('Client requis', 'En tant que manager, vous devez sélectionner un client pour la vente.');
+        return;
+      }
+      if (!formData.sellerId) {
+        Alert.alert('Vendeur requis', 'En tant que manager, vous devez sélectionner le vendeur ayant réalisé la vente.');
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       // Créer toutes les ventes en parallèle
@@ -196,6 +213,7 @@ export const SalesScreen = () => {
             projectId: user?.projectId,
             productId: item.productId,
             customerId: formData.customerId || undefined,
+            sellerId: isAdmin ? formData.sellerId : user?._id, // Vendeur sélectionné ou utilisateur actuel
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             discount: item.discount || 0,
@@ -206,7 +224,7 @@ export const SalesScreen = () => {
 
       playSound('success');
       setCart([]);
-      setFormData({ customerId: '' });
+      setFormData({ customerId: '', sellerId: '' });
       setModalVisible(false);
       await loadData();
       Alert.alert('Succès', `${cart.length} vente(s) enregistrée(s) avec succès`);
@@ -321,6 +339,7 @@ export const SalesScreen = () => {
 
   const totalSales = (sales && Array.isArray(sales)) ? sales.reduce((sum, sale) => sum + (sale.amount || 0), 0) : 0;
   const selectedCustomer = (customers && Array.isArray(customers)) ? customers.find(c => c._id === formData.customerId) : null;
+  const selectedSeller = (sellers && Array.isArray(sellers)) ? sellers.find(s => s._id === formData.sellerId) : null;
 
   // Calcul du montant total du panier
   const cartTotal = cart.reduce((sum, item) =>
@@ -345,6 +364,16 @@ export const SalesScreen = () => {
     return (
       product.name?.toLowerCase().includes(searchLower) ||
       product.description?.toLowerCase().includes(searchLower)
+    );
+  });
+
+  // Filtrage des vendeurs selon la recherche (pour managers)
+  const filteredSellers = sellers.filter(seller => {
+    if (!sellerSearch) return true;
+    const searchLower = sellerSearch.toLowerCase();
+    return (
+      seller.fullName?.toLowerCase().includes(searchLower) ||
+      seller.username?.toLowerCase().includes(searchLower)
     );
   });
 
@@ -507,20 +536,22 @@ export const SalesScreen = () => {
               style={styles.modalForm}
               showsVerticalScrollIndicator={false}
             >
-              <LinearGradient
-                colors={[colors.primary + '20', colors.primary + '10']}
-                style={styles.employeeInfo}
-              >
-                <Ionicons name="person-circle" size={24} color={colors.primary} />
-                <Text style={styles.employeeText}>
-                  Vendeur: {user?.fullName || user?.username}
-                </Text>
-              </LinearGradient>
+              {!isAdmin && (
+                <LinearGradient
+                  colors={[colors.primary + '20', colors.primary + '10']}
+                  style={styles.employeeInfo}
+                >
+                  <Ionicons name="person-circle" size={24} color={colors.primary} />
+                  <Text style={styles.employeeText}>
+                    Vendeur: {user?.fullName || user?.username}
+                  </Text>
+                </LinearGradient>
+              )}
 
-              {/* Sélection du client (optionnel) */}
-
-              {/* Sélection du client (optionnel) */}
-              <Text style={styles.fieldLabel}>Client (optionnel)</Text>
+              {/* Sélection du client */}
+              <Text style={styles.fieldLabel}>
+                Client {isAdmin ? '(obligatoire)' : '(optionnel)'}
+              </Text>
 
               {/* Badge du client sélectionné */}
               {selectedCustomer ? (
@@ -601,7 +632,91 @@ export const SalesScreen = () => {
                 </View>
               )}
 
+              {/* Sélection du vendeur (obligatoire pour les managers) */}
+              {isAdmin && (
+                <>
+                  <Text style={styles.fieldLabel}>Vendeur (obligatoire)</Text>
 
+                  {/* Badge du vendeur sélectionné */}
+                  {selectedSeller ? (
+                    <View style={styles.selectedClientContainer}>
+                      <LinearGradient
+                        colors={[colors.success + '20', colors.success + '10']}
+                        style={styles.selectedClientCard}
+                      >
+                        <View style={styles.selectedClientInfo}>
+                          <View style={[styles.selectedClientIcon, { backgroundColor: colors.success + '20' }]}>
+                            <Ionicons name="briefcase" size={20} color={colors.success} />
+                          </View>
+                          <View>
+                            <Text style={styles.selectedClientName}>{selectedSeller.fullName || selectedSeller.username}</Text>
+                            <Text style={styles.selectedClientPhone}>{selectedSeller.role || 'Vendeur'}</Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.removeClientButton}
+                          onPress={() => {
+                            setFormData({ ...formData, sellerId: '' });
+                            setSellerSearch('');
+                          }}
+                        >
+                          <Ionicons name="close" size={20} color={colors.danger} />
+                        </TouchableOpacity>
+                      </LinearGradient>
+                    </View>
+                  ) : (
+                    /* Champ de recherche vendeur */
+                    <View style={styles.autocompleteContainer}>
+                      <View style={styles.searchContainer}>
+                        <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
+                        <TextInput
+                          style={styles.searchInput}
+                          placeholder="Rechercher un vendeur..."
+                          placeholderTextColor={colors.textLight}
+                          value={sellerSearch}
+                          onChangeText={setSellerSearch}
+                        />
+                        {sellerSearch.length > 0 && (
+                          <TouchableOpacity onPress={() => setSellerSearch('')}>
+                            <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {/* Liste des vendeurs */}
+                      {sellerSearch.length > 0 && (
+                        <View style={styles.autocompleteList}>
+                          {filteredSellers.length > 0 ? (
+                            filteredSellers.slice(0, 5).map(seller => (
+                              <TouchableOpacity
+                                key={seller._id}
+                                style={styles.autocompleteItem}
+                                onPress={() => {
+                                  setFormData({ ...formData, sellerId: seller._id });
+                                  setSellerSearch('');
+                                }}
+                              >
+                                <View style={styles.autocompleteItemIcon}>
+                                  <Ionicons name="briefcase-outline" size={18} color={colors.textSecondary} />
+                                </View>
+                                <View style={styles.autocompleteItemContent}>
+                                  <Text style={styles.autocompleteItemName}>{seller.fullName || seller.username}</Text>
+                                  <Text style={styles.autocompleteItemSub}>{seller.role || 'Vendeur'}</Text>
+                                </View>
+                                <Ionicons name="add-circle-outline" size={20} color={colors.success} />
+                              </TouchableOpacity>
+                            ))
+                          ) : (
+                            <View style={styles.autocompleteEmpty}>
+                              <Text style={styles.autocompleteEmptyText}>Aucun vendeur trouvé</Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </>
+              )}
 
               {/* Sélection des produits */}
               <View style={styles.sectionHeader}>
