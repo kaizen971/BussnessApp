@@ -32,7 +32,7 @@ import { colors, gradients } from '../utils/colors';
 const screenWidth = Dimensions.get('window').width;
 
 export const DashboardScreen = ({ navigation }) => {
-  const { user, logout, selectedProjectId, availableProjects } = useAuth();
+  const { user, logout, selectedProjectId, availableProjects, loadAvailableProjects, selectProject } = useAuth();
   const { format: formatPrice, currency, setProjectCurrency, availableCurrencies } = useCurrency();
   console.log(user)
   const [stats, setStats] = useState(null);
@@ -56,6 +56,27 @@ export const DashboardScreen = ({ navigation }) => {
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   console.log(user)
+
+  // Charger les projets disponibles au montage si pas encore chargés
+  useEffect(() => {
+    const loadProjectsIfNeeded = async () => {
+      if (availableProjects.length === 0) {
+        try {
+          const response = await projectsAPI.getAll();
+          const projectsList = response.data;
+          loadAvailableProjects(projectsList);
+
+          // Si pas de projet sélectionné mais l'utilisateur a un projectId, le sélectionner
+          if (!selectedProjectId && user?.projectId) {
+            selectProject(user.projectId);
+          }
+        } catch (error) {
+          console.error('Error loading projects:', error);
+        }
+      }
+    };
+    loadProjectsIfNeeded();
+  }, []);
 
   useEffect(() => {
     loadDashboardData();
@@ -96,7 +117,7 @@ export const DashboardScreen = ({ navigation }) => {
       if (project) {
         setCurrentProject(project);
         // Définir la devise du projet
-        setProjectCurrency(project.currency || 'EUR');
+        setProjectCurrency(project.currency || 'XOF');
       }
     } catch (error) {
       console.error('Error loading dashboard:', error);
@@ -367,17 +388,25 @@ export const DashboardScreen = ({ navigation }) => {
           </LinearGradient>
         </Animated.View>
 
-        {availableProjects.length > 0 && selectedProjectId && (
+        {selectedProjectId && (
           <Card style={styles.projectInfoCard}>
             <View style={styles.projectInfoContent}>
               <Ionicons name="briefcase" size={20} color={colors.primary} />
               <Text style={styles.projectInfoText}>
-                Projet: {availableProjects.find(p => p._id === selectedProjectId)?.name || 'Non sélectionné'}
+                Projet: {availableProjects.find(p => p._id === selectedProjectId)?.name || currentProject?.name || 'Chargement...'}
               </Text>
             </View>
-            <TouchableOpacity onPress={() => navigation.navigate('Projects')}>
-              <Ionicons name="chevron-forward" size={20} color={colors.primary} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {isAdmin && (
+                <TouchableOpacity onPress={() => setCurrencyModalVisible(true)} style={styles.currencyButton}>
+                  <Ionicons name="cash-outline" size={18} color={colors.primary} />
+                  <Text style={styles.currencyButtonText}>{currency.symbol}</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={() => navigation.navigate('Projects')}>
+                <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
           </Card>
         )}
 
@@ -1631,10 +1660,21 @@ const styles = StyleSheet.create({
     color: colors.background,
     letterSpacing: 0.3,
   },
+  currencyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary + '15',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
   currencyButtonText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: colors.background,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
   },
   currencyModalContainer: {
     backgroundColor: colors.background,

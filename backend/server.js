@@ -38,7 +38,7 @@ const ProjectSchema = new mongoose.Schema({
   description: String,
   category: String,
   logo: String, // URL ou URI de l'image du logo
-  currency: { type: String, enum: ['EUR', 'XOF'], default: 'EUR' }, // Devise du business (EUR ou XOF/CFA)
+  currency: { type: String, enum: ['EUR', 'XOF'], default: 'XOF' }, // Devise du business (EUR ou XOF/CFA)
   ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Propriétaire du business
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
@@ -2906,6 +2906,7 @@ async function generateRecurringExpenses() {
 
 // Start server
 app.listen(PORT, async () => {
+  console.log("Version 1.0.0");
   console.log(`Server is running on port ${PORT}`);
   console.log(`API accessible at http://localhost:${PORT}/BussnessApp`);
   console.log(`Public URL: http://localhost:3003/BussnessApp/BussnessApp`);

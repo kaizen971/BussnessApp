@@ -68,7 +68,7 @@ export const ProjectsScreen = ({ navigation }) => {
     // Trouver le projet sélectionné et appliquer sa devise
     const selectedProject = projects.find(p => p._id === projectId);
     if (selectedProject) {
-      setProjectCurrency(selectedProject.currency || 'EUR');
+      setProjectCurrency(selectedProject.currency || 'XOF');
     }
     
     navigation.navigate('Dashboard');
@@ -217,7 +217,7 @@ export const ProjectsScreen = ({ navigation }) => {
   };
 
   const handleChangeCurrency = (project) => {
-    const currentCurrency = project.currency || 'EUR';
+    const currentCurrency = project.currency || 'XOF';
     const newCurrency = currentCurrency === 'EUR' ? 'XOF' : 'EUR';
     const currencyName = CURRENCIES[newCurrency].name;
     const currencySymbol = CURRENCIES[newCurrency].symbol;
@@ -332,7 +332,7 @@ export const ProjectsScreen = ({ navigation }) => {
                       <View style={styles.currencyBadge}>
                         <Ionicons name="cash-outline" size={12} color={colors.info} />
                         <Text style={styles.currencyText}>
-                          {CURRENCIES[project.currency || 'EUR'].symbol}
+                          {CURRENCIES[project.currency || 'XOF'].symbol}
                         </Text>
                       </View>
                     </View>

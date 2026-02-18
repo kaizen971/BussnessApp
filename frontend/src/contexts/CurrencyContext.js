@@ -4,7 +4,7 @@ import { CURRENCIES, formatCurrency } from '../utils/currency';
 const CurrencyContext = createContext();
 
 export const CurrencyProvider = ({ children }) => {
-  const [currency, setCurrencyState] = useState(CURRENCIES.EUR);
+  const [currency, setCurrencyState] = useState(CURRENCIES.XOF);
   const [loading, setLoading] = useState(false);
 
   // Cette fonction sera appelée depuis les composants qui ont accès au projet
@@ -12,8 +12,8 @@ export const CurrencyProvider = ({ children }) => {
     if (CURRENCIES[currencyCode]) {
       setCurrencyState(CURRENCIES[currencyCode]);
     } else {
-      // Par défaut EUR si code invalide
-      setCurrencyState(CURRENCIES.EUR);
+      // Par défaut CFA si code invalide
+      setCurrencyState(CURRENCIES.XOF);
     }
   };
 

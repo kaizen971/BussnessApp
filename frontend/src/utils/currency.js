@@ -25,8 +25,8 @@ export const CURRENCIES = {
   },
 };
 
-// Devise par défaut
-const DEFAULT_CURRENCY = CURRENCIES.EUR;
+// Devise par défaut (CFA pour les marchés principaux)
+const DEFAULT_CURRENCY = CURRENCIES.XOF;
 
 /**
  * Obtenir la devise actuellement sélectionnée
@@ -73,9 +73,9 @@ export const formatCurrency = (amount, currency = null, decimals = 2) => {
   let formattedAmount;
   
   if (!currency) {
-    // Si pas de devise fournie, utiliser Euro par défaut (synchrone)
-    formattedAmount = parsedAmount.toFixed(decimals);
-    return `${formattedAmount} €`;
+    // Si pas de devise fournie, utiliser CFA par défaut (synchrone)
+    formattedAmount = Math.round(parsedAmount).toString();
+    return `${formattedAmount} CFA`;
   }
 
   const { symbol, code } = currency;
