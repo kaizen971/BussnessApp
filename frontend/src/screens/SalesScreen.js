@@ -42,6 +42,12 @@ export const SalesScreen = () => {
   const [flashingProduct, setFlashingProduct] = useState(null);
   const flashAnim = useRef(new Animated.Value(1)).current;
   const [submitting, setSubmitting] = useState(false);
+  const [editSaleModalVisible, setEditSaleModalVisible] = useState(false);
+  const [editingSale, setEditingSale] = useState(null);
+  const [editCustomerId, setEditCustomerId] = useState('');
+  const [editSellerId, setEditSellerId] = useState('');
+  const [editCustomerSearch, setEditCustomerSearch] = useState('');
+  const [editSellerSearch, setEditSellerSearch] = useState('');
 
   // Nouveaux états pour la recherche et l'affichage
   const [customerSearch, setCustomerSearch] = useState('');
@@ -237,11 +243,46 @@ export const SalesScreen = () => {
     }
   };
 
+  // Ouvrir le modal d'édition d'une vente
+  const openEditSale = (sale) => {
+    setEditingSale(sale);
+    setEditCustomerId(sale.customerId?._id || '');
+    setEditSellerId(sale.employeeId?._id || '');
+    setEditCustomerSearch('');
+    setEditSellerSearch('');
+    setEditSaleModalVisible(true);
+  };
+
+  // Sauvegarder la modification
+  const handleUpdateSale = async () => {
+    try {
+      setLoading(true);
+      await salesAPI.update(editingSale._id, {
+        customerId: editCustomerId,
+        employeeId: editSellerId,
+      });
+      setEditSaleModalVisible(false);
+      setEditingSale(null);
+      await loadData();
+      Alert.alert('Succès', 'Vente modifiée avec succès');
+    } catch (error) {
+      console.error('Error updating sale:', error);
+      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de modifier la vente');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Fonction pour rembourser une vente
-  const handleRefund = (saleId) => {
+  const handleRefund = (sale) => {
+    const customerName = sale.customerId?.name || 'Client inconnu';
+    const sellerName = sale.employeeId?.fullName || sale.employeeId?.username || 'Vendeur inconnu';
+    const productName = sale.productId?.name || 'Produit';
+    const amount = formatPrice(sale.amount || 0);
+
     Alert.alert(
       'Confirmer le remboursement',
-      'Êtes-vous sûr de vouloir rembourser cette vente ? Cette action créera une vente négative et remettra le stock.',
+      `Produit : ${productName} x${sale.quantity || 1}\nMontant : ${amount}\nClient : ${customerName}\nVendeur : ${sellerName}\n\nCette action créera une vente négative et remettra le stock.`,
       [
         { text: 'Annuler', style: 'cancel' },
         {
@@ -250,7 +291,7 @@ export const SalesScreen = () => {
           onPress: async () => {
             try {
               setLoading(true);
-              await salesAPI.refund(saleId);
+              await salesAPI.refund(sale._id);
               playSound('success');
               await loadData();
               Alert.alert('Succès', 'Remboursement effectué avec succès');
@@ -303,12 +344,23 @@ export const SalesScreen = () => {
                 Produit x{item.quantity || 1}
               </Text>
             )}
-            {customer && (
-              <View style={styles.customerBadge}>
-                <Ionicons name="person-outline" size={12} color={colors.primary} />
-                <Text style={styles.customerName}>{customer.name}</Text>
-              </View>
-            )}
+            {/* Client et vendeur */}
+            <View style={styles.saleBadgesRow}>
+              {(item.customerId?.name || (customer && customer.name)) && (
+                <View style={styles.customerBadge}>
+                  <Ionicons name="person-outline" size={12} color={colors.primary} />
+                  <Text style={styles.customerName}>{item.customerId?.name || customer?.name}</Text>
+                </View>
+              )}
+              {(item.employeeId?.fullName || item.employeeId?.username) && (
+                <View style={[styles.customerBadge, { backgroundColor: colors.success + '15' }]}>
+                  <Ionicons name="storefront-outline" size={12} color={colors.success} />
+                  <Text style={[styles.customerName, { color: colors.success }]}>
+                    {item.employeeId?.fullName || item.employeeId?.username}
+                  </Text>
+                </View>
+              )}
+            </View>
             {item.description && (
               <Text style={[styles.saleDescription, isRefund && styles.saleDescriptionRefund]}>
                 {item.description}
@@ -324,13 +376,24 @@ export const SalesScreen = () => {
               })}
             </Text>
           </View>
-          {!isRefund && !isRefunded && (
-            <TouchableOpacity
-              style={styles.refundButton}
-              onPress={() => handleRefund(item._id)}
-            >
-              <Ionicons name="arrow-undo" size={20} color={colors.danger} />
-            </TouchableOpacity>
+          {!isRefund && !isRefunded && isAdmin && (
+            <View style={styles.saleActionsColumn}>
+              <TouchableOpacity
+                style={styles.editSaleButton}
+                onPress={() => openEditSale(item)}
+              >
+                <Ionicons name="create-outline" size={18} color={colors.accent} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.refundButton}
+                onPress={() => handleRefund(item)}
+              >
+                <View style={styles.refundButtonInner}>
+                  <Ionicons name="arrow-undo" size={18} color="#fff" />
+                  <Text style={styles.refundButtonText}>Rembourser</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
       </Card>
@@ -951,6 +1014,160 @@ export const SalesScreen = () => {
           </LinearGradient>
         </View>
       </Modal>
+      {/* Modal de modification d'une vente */}
+      <Modal
+        visible={editSaleModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setEditSaleModalVisible(false)}
+      >
+        <View style={styles.editModalOverlay}>
+          <TouchableOpacity
+            style={styles.editModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setEditSaleModalVisible(false)}
+          />
+          <View style={styles.editModalContainer}>
+            <LinearGradient
+              colors={[colors.surface, colors.background]}
+              style={styles.editModalContent}
+            >
+              {/* Header */}
+              <View style={styles.editModalHeader}>
+                <Ionicons name="create" size={24} color={colors.accent} />
+                <Text style={styles.editModalTitle}>Modifier la vente</Text>
+                <TouchableOpacity onPress={() => setEditSaleModalVisible(false)}>
+                  <Ionicons name="close-circle" size={28} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              {editingSale && (
+                <ScrollView style={styles.editModalBody} showsVerticalScrollIndicator={false}>
+                  {/* Infos vente */}
+                  <View style={styles.editSaleInfo}>
+                    <Text style={styles.editSaleInfoText}>
+                      {editingSale.productId?.name || 'Produit'} x{editingSale.quantity || 1} — {formatPrice(editingSale.amount || 0)}
+                    </Text>
+                    <Text style={styles.editSaleInfoDate}>
+                      {new Date(editingSale.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+
+                  {/* Sélection client */}
+                  <Text style={styles.editSectionLabel}>Client</Text>
+                  {editCustomerId ? (
+                    <View style={styles.editSelectedBadge}>
+                      <Ionicons name="person" size={16} color={colors.primary} />
+                      <Text style={styles.editSelectedText}>
+                        {customers.find(c => c._id === editCustomerId)?.name || 'Client sélectionné'}
+                      </Text>
+                      <TouchableOpacity onPress={() => setEditCustomerId('')}>
+                        <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View>
+                      <TextInput
+                        style={styles.editSearchInput}
+                        placeholder="Rechercher un client..."
+                        placeholderTextColor={colors.textSecondary}
+                        value={editCustomerSearch}
+                        onChangeText={setEditCustomerSearch}
+                      />
+                      {editCustomerSearch.length > 0 && (
+                        <View style={styles.editDropdown}>
+                          {customers
+                            .filter(c => c.name?.toLowerCase().includes(editCustomerSearch.toLowerCase()))
+                            .slice(0, 5)
+                            .map(c => (
+                              <TouchableOpacity
+                                key={c._id}
+                                style={styles.editDropdownItem}
+                                onPress={() => { setEditCustomerId(c._id); setEditCustomerSearch(''); }}
+                              >
+                                <Ionicons name="person-outline" size={16} color={colors.primary} />
+                                <Text style={styles.editDropdownText}>{c.name}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          {customers.filter(c => c.name?.toLowerCase().includes(editCustomerSearch.toLowerCase())).length === 0 && (
+                            <Text style={styles.editDropdownEmpty}>Aucun client trouvé</Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {/* Sélection vendeur */}
+                  <Text style={styles.editSectionLabel}>Vendeur</Text>
+                  {editSellerId ? (
+                    <View style={styles.editSelectedBadge}>
+                      <Ionicons name="storefront" size={16} color={colors.success} />
+                      <Text style={styles.editSelectedText}>
+                        {sellers.find(s => s._id === editSellerId)?.fullName || sellers.find(s => s._id === editSellerId)?.username || 'Vendeur sélectionné'}
+                      </Text>
+                      <TouchableOpacity onPress={() => setEditSellerId('')}>
+                        <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View>
+                      <TextInput
+                        style={styles.editSearchInput}
+                        placeholder="Rechercher un vendeur..."
+                        placeholderTextColor={colors.textSecondary}
+                        value={editSellerSearch}
+                        onChangeText={setEditSellerSearch}
+                      />
+                      {editSellerSearch.length > 0 && (
+                        <View style={styles.editDropdown}>
+                          {sellers
+                            .filter(s => (s.fullName || s.username || '').toLowerCase().includes(editSellerSearch.toLowerCase()))
+                            .slice(0, 5)
+                            .map(s => (
+                              <TouchableOpacity
+                                key={s._id}
+                                style={styles.editDropdownItem}
+                                onPress={() => { setEditSellerId(s._id); setEditSellerSearch(''); }}
+                              >
+                                <Ionicons name="storefront-outline" size={16} color={colors.success} />
+                                <Text style={styles.editDropdownText}>{s.fullName || s.username}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          {sellers.filter(s => (s.fullName || s.username || '').toLowerCase().includes(editSellerSearch.toLowerCase())).length === 0 && (
+                            <Text style={styles.editDropdownEmpty}>Aucun vendeur trouvé</Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {/* Boutons */}
+                  <View style={styles.editModalActions}>
+                    <TouchableOpacity
+                      style={styles.editCancelBtn}
+                      onPress={() => setEditSaleModalVisible(false)}
+                    >
+                      <Text style={styles.editCancelBtnText}>Annuler</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.editSaveBtn}
+                      onPress={handleUpdateSale}
+                    >
+                      <LinearGradient
+                        colors={[colors.accent, colors.accent + 'DD']}
+                        style={styles.editSaveBtnGradient}
+                      >
+                        <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                        <Text style={styles.editSaveBtnText}>Enregistrer</Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              )}
+            </LinearGradient>
+          </View>
+        </View>
+      </Modal>
     </View >
   );
 };
@@ -1182,14 +1399,199 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontStyle: 'italic',
   },
+  saleBadgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
   refundButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.danger + '15',
+    marginLeft: 8,
+    alignSelf: 'center',
+  },
+  refundButtonInner: {
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.danger,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 4,
+    shadowColor: colors.danger,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  refundButtonText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  saleActionsColumn: {
+    alignItems: 'center',
+    gap: 8,
     marginLeft: 8,
+  },
+  editSaleButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.accent + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.accent + '40',
+  },
+  // Modal édition vente
+  editModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  editModalBackdrop: {
+    flex: 1,
+  },
+  editModalContainer: {
+    maxHeight: '80%',
+  },
+  editModalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 30,
+  },
+  editModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  editModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    flex: 1,
+    marginLeft: 10,
+  },
+  editModalBody: {
+    padding: 20,
+  },
+  editSaleInfo: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  editSaleInfoText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  editSaleInfoDate: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  editSectionLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  editSelectedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  editSelectedText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  editSearchInput: {
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 4,
+  },
+  editDropdown: {
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  editDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border + '50',
+  },
+  editDropdownText: {
+    fontSize: 14,
+    color: colors.text,
+  },
+  editDropdownEmpty: {
+    padding: 12,
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  editModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  editCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  editCancelBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  editSaveBtn: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  editSaveBtnGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 6,
+  },
+  editSaveBtnText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#fff',
   },
   emptyContainer: {
     alignItems: 'center',

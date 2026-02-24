@@ -69,6 +69,7 @@ export const projectsAPI = {
 export const salesAPI = {
   getAll: (projectId) => api.get('/sales', { params: { projectId } }),
   create: (data) => api.post('/sales', data),
+  update: (saleId, data) => api.put(`/sales/${saleId}`, data),
   refund: (saleId) => api.post(`/sales/${saleId}/refund`),
 };
 
@@ -113,6 +114,11 @@ export const dashboardAPI = {
   getStats: (projectId) => api.get(`/dashboard/${projectId}`),
 };
 
+// Team Payroll API
+export const teamPayrollAPI = {
+  getPayroll: (projectId, month, year) => api.get(`/projects/${projectId}/team-payroll`, { params: { month, year } }),
+};
+
 // Feedback API
 export const feedbackAPI = {
   getAll: (filters) => api.get('/feedback', { params: filters }),
@@ -136,22 +142,18 @@ export const simulationAPI = {
 // Export API
 export const exportAPI = {
   exportToExcel: async (projectId, startDate, endDate) => {
-    try {
-      const response = await api.post(`/export-excel/${projectId}`,
-        { startDate, endDate },
-        {
-          responseType: 'blob',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        }
-      );
-      console.log('Export response:', response);
-      return response;
-    } catch (error) {
-      console.error('Export error:', error);
-      throw error;
-    }
+    const response = await api.post(`/export-excel/${projectId}`,
+      { startDate, endDate },
+      { responseType: 'blob' }
+    );
+    return response;
+  },
+  exportToPdf: async (projectId, startDate, endDate) => {
+    const response = await api.post(`/export-pdf/${projectId}`,
+      { startDate, endDate },
+      { responseType: 'blob' }
+    );
+    return response;
   },
 };
 

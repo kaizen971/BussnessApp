@@ -17,7 +17,7 @@ import { useCurrency } from '../contexts/CurrencyContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
-import { expensesAPI } from '../services/api';
+import { expensesAPI, teamPayrollAPI } from '../services/api';
 import { colors } from '../utils/colors';
 
 export const ExpensesScreen = () => {
@@ -25,11 +25,12 @@ export const ExpensesScreen = () => {
   const { format: formatPrice } = useCurrency();
   const [expenses, setExpenses] = useState([]);
   const [recurringExpenses, setRecurringExpenses] = useState([]);
+  const [payrollData, setPayrollData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [recurringModalVisible, setRecurringModalVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState('all'); // 'all' ou 'recurring'
-  const [editingExpense, setEditingExpense] = useState(null); // null = création, objet = édition
+  const [activeTab, setActiveTab] = useState('all'); // 'all', 'recurring' ou 'payroll'
+  const [editingExpense, setEditingExpense] = useState(null);
   const [formData, setFormData] = useState({
     amount: '',
     category: 'variable',
@@ -38,9 +39,12 @@ export const ExpensesScreen = () => {
     recurringDay: '1',
   });
 
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
+
   useEffect(() => {
     loadExpenses();
     loadRecurringExpenses();
+    if (isAdmin) loadPayroll();
   }, []);
 
   const loadExpenses = async () => {
@@ -61,6 +65,20 @@ export const ExpensesScreen = () => {
       setRecurringExpenses(response.data.data || []);
     } catch (error) {
       console.error('Error loading recurring expenses:', error);
+    }
+  };
+
+  const loadPayroll = async () => {
+    try {
+      const now = new Date();
+      const response = await teamPayrollAPI.getPayroll(
+        user?.projectId,
+        now.getMonth() + 1,
+        now.getFullYear()
+      );
+      setPayrollData(response.data);
+    } catch (error) {
+      console.error('Error loading payroll:', error);
     }
   };
 
@@ -297,14 +315,54 @@ export const ExpensesScreen = () => {
 
   const totalExpenses = (expenses && Array.isArray(expenses)) ? expenses.reduce((sum, expense) => sum + expense.amount, 0) : 0;
   const totalRecurring = (recurringExpenses && Array.isArray(recurringExpenses)) ? recurringExpenses.reduce((sum, expense) => sum + expense.amount, 0) : 0;
+  const totalPayroll = payrollData?.totals?.totalPayroll || 0;
+  const totalCharges = totalExpenses + totalPayroll;
+
+  const renderPayrollItem = ({ item }) => (
+    <Card style={styles.expenseItem}>
+      <View style={styles.expenseHeader}>
+        <View style={[styles.expenseIcon, { backgroundColor: colors.warning + '20' }]}>
+          <Ionicons name="person" size={24} color={colors.warning} />
+        </View>
+        <View style={styles.expenseInfo}>
+          <View style={styles.headerRow}>
+            <Text style={styles.expenseAmount}>-{formatPrice(item.totalDue)}</Text>
+            <View style={[styles.categoryBadge, { backgroundColor: colors.warning + '20' }]}>
+              <Text style={[styles.categoryText, { color: colors.warning }]}>Salaire</Text>
+            </View>
+          </View>
+          <Text style={styles.expenseDescription}>{item.user.fullName || item.user.username}</Text>
+          <View style={styles.payrollDetails}>
+            <Text style={styles.expenseDate}>
+              {item.daysWorked}j travaillés • {item.hours.toFixed(1)}h
+            </Text>
+            {item.commissions > 0 && (
+              <Text style={[styles.expenseDate, { color: colors.accent }]}>
+                + {formatPrice(item.commissions)} commissions
+              </Text>
+            )}
+          </View>
+        </View>
+      </View>
+    </Card>
+  );
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Card style={styles.totalCard}>
-          <Text style={styles.totalLabel}>Total des dépenses</Text>
-          <Text style={styles.totalAmount}>{formatPrice(totalExpenses)}</Text>
-          <Text style={styles.totalCount}>{expenses.length} dépense(s)</Text>
+          <Text style={styles.totalLabel}>Total des charges</Text>
+          <Text style={styles.totalAmount}>{formatPrice(totalCharges)}</Text>
+          <View style={styles.totalBreakdown}>
+            <Text style={styles.totalBreakdownItem}>
+              Dépenses: {formatPrice(totalExpenses)}
+            </Text>
+            {isAdmin && (
+              <Text style={[styles.totalBreakdownItem, { color: colors.warning }]}>
+                Masse salariale: {formatPrice(totalPayroll)}
+              </Text>
+            )}
+          </View>
         </Card>
       </View>
 
@@ -315,7 +373,7 @@ export const ExpensesScreen = () => {
           onPress={() => setActiveTab('all')}
         >
           <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>
-            Toutes
+            Dépenses
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -329,9 +387,25 @@ export const ExpensesScreen = () => {
             style={{ marginRight: 4 }}
           />
           <Text style={[styles.tabText, activeTab === 'recurring' && styles.activeTabText]}>
-            Récurrentes ({recurringExpenses.length})
+            Récurrentes
           </Text>
         </TouchableOpacity>
+        {isAdmin && (
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'payroll' && styles.activeTab]}
+            onPress={() => setActiveTab('payroll')}
+          >
+            <Ionicons
+              name="people"
+              size={16}
+              color={activeTab === 'payroll' ? colors.warning : colors.textSecondary}
+              style={{ marginRight: 4 }}
+            />
+            <Text style={[styles.tabText, activeTab === 'payroll' && styles.activeTabText]}>
+              Salaires
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {activeTab === 'all' ? (
@@ -347,7 +421,7 @@ export const ExpensesScreen = () => {
             </View>
           }
         />
-      ) : (
+      ) : activeTab === 'recurring' ? (
         <FlatList
           data={recurringExpenses}
           renderItem={renderRecurringItem}
@@ -367,6 +441,43 @@ export const ExpensesScreen = () => {
               <Ionicons name="repeat" size={64} color={colors.textLight} />
               <Text style={styles.emptyText}>Aucune dépense récurrente</Text>
               <Text style={styles.emptySubtext}>Les dépenses récurrentes sont générées automatiquement chaque mois</Text>
+            </View>
+          }
+        />
+      ) : (
+        <FlatList
+          data={payrollData?.employees || []}
+          renderItem={renderPayrollItem}
+          keyExtractor={(item) => item.user._id}
+          contentContainerStyle={styles.listContainer}
+          ListHeaderComponent={
+            payrollData ? (
+              <Card style={[styles.totalCard, { backgroundColor: colors.warning + '10', marginBottom: 16 }]}>
+                <Text style={styles.totalLabel}>
+                  Masse salariale — {payrollData.period?.label}
+                </Text>
+                <Text style={[styles.totalAmount, { color: colors.warning }]}>
+                  {formatPrice(payrollData.totals?.totalPayroll || 0)}
+                </Text>
+                <View style={styles.payrollSummary}>
+                  <Text style={styles.totalCount}>
+                    Salaires: {formatPrice(payrollData.totals?.totalSalary || 0)}
+                  </Text>
+                  <Text style={styles.totalCount}>
+                    Commissions: {formatPrice(payrollData.totals?.totalCommissions || 0)}
+                  </Text>
+                  <Text style={styles.totalCount}>
+                    {payrollData.totals?.totalHours?.toFixed(1) || 0}h totales
+                  </Text>
+                </View>
+              </Card>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="people-outline" size={64} color={colors.textLight} />
+              <Text style={styles.emptyText}>Aucun salaire ce mois</Text>
+              <Text style={styles.emptySubtext}>Les salaires sont calculés à partir du planning complété</Text>
             </View>
           }
         />
@@ -723,5 +834,27 @@ const styles = StyleSheet.create({
   actionButton: {
     padding: 8,
     marginLeft: 4,
+  },
+  totalBreakdown: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  totalBreakdownItem: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  payrollDetails: {
+    marginTop: 2,
+  },
+  payrollSummary: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
   },
 });

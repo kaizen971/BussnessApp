@@ -53,9 +53,17 @@ export const TeamScreen = ({ navigation }) => {
     photo: null,
   });
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
+  const [payrollModalVisible, setPayrollModalVisible] = useState(false);
+  const [payrollData, setPayrollData] = useState(null);
+  const [payrollLoading, setPayrollLoading] = useState(false);
+  const [payrollMonth, setPayrollMonth] = useState(new Date().getMonth() + 1);
+  const [payrollYear, setPayrollYear] = useState(new Date().getFullYear());
 
   useEffect(() => {
     loadUsers();
+    if (['admin', 'responsable', 'manager'].includes(user?.role)) {
+      loadPayroll();
+    }
   }, []);
 
   const loadUsers = async () => {
@@ -68,6 +76,42 @@ export const TeamScreen = ({ navigation }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadPayroll = async (month, year) => {
+    try {
+      setPayrollLoading(true);
+      const m = month || payrollMonth;
+      const y = year || payrollYear;
+      const response = await api.get(`/projects/${user?.projectId}/team-payroll`, {
+        params: { month: m, year: y }
+      });
+      setPayrollData(response.data);
+    } catch (error) {
+      console.error('Error loading payroll:', error);
+    } finally {
+      setPayrollLoading(false);
+    }
+  };
+
+  const changePayrollMonth = (direction) => {
+    let newMonth = payrollMonth + direction;
+    let newYear = payrollYear;
+    if (newMonth < 1) { newMonth = 12; newYear--; }
+    if (newMonth > 12) { newMonth = 1; newYear++; }
+    setPayrollMonth(newMonth);
+    setPayrollYear(newYear);
+    loadPayroll(newMonth, newYear);
+  };
+
+  const getMonthLabel = () => {
+    const date = new Date(payrollYear, payrollMonth - 1);
+    return date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  };
+
+  const getRoleLabel = (role) => {
+    const labels = { admin: 'Admin', responsable: 'Responsable', manager: 'Manager', cashier: 'Caissier' };
+    return labels[role] || role;
   };
 
   const handleCreate = async () => {
@@ -590,6 +634,38 @@ export const TeamScreen = ({ navigation }) => {
         </LinearGradient>
       </LinearGradient>
 
+      {/* Bandeau Masse salariale pour Admin/Manager */}
+      {['admin', 'responsable', 'manager'].includes(user?.role) && (
+        <TouchableOpacity
+          style={styles.payrollBanner}
+          onPress={() => {
+            loadPayroll();
+            setPayrollModalVisible(true);
+          }}
+        >
+          <LinearGradient
+            colors={[colors.accent + '20', colors.accent + '08']}
+            style={styles.payrollBannerGradient}
+          >
+            <View style={styles.payrollBannerLeft}>
+              <Ionicons name="wallet" size={24} color={colors.accent} />
+              <View style={{ marginLeft: 12 }}>
+                <Text style={styles.payrollBannerTitle}>Masse salariale du mois</Text>
+                <Text style={styles.payrollBannerSubtitle}>{getMonthLabel()}</Text>
+              </View>
+            </View>
+            <View style={styles.payrollBannerRight}>
+              {payrollData ? (
+                <Text style={styles.payrollBannerAmount}>{formatPrice(payrollData.totals.totalPayroll)}</Text>
+              ) : (
+                <ActivityIndicator size="small" color={colors.accent} />
+              )}
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
+
       <FlatList
         data={users}
         renderItem={renderUser}
@@ -710,7 +786,6 @@ export const TeamScreen = ({ navigation }) => {
                 >
                   <Picker.Item label="Salarié" value="cashier" />
                   <Picker.Item label="Manager" value="manager" />
-                  <Picker.Item label="Administrateur" value="admin" />
                 </Picker>
               </View>
 
@@ -810,24 +885,6 @@ export const TeamScreen = ({ navigation }) => {
                 </LinearGradient>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.roleOption}
-                onPress={() => handleChangeRole('admin')}
-              >
-                <LinearGradient
-                  colors={[colors.error + '20', colors.error + '10']}
-                  style={styles.roleOptionGradient}
-                >
-                  <Ionicons name="shield-checkmark" size={32} color={colors.error} />
-                  <View style={styles.roleOptionContent}>
-                    <Text style={styles.roleOptionTitle}>Administrateur</Text>
-                    <Text style={styles.roleOptionDescription}>
-                      Accès complet et gestion des utilisateurs
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={24} color={colors.error} />
-                </LinearGradient>
-              </TouchableOpacity>
             </View>
 
             <TouchableOpacity
@@ -1246,6 +1303,164 @@ export const TeamScreen = ({ navigation }) => {
                 </LinearGradient>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Masse salariale */}
+      <Modal
+        visible={payrollModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setPayrollModalVisible(false)}
+      >
+        <View style={styles.commissionModalOverlay}>
+          <TouchableOpacity
+            style={styles.commissionModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setPayrollModalVisible(false)}
+          />
+          <View style={[styles.commissionModalContainer, { maxHeight: '90%' }]}>
+            <View style={styles.commissionModalHandle}>
+              <View style={styles.commissionModalHandleLine} />
+            </View>
+
+            <LinearGradient
+              colors={[colors.accent + '20', colors.accent + '05']}
+              style={styles.commissionModalHeader}
+            >
+              <View style={styles.commissionUserAvatar}>
+                <LinearGradient
+                  colors={[colors.accent, colors.accent + 'DD']}
+                  style={styles.commissionAvatarGradient}
+                >
+                  <Ionicons name="wallet" size={32} color="#fff" />
+                </LinearGradient>
+              </View>
+              <View style={styles.commissionHeaderText}>
+                <Text style={styles.commissionModalTitle}>Masse salariale</Text>
+                <Text style={styles.commissionModalSubtitle}>Salaires cumulés par employé</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.commissionCloseButton}
+                onPress={() => setPayrollModalVisible(false)}
+              >
+                <Ionicons name="close-circle" size={28} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </LinearGradient>
+
+            {/* Sélecteur de mois */}
+            <View style={styles.payrollMonthSelector}>
+              <TouchableOpacity onPress={() => changePayrollMonth(-1)} style={styles.payrollMonthArrow}>
+                <Ionicons name="chevron-back" size={24} color={colors.primary} />
+              </TouchableOpacity>
+              <Text style={styles.payrollMonthLabel}>{getMonthLabel()}</Text>
+              <TouchableOpacity onPress={() => changePayrollMonth(1)} style={styles.payrollMonthArrow}>
+                <Ionicons name="chevron-forward" size={24} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            {payrollLoading ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={colors.primary} />
+              </View>
+            ) : payrollData ? (
+              <ScrollView style={styles.commissionModalContent} showsVerticalScrollIndicator={false}>
+                {/* Totaux */}
+                <View style={styles.payrollTotalsContainer}>
+                  <LinearGradient
+                    colors={[colors.accent + '15', colors.accent + '05']}
+                    style={styles.payrollTotalCard}
+                  >
+                    <Ionicons name="cash" size={22} color={colors.accent} />
+                    <Text style={styles.payrollTotalLabel}>Total à payer</Text>
+                    <Text style={[styles.payrollTotalValue, { color: colors.accent }]}>
+                      {formatPrice(payrollData.totals.totalPayroll)}
+                    </Text>
+                  </LinearGradient>
+                  <View style={styles.payrollTotalsRow}>
+                    <LinearGradient
+                      colors={[colors.info + '15', colors.info + '05']}
+                      style={[styles.payrollTotalCard, { flex: 1 }]}
+                    >
+                      <Ionicons name="time" size={18} color={colors.info} />
+                      <Text style={styles.payrollTotalLabel}>Salaires</Text>
+                      <Text style={[styles.payrollTotalSmallValue, { color: colors.info }]}>
+                        {formatPrice(payrollData.totals.totalSalary)}
+                      </Text>
+                    </LinearGradient>
+                    <LinearGradient
+                      colors={[colors.success + '15', colors.success + '05']}
+                      style={[styles.payrollTotalCard, { flex: 1 }]}
+                    >
+                      <Ionicons name="trending-up" size={18} color={colors.success} />
+                      <Text style={styles.payrollTotalLabel}>Commissions</Text>
+                      <Text style={[styles.payrollTotalSmallValue, { color: colors.success }]}>
+                        {formatPrice(payrollData.totals.totalCommissions)}
+                      </Text>
+                    </LinearGradient>
+                  </View>
+                  <LinearGradient
+                    colors={[colors.primary + '15', colors.primary + '05']}
+                    style={styles.payrollTotalCard}
+                  >
+                    <Ionicons name="hourglass" size={18} color={colors.primary} />
+                    <Text style={styles.payrollTotalLabel}>Heures totales</Text>
+                    <Text style={[styles.payrollTotalSmallValue, { color: colors.primary }]}>
+                      {payrollData.totals.totalHours.toFixed(1)}h
+                    </Text>
+                  </LinearGradient>
+                </View>
+
+                {/* Liste des employés */}
+                <Text style={styles.payrollSectionTitle}>Détail par employé</Text>
+                {payrollData.employees.map((emp, index) => (
+                  <View key={emp.user._id} style={styles.payrollEmployeeCard}>
+                    <View style={styles.payrollEmployeeHeader}>
+                      <View style={styles.payrollEmployeeInfo}>
+                        {emp.user.photo ? (
+                          <Image source={{ uri: emp.user.photo }} style={styles.payrollEmployeePhoto} />
+                        ) : (
+                          <View style={styles.payrollEmployeeAvatar}>
+                            <Ionicons name="person" size={20} color={colors.textSecondary} />
+                          </View>
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.payrollEmployeeName}>{emp.user.fullName}</Text>
+                          <Text style={styles.payrollEmployeeRole}>{getRoleLabel(emp.user.role)} - {formatPrice(emp.user.hourlyRate)}/h</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.payrollEmployeeTotal}>{formatPrice(emp.totalDue)}</Text>
+                    </View>
+                    <View style={styles.payrollEmployeeDetails}>
+                      <View style={styles.payrollDetailItem}>
+                        <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+                        <Text style={styles.payrollDetailText}>{emp.hours.toFixed(1)}h ({emp.daysWorked}j)</Text>
+                      </View>
+                      <View style={styles.payrollDetailItem}>
+                        <Ionicons name="wallet-outline" size={14} color={colors.info} />
+                        <Text style={styles.payrollDetailText}>Salaire: {formatPrice(emp.salary)}</Text>
+                      </View>
+                      {emp.commissions > 0 && (
+                        <View style={styles.payrollDetailItem}>
+                          <Ionicons name="trending-up-outline" size={14} color={colors.success} />
+                          <Text style={styles.payrollDetailText}>Comm: {formatPrice(emp.commissions)}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                ))}
+
+                {payrollData.employees.length === 0 && (
+                  <View style={{ alignItems: 'center', padding: 30 }}>
+                    <Ionicons name="calendar-outline" size={50} color={colors.textSecondary} />
+                    <Text style={{ color: colors.textSecondary, marginTop: 10, textAlign: 'center' }}>
+                      Aucun planning complété pour ce mois
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -1910,6 +2125,169 @@ const styles = StyleSheet.create({
   roleCancelButtonText: {
     fontSize: 16,
     fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  // Styles masse salariale
+  payrollBanner: {
+    marginHorizontal: 20,
+    marginBottom: 8,
+  },
+  payrollBannerGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.accent + '30',
+  },
+  payrollBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  payrollBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  payrollBannerSubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textTransform: 'capitalize',
+  },
+  payrollBannerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  payrollBannerAmount: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.accent,
+  },
+  payrollMonthSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    gap: 16,
+  },
+  payrollMonthArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  payrollMonthLabel: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
+    textTransform: 'capitalize',
+    minWidth: 160,
+    textAlign: 'center',
+  },
+  payrollTotalsContainer: {
+    gap: 10,
+    marginBottom: 20,
+  },
+  payrollTotalsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  payrollTotalCard: {
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 4,
+  },
+  payrollTotalLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  payrollTotalValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  payrollTotalSmallValue: {
+    fontSize: 17,
+    fontWeight: 'bold',
+  },
+  payrollSectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  payrollEmployeeCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  payrollEmployeeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  payrollEmployeeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 10,
+  },
+  payrollEmployeePhoto: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  payrollEmployeeAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  payrollEmployeeName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  payrollEmployeeRole: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  payrollEmployeeTotal: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.accent,
+    marginLeft: 8,
+  },
+  payrollEmployeeDetails: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  payrollDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  payrollDetailText: {
+    fontSize: 12,
     color: colors.textSecondary,
   },
   // Styles pour la section commissions

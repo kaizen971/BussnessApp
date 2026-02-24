@@ -2,7 +2,7 @@
   "expo": {
     "name": "Entreprendre Avec Succès",
     "slug": "frontend",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -20,7 +20,7 @@
       }
     },
     "android": {
-      "versionCode": 20,
+      "versionCode": 28,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"

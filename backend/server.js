@@ -788,9 +788,11 @@ app.put('/BussnessApp/projects/:id/currency', authenticateToken, checkRole('admi
       return res.status(404).json({ error: 'Projet non trouvé' });
     }
 
-    // Vérifier que l'utilisateur est le propriétaire
-    if (project.ownerId.toString() !== req.user.id) {
-      return res.status(403).json({ error: 'Vous ne pouvez modifier que vos propres projets' });
+    // Vérifier que l'utilisateur est le propriétaire ou assigné au projet
+    const isOwner = project.ownerId.toString() === req.user.id;
+    const isAssigned = req.user.projectId && req.user.projectId.toString() === project._id.toString();
+    if (!isOwner && !isAssigned) {
+      return res.status(403).json({ error: 'Vous ne pouvez modifier que les projets auxquels vous êtes assigné' });
     }
 
     project.currency = currency;
@@ -1095,6 +1097,32 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
     res.status(201).json({ data: populatedSale });
   } catch (error) {
     console.error('Error creating sale:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Modifier une vente (client et/ou vendeur)
+app.put('/BussnessApp/sales/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+  try {
+    const { customerId, employeeId } = req.body;
+    const sale = await Sale.findById(req.params.id);
+    if (!sale) {
+      return res.status(404).json({ error: 'Vente non trouvée' });
+    }
+
+    if (customerId !== undefined) sale.customerId = customerId || null;
+    if (employeeId !== undefined) sale.employeeId = employeeId;
+
+    await sale.save();
+
+    const updatedSale = await Sale.findById(sale._id)
+      .populate('productId', 'name unitPrice')
+      .populate('customerId', 'name phone email')
+      .populate('employeeId', 'username fullName');
+
+    res.json({ data: updatedSale });
+  } catch (error) {
+    console.error('Error updating sale:', error);
     res.status(400).json({ error: error.message });
   }
 });
@@ -1768,6 +1796,10 @@ app.post('/BussnessApp/users', authenticateToken, checkRole('admin'), async (req
   try {
     const { username, email, password, fullName, role, projectId, photo } = req.body;
 
+    if (role === 'admin') {
+      return res.status(403).json({ error: 'Impossible de créer un compte administrateur. Il ne peut y avoir qu\'un seul administrateur par projet.' });
+    }
+
     // Vérifier si l'utilisateur existe déjà
     const existingUser = await User.findOne({ $or: [{ username }, { email }] });
     if (existingUser) {
@@ -1800,10 +1832,15 @@ app.post('/BussnessApp/users', authenticateToken, checkRole('admin'), async (req
   }
 });
 
-// Update user role (admin only)
+// Update user role (admin only, cannot assign admin role)
 app.put('/BussnessApp/users/:id/role', authenticateToken, checkRole('admin'), async (req, res) => {
   try {
     const { role } = req.body;
+
+    if (role === 'admin') {
+      return res.status(403).json({ error: 'Impossible d\'attribuer le rôle administrateur. Il ne peut y avoir qu\'un seul administrateur par projet.' });
+    }
+
     const user = await User.findByIdAndUpdate(
       req.params.id,
       { role },
@@ -2441,6 +2478,99 @@ function getWeekNumber(date) {
   return `${d.getFullYear()}-S${weekNo}`;
 }
 
+// Masse salariale de l'équipe (Admin/Manager)
+app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, async (req, res) => {
+  try {
+    // Vérifier les droits
+    if (!['admin', 'responsable', 'manager'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'Accès non autorisé' });
+    }
+
+    const { projectId } = req.params;
+    const { month, year } = req.query;
+
+    // Période : mois demandé ou mois en cours
+    const now = new Date();
+    const m = month ? parseInt(month) : now.getMonth() + 1;
+    const y = year ? parseInt(year) : now.getFullYear();
+    const periodStart = new Date(y, m - 1, 1);
+    const periodEnd = new Date(y, m, 0, 23, 59, 59);
+
+    // Tous les utilisateurs actifs du projet
+    const employees = await User.find({
+      $or: [{ projectId }, { projectIds: projectId }],
+      isActive: true
+    }).select('-password');
+
+    const results = [];
+
+    for (const emp of employees) {
+      // Schedules complétés du mois
+      const schedules = await Schedule.find({
+        userId: emp._id,
+        projectId,
+        status: 'completed',
+        date: { $gte: periodStart, $lte: periodEnd }
+      });
+
+      const totalHours = schedules.reduce((sum, s) => sum + (s.duration || 0), 0);
+      const totalSalary = schedules.reduce((sum, s) => {
+        if (s.dailySalary !== null && s.dailySalary !== undefined) {
+          return sum + s.dailySalary;
+        }
+        return sum + ((s.duration || 0) * (emp.hourlyRate || 0));
+      }, 0);
+
+      // Commissions du mois
+      const commissions = await Commission.find({
+        userId: emp._id,
+        projectId,
+        date: { $gte: periodStart, $lte: periodEnd }
+      });
+      const totalCommissions = commissions.reduce((sum, c) => sum + c.amount, 0);
+
+      results.push({
+        user: {
+          _id: emp._id,
+          fullName: emp.fullName,
+          username: emp.username,
+          role: emp.role,
+          photo: emp.photo,
+          hourlyRate: emp.hourlyRate || 0
+        },
+        hours: totalHours,
+        daysWorked: schedules.length,
+        salary: totalSalary,
+        commissions: totalCommissions,
+        totalDue: totalSalary + totalCommissions
+      });
+    }
+
+    // Trier par totalDue décroissant
+    results.sort((a, b) => b.totalDue - a.totalDue);
+
+    const totals = {
+      totalSalary: results.reduce((sum, r) => sum + r.salary, 0),
+      totalCommissions: results.reduce((sum, r) => sum + r.commissions, 0),
+      totalPayroll: results.reduce((sum, r) => sum + r.totalDue, 0),
+      totalHours: results.reduce((sum, r) => sum + r.hours, 0)
+    };
+
+    res.json({
+      period: {
+        month: m,
+        year: y,
+        label: periodStart.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+      },
+      employees: results,
+      totals
+    });
+  } catch (error) {
+    console.error('Error loading team payroll:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Simulation Business Plan Route
 app.post('/BussnessApp/simulation', authenticateToken, async (req, res) => {
   try {
@@ -2543,14 +2673,38 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
   try {
     const { projectId } = req.params;
 
-    const sales = await Sale.find({ projectId }).populate('productId', 'name');
-    const expenses = await Expense.find({ projectId });
-    const stock = await Stock.find({ projectId });
+    const [sales, expenses, stock, schedules, commissions, employees] = await Promise.all([
+      Sale.find({ projectId }).populate('productId', 'name'),
+      Expense.find({ projectId }),
+      Stock.find({ projectId }),
+      Schedule.find({ projectId, status: 'completed' }),
+      Commission.find({ projectId }),
+      User.find({
+        $or: [{ projectId }, { projectIds: projectId }],
+        isActive: true
+      }).select('hourlyRate')
+    ]);
+
+    const employeeMap = {};
+    for (const emp of employees) {
+      employeeMap[emp._id.toString()] = emp;
+    }
 
     const totalSales = (sales && Array.isArray(sales)) ? sales.reduce((sum, sale) => sum + sale.amount, 0) : 0;
     const totalExpenses = (expenses && Array.isArray(expenses)) ? expenses.reduce((sum, expense) => sum + expense.amount, 0) : 0;
     const totalStock = (stock && Array.isArray(stock)) ? stock.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0) : 0;
-    const netProfit = totalSales - totalExpenses;
+
+    const totalSalaries = schedules.reduce((sum, s) => {
+      if (s.dailySalary !== null && s.dailySalary !== undefined) {
+        return sum + s.dailySalary;
+      }
+      const emp = employeeMap[s.userId?.toString()];
+      return sum + ((s.duration || 0) * (emp?.hourlyRate || 0));
+    }, 0);
+
+    const totalCommissions = commissions.reduce((sum, c) => sum + c.amount, 0);
+
+    const netProfit = totalSales - totalExpenses - totalSalaries - totalCommissions;
 
     // Calculer les données mensuelles pour les 6 derniers mois
     const now = new Date();
@@ -2570,14 +2724,36 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
         return expenseDate >= monthDate && expenseDate < nextMonthDate;
       });
 
+      const monthSchedules = schedules.filter(s => {
+        const d = new Date(s.date);
+        return d >= monthDate && d < nextMonthDate;
+      });
+
+      const monthCommissions = commissions.filter(c => {
+        const d = new Date(c.date);
+        return d >= monthDate && d < nextMonthDate;
+      });
+
       const monthlySalesTotal = monthSales.reduce((sum, sale) => sum + sale.amount, 0);
       const monthlyExpensesTotal = monthExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+
+      const monthlySalariesTotal = monthSchedules.reduce((sum, s) => {
+        if (s.dailySalary !== null && s.dailySalary !== undefined) {
+          return sum + s.dailySalary;
+        }
+        const emp = employeeMap[s.userId?.toString()];
+        return sum + ((s.duration || 0) * (emp?.hourlyRate || 0));
+      }, 0);
+
+      const monthlyCommissionsTotal = monthCommissions.reduce((sum, c) => sum + c.amount, 0);
 
       monthlyData.push({
         month: monthDate.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' }),
         sales: monthlySalesTotal,
         expenses: monthlyExpensesTotal,
-        profit: monthlySalesTotal - monthlyExpensesTotal
+        salaries: monthlySalariesTotal,
+        commissions: monthlyCommissionsTotal,
+        profit: monthlySalesTotal - monthlyExpensesTotal - monthlySalariesTotal - monthlyCommissionsTotal
       });
     }
 
@@ -2585,7 +2761,8 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
     const expensesByCategory = {
       purchase: expenses.filter(e => e.category === 'purchase').reduce((sum, e) => sum + e.amount, 0),
       variable: expenses.filter(e => e.category === 'variable').reduce((sum, e) => sum + e.amount, 0),
-      fixed: expenses.filter(e => e.category === 'fixed').reduce((sum, e) => sum + e.amount, 0)
+      fixed: expenses.filter(e => e.category === 'fixed').reduce((sum, e) => sum + e.amount, 0),
+      salaries: totalSalaries
     };
 
     // Top produits vendus
@@ -2612,6 +2789,8 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
     res.json({
       totalSales,
       totalExpenses,
+      totalSalaries,
+      totalCommissions,
       totalStock,
       netProfit,
       salesCount: sales.length,
@@ -2631,7 +2810,6 @@ app.post('/BussnessApp/export-excel/:projectId',  async (req, res) => {
   try {
     const { projectId } = req.params;
     const { startDate, endDate } = req.body;
-    console.log("test",projectId,startDate,endDate)
 
     // Validation des dates
     const start = startDate ? new Date(startDate) : new Date(0);
@@ -2830,6 +3008,387 @@ app.post('/BussnessApp/export-excel/:projectId',  async (req, res) => {
   } catch (error) {
     console.error('Error exporting to Excel:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Export PDF Route
+app.post('/BussnessApp/export-pdf/:projectId', async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { startDate, endDate } = req.body;
+
+    const start = startDate ? new Date(startDate) : new Date(0);
+    const end = endDate ? new Date(endDate) : new Date();
+
+    const PDFDocument = require('pdfkit');
+
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({ error: 'Projet non trouvé' });
+    }
+    const currencySymbol = project.currency === 'XOF' ? 'CFA' : '€';
+
+    const [sales, expenses, stocks, customers, employees, commissions, schedules] = await Promise.all([
+      Sale.find({ projectId, date: { $gte: start, $lte: end } })
+        .populate('productId').populate('customerId').populate('employeeId'),
+      Expense.find({ projectId, date: { $gte: start, $lte: end } }),
+      Stock.find({ projectId }).populate('productId'),
+      Customer.find({ projectId }),
+      User.find({ projectId }),
+      Commission.find({ projectId, date: { $gte: start, $lte: end } })
+        .populate('userId').populate('saleId'),
+      Schedule.find({ projectId, date: { $gte: start, $lte: end } })
+        .populate('userId')
+    ]);
+
+    const totalSales = sales.reduce((sum, s) => sum + s.amount, 0);
+    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalStock = stocks.reduce((sum, s) => sum + (s.quantity * s.unitPrice), 0);
+    const totalCommissions = commissions.reduce((sum, c) => sum + c.amount, 0);
+    const totalSalaries = schedules.reduce((sum, s) => {
+      return sum + ((s.duration || 0) * (s.userId?.hourlyRate || 0));
+    }, 0);
+    const netProfit = totalSales - totalExpenses - totalCommissions - totalSalaries;
+
+    const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=export_${projectId}_${Date.now()}.pdf`);
+    doc.pipe(res);
+
+    const primaryColor = '#2D5F8A';
+    const accentColor = '#4A90D9';
+    const successColor = '#27AE60';
+    const dangerColor = '#E74C3C';
+    const lightGray = '#F5F6FA';
+    const darkText = '#2C3E50';
+
+    // ===== HELPER FUNCTIONS =====
+    const drawSectionTitle = (title, icon) => {
+      if (doc.y > 700) doc.addPage();
+      doc.moveDown(0.5);
+      doc.rect(40, doc.y, 515, 30).fill(primaryColor);
+      doc.fillColor('#FFFFFF').fontSize(14).font('Helvetica-Bold')
+        .text(`${icon}  ${title}`, 55, doc.y + 8, { width: 480 });
+      doc.fillColor(darkText);
+      doc.moveDown(1.5);
+    };
+
+    const drawTableHeader = (headers, colWidths, startX) => {
+      const y = doc.y;
+      doc.rect(startX, y, colWidths.reduce((a, b) => a + b, 0), 22).fill(accentColor);
+      doc.fillColor('#FFFFFF').fontSize(8).font('Helvetica-Bold');
+      let x = startX;
+      headers.forEach((h, i) => {
+        doc.text(h, x + 4, y + 6, { width: colWidths[i] - 8, align: 'left' });
+        x += colWidths[i];
+      });
+      doc.fillColor(darkText).font('Helvetica');
+      doc.y = y + 22;
+    };
+
+    const drawTableRow = (values, colWidths, startX, isAlternate) => {
+      if (doc.y > 740) {
+        doc.addPage();
+        return false;
+      }
+      const y = doc.y;
+      if (isAlternate) {
+        doc.rect(startX, y, colWidths.reduce((a, b) => a + b, 0), 18).fill(lightGray);
+      }
+      doc.fillColor(darkText).fontSize(7).font('Helvetica');
+      let x = startX;
+      values.forEach((v, i) => {
+        doc.text(String(v), x + 4, y + 5, { width: colWidths[i] - 8, align: 'left' });
+        x += colWidths[i];
+      });
+      doc.y = y + 18;
+      return true;
+    };
+
+    // ===== PAGE DE COUVERTURE =====
+    doc.rect(0, 0, 595, 842).fill('#1A1A2E');
+    doc.rect(0, 0, 595, 8).fill(accentColor);
+    doc.rect(0, 834, 595, 8).fill(accentColor);
+
+    doc.fillColor('#FFFFFF').fontSize(32).font('Helvetica-Bold')
+      .text('RAPPORT FINANCIER', 0, 250, { align: 'center' });
+    doc.moveDown(0.5);
+    doc.fontSize(18).font('Helvetica')
+      .text(project.name || 'Entreprendre Avec Succès', { align: 'center' });
+    doc.moveDown(2);
+
+    doc.rect(197, doc.y, 200, 2).fill(accentColor);
+    doc.moveDown(1.5);
+
+    doc.fillColor('#B0B0B0').fontSize(12)
+      .text(`Période : ${start.toLocaleDateString('fr-FR')} - ${end.toLocaleDateString('fr-FR')}`, { align: 'center' });
+    doc.moveDown(0.5);
+    doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, { align: 'center' });
+
+    doc.moveDown(4);
+    const summaryY = doc.y;
+    const boxWidth = 150;
+    const boxGap = 20;
+    const totalBoxWidth = 3 * boxWidth + 2 * boxGap;
+    const boxStartX = (595 - totalBoxWidth) / 2;
+
+    const summaryBoxes = [
+      { label: 'Chiffre d\'affaires', value: totalSales.toFixed(2) + ' ' + currencySymbol, color: successColor },
+      { label: 'Dépenses totales', value: totalExpenses.toFixed(2) + ' ' + currencySymbol, color: dangerColor },
+      { label: 'Bénéfice net', value: netProfit.toFixed(2) + ' ' + currencySymbol, color: netProfit >= 0 ? successColor : dangerColor },
+    ];
+
+    summaryBoxes.forEach((box, i) => {
+      const bx = boxStartX + i * (boxWidth + boxGap);
+      doc.rect(bx, summaryY, boxWidth, 70).lineWidth(1).fillAndStroke('#2A2A3E', box.color);
+      doc.fillColor(box.color).fontSize(14).font('Helvetica-Bold')
+        .text(box.value, bx, summaryY + 15, { width: boxWidth, align: 'center' });
+      doc.fillColor('#B0B0B0').fontSize(9).font('Helvetica')
+        .text(box.label, bx, summaryY + 42, { width: boxWidth, align: 'center' });
+    });
+
+    // ===== PAGE BILAN =====
+    doc.addPage();
+    drawSectionTitle('BILAN GÉNÉRAL', '📊');
+
+    const bilanItems = [
+      { label: 'Ventes totales', value: totalSales.toFixed(2) + ' ' + currencySymbol, color: successColor },
+      { label: 'Dépenses totales', value: totalExpenses.toFixed(2) + ' ' + currencySymbol, color: dangerColor },
+      { label: 'Commissions totales', value: totalCommissions.toFixed(2) + ' ' + currencySymbol, color: '#E67E22' },
+      { label: 'Salaires totaux', value: totalSalaries.toFixed(2) + ' ' + currencySymbol, color: '#E67E22' },
+      { label: 'Valeur du stock', value: totalStock.toFixed(2) + ' ' + currencySymbol, color: accentColor },
+      { label: 'Bénéfice net', value: netProfit.toFixed(2) + ' ' + currencySymbol, color: netProfit >= 0 ? successColor : dangerColor },
+    ];
+
+    bilanItems.forEach((item, i) => {
+      const y = doc.y;
+      const bgColor = i % 2 === 0 ? lightGray : '#FFFFFF';
+      doc.rect(40, y, 515, 28).fill(bgColor);
+      doc.fillColor(darkText).fontSize(11).font('Helvetica')
+        .text(item.label, 55, y + 8, { width: 300 });
+      doc.fillColor(item.color).fontSize(11).font('Helvetica-Bold')
+        .text(item.value, 360, y + 8, { width: 180, align: 'right' });
+      doc.y = y + 28;
+    });
+
+    doc.moveDown(1);
+    doc.rect(40, doc.y, 515, 1).fill(accentColor);
+    doc.moveDown(1);
+
+    const statsItems = [
+      { label: 'Nombre de ventes', value: sales.length },
+      { label: 'Nombre de dépenses', value: expenses.length },
+      { label: 'Articles en stock', value: stocks.length },
+      { label: 'Nombre de clients', value: customers.length },
+      { label: 'Nombre d\'employés', value: employees.length },
+    ];
+
+    statsItems.forEach((item, i) => {
+      const y = doc.y;
+      const bgColor = i % 2 === 0 ? lightGray : '#FFFFFF';
+      doc.rect(40, y, 515, 24).fill(bgColor);
+      doc.fillColor(darkText).fontSize(10).font('Helvetica')
+        .text(item.label, 55, y + 7, { width: 300 });
+      doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold')
+        .text(String(item.value), 360, y + 7, { width: 180, align: 'right' });
+      doc.y = y + 24;
+    });
+
+    // ===== VENTES =====
+    doc.addPage();
+    drawSectionTitle('VENTES', '💰');
+
+    if (sales.length > 0) {
+      const sColW = [60, 80, 70, 70, 40, 60, 40, 65];
+      drawTableHeader(['Date', 'Produit', 'Client', 'Employé', 'Qté', 'Prix Unit.', 'Remise', 'Total'], sColW, 40);
+      sales.forEach((sale, i) => {
+        drawTableRow([
+          new Date(sale.date).toLocaleDateString('fr-FR'),
+          (sale.productId?.name || 'N/A').substring(0, 15),
+          (sale.customerId?.name || 'N/A').substring(0, 12),
+          (sale.employeeId?.fullName || sale.employeeId?.username || 'N/A').substring(0, 12),
+          sale.quantity,
+          sale.unitPrice.toFixed(2) + ' ' + currencySymbol,
+          sale.discount + '%',
+          sale.amount.toFixed(2) + ' ' + currencySymbol
+        ], sColW, 40, i % 2 === 1);
+      });
+      doc.moveDown(0.5);
+      doc.fillColor(primaryColor).fontSize(10).font('Helvetica-Bold')
+        .text(`Total des ventes : ${totalSales.toFixed(2)} ${currencySymbol}`, 40, doc.y, { align: 'right', width: 515 });
+    } else {
+      doc.fontSize(10).font('Helvetica').fillColor(darkText).text('Aucune vente sur cette période.');
+    }
+
+    // ===== DÉPENSES =====
+    doc.addPage();
+    drawSectionTitle('DÉPENSES', '📉');
+
+    if (expenses.length > 0) {
+      const eColW = [80, 100, 120, 120, 80];
+      drawTableHeader(['Date', 'Catégorie', 'Montant', 'Description', 'Récurrent'], eColW, 40);
+      expenses.forEach((expense, i) => {
+        const cat = expense.category === 'purchase' ? 'Achat' :
+          expense.category === 'variable' ? 'Variable' : 'Fixe';
+        drawTableRow([
+          new Date(expense.date).toLocaleDateString('fr-FR'),
+          cat,
+          expense.amount.toFixed(2) + ' ' + currencySymbol,
+          (expense.description || '').substring(0, 25),
+          expense.isRecurring ? 'Oui' : 'Non'
+        ], eColW, 40, i % 2 === 1);
+      });
+      doc.moveDown(0.5);
+      doc.fillColor(dangerColor).fontSize(10).font('Helvetica-Bold')
+        .text(`Total des dépenses : ${totalExpenses.toFixed(2)} ${currencySymbol}`, 40, doc.y, { align: 'right', width: 515 });
+    } else {
+      doc.fontSize(10).font('Helvetica').fillColor(darkText).text('Aucune dépense sur cette période.');
+    }
+
+    // ===== STOCKS =====
+    doc.addPage();
+    drawSectionTitle('STOCKS', '📦');
+
+    if (stocks.length > 0) {
+      const stColW = [90, 80, 60, 55, 70, 80, 80];
+      drawTableHeader(['Nom', 'Produit lié', 'SKU', 'Qté', 'Prix Unit.', 'Valeur', 'Emplacement'], stColW, 40);
+      stocks.forEach((stock, i) => {
+        drawTableRow([
+          stock.name.substring(0, 18),
+          (stock.productId?.name || 'N/A').substring(0, 15),
+          (stock.sku || 'N/A').substring(0, 10),
+          stock.quantity,
+          stock.unitPrice.toFixed(2) + ' ' + currencySymbol,
+          (stock.quantity * stock.unitPrice).toFixed(2) + ' ' + currencySymbol,
+          (stock.location || 'N/A').substring(0, 15)
+        ], stColW, 40, i % 2 === 1);
+      });
+      doc.moveDown(0.5);
+      doc.fillColor(accentColor).fontSize(10).font('Helvetica-Bold')
+        .text(`Valeur totale du stock : ${totalStock.toFixed(2)} ${currencySymbol}`, 40, doc.y, { align: 'right', width: 515 });
+    } else {
+      doc.fontSize(10).font('Helvetica').fillColor(darkText).text('Aucun article en stock.');
+    }
+
+    // ===== EMPLOYÉS =====
+    doc.addPage();
+    drawSectionTitle('EMPLOYÉS', '👥');
+
+    if (employees.length > 0) {
+      const empColW = [90, 80, 90, 75, 60, 60, 60];
+      drawTableHeader(['Nom', 'Username', 'Email', 'Rôle', 'Comm.%', 'Taux/h', 'Actif'], empColW, 40);
+      employees.forEach((emp, i) => {
+        const role = emp.role === 'admin' ? 'Admin' :
+          emp.role === 'manager' ? 'Manager' :
+            emp.role === 'responsable' ? 'Resp.' : 'Caissier';
+        drawTableRow([
+          (emp.fullName || 'N/A').substring(0, 18),
+          emp.username.substring(0, 15),
+          (emp.email || '').substring(0, 18),
+          role,
+          emp.commissionRate + '%',
+          emp.hourlyRate.toFixed(0) + currencySymbol,
+          emp.isActive ? 'Oui' : 'Non'
+        ], empColW, 40, i % 2 === 1);
+      });
+    } else {
+      doc.fontSize(10).font('Helvetica').fillColor(darkText).text('Aucun employé enregistré.');
+    }
+
+    // ===== COMMISSIONS =====
+    if (commissions.length > 0) {
+      doc.addPage();
+      drawSectionTitle('COMMISSIONS', '💼');
+
+      const cColW = [80, 110, 100, 60, 100, 80];
+      drawTableHeader(['Date', 'Employé', 'Montant vente', 'Taux', 'Commission', 'Statut'], cColW, 40);
+      commissions.forEach((com, i) => {
+        drawTableRow([
+          new Date(com.date).toLocaleDateString('fr-FR'),
+          (com.userId?.fullName || com.userId?.username || 'N/A').substring(0, 20),
+          com.saleAmount.toFixed(2) + ' ' + currencySymbol,
+          com.rate + '%',
+          com.amount.toFixed(2) + ' ' + currencySymbol,
+          com.status === 'paid' ? 'Payée' : 'En attente'
+        ], cColW, 40, i % 2 === 1);
+      });
+      doc.moveDown(0.5);
+      doc.fillColor('#E67E22').fontSize(10).font('Helvetica-Bold')
+        .text(`Total commissions : ${totalCommissions.toFixed(2)} ${currencySymbol}`, 40, doc.y, { align: 'right', width: 515 });
+    }
+
+    // ===== SALAIRES =====
+    if (schedules.length > 0) {
+      doc.addPage();
+      drawSectionTitle('SALAIRES', '💵');
+
+      const salColW = [65, 90, 55, 55, 55, 65, 70, 60];
+      drawTableHeader(['Date', 'Employé', 'Début', 'Fin', 'Durée(h)', 'Taux/h', 'Salaire', 'Statut'], salColW, 40);
+      schedules.forEach((sched, i) => {
+        const emp = sched.userId;
+        const dur = sched.duration || 0;
+        const rate = emp?.hourlyRate || 0;
+        const statut = sched.status === 'completed' ? 'Complété' :
+          sched.status === 'absent' ? 'Absent' :
+            sched.status === 'cancelled' ? 'Annulé' : 'Planifié';
+        drawTableRow([
+          new Date(sched.date).toLocaleDateString('fr-FR'),
+          (emp?.fullName || emp?.username || 'N/A').substring(0, 16),
+          sched.startTime || '',
+          sched.endTime || '',
+          dur,
+          rate.toFixed(0) + currencySymbol,
+          (dur * rate).toFixed(2) + ' ' + currencySymbol,
+          statut
+        ], salColW, 40, i % 2 === 1);
+      });
+      doc.moveDown(0.5);
+      doc.fillColor('#E67E22').fontSize(10).font('Helvetica-Bold')
+        .text(`Total salaires : ${totalSalaries.toFixed(2)} ${currencySymbol}`, 40, doc.y, { align: 'right', width: 515 });
+    }
+
+    // ===== CLIENTS =====
+    if (customers.length > 0) {
+      doc.addPage();
+      drawSectionTitle('CLIENTS', '🤝');
+
+      const cuColW = [90, 85, 75, 80, 55, 55, 75];
+      drawTableHeader(['Nom', 'Email', 'Téléphone', 'Achats', 'Points', 'Niveau', 'Dernier achat'], cuColW, 40);
+      customers.forEach((cust, i) => {
+        const level = cust.loyaltyLevel === 'bronze' ? 'Bronze' :
+          cust.loyaltyLevel === 'silver' ? 'Argent' :
+            cust.loyaltyLevel === 'gold' ? 'Or' : 'Platine';
+        drawTableRow([
+          cust.name.substring(0, 18),
+          (cust.email || 'N/A').substring(0, 16),
+          (cust.phone || 'N/A').substring(0, 14),
+          cust.totalPurchases.toFixed(2) + ' ' + currencySymbol,
+          cust.loyaltyPoints,
+          level,
+          cust.lastPurchaseDate ? new Date(cust.lastPurchaseDate).toLocaleDateString('fr-FR') : 'N/A'
+        ], cuColW, 40, i % 2 === 1);
+      });
+    }
+
+    // ===== FOOTER SUR TOUTES LES PAGES =====
+    const pages = doc.bufferedPageRange();
+    for (let i = 0; i < pages.count; i++) {
+      doc.switchToPage(i);
+      doc.fillColor('#999999').fontSize(8).font('Helvetica')
+        .text(
+          `${project.name || 'Entreprendre Avec Succès'} — Page ${i + 1}/${pages.count}`,
+          40, 810, { width: 515, align: 'center' }
+        );
+    }
+
+    doc.end();
+
+  } catch (error) {
+    console.error('Error exporting to PDF:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
   }
 });
 

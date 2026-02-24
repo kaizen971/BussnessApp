@@ -204,7 +204,7 @@ export const DashboardScreen = ({ navigation }) => {
     });
   };
 
-  const handleExportExcel = async () => {
+  const handleExport = async (format = 'excel') => {
     const projectId = selectedProjectId || user?.projectId;
 
     if (!projectId) {
@@ -212,40 +212,41 @@ export const DashboardScreen = ({ navigation }) => {
       return;
     }
 
+    const isExcel = format === 'excel';
+    const extension = isExcel ? 'xlsx' : 'pdf';
+    const mimeType = isExcel
+      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      : 'application/pdf';
+    const uti = isExcel ? 'com.microsoft.excel.xlsx' : 'com.adobe.pdf';
+    const endpoint = isExcel ? 'export-excel' : 'export-pdf';
+    const label = isExcel ? 'Excel' : 'PDF';
+
     try {
       setExportLoading(true);
 
-      // Définir le chemin du fichier
-      const fileName = `export_${projectId}_${Date.now()}.xlsx`;
+      const fileName = `export_${projectId}_${Date.now()}.${extension}`;
       const fileUri = FileSystem.documentDirectory + fileName;
 
-      // Faire une requête POST pour récupérer le fichier
       const token = await AsyncStorage.getItem('userToken');
       const baseURL = api.defaults.baseURL;
-      const response = await fetch(
-        `${baseURL}export-excel/${projectId}`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            startDate: startDate.toISOString(),
-            endDate: endDate.toISOString()
-          }),
-        }
-      );
-
-      console.log('Response status:', response.status);
+      const url = `${baseURL}/${endpoint}/${projectId}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString()
+        }),
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Erreur réponse:', errorText);
         throw new Error(`Erreur serveur: ${response.status}`);
       }
 
-      // Récupérer les données brutes et les convertir en base64
       const arrayBuffer = await response.arrayBuffer();
       const base64 = btoa(
         new Uint8Array(arrayBuffer).reduce(
@@ -254,27 +255,25 @@ export const DashboardScreen = ({ navigation }) => {
         )
       );
 
-      // Écrire le fichier localement
       await FileSystem.writeAsStringAsync(fileUri, base64, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Partager le fichier
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, {
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          mimeType,
           dialogTitle: 'Exporter les données',
-          UTI: 'com.microsoft.excel.xlsx'
+          UTI: uti
         });
-        Alert.alert('Succès', 'Export Excel créé avec succès !');
+        Alert.alert('Succès', `Export ${label} créé avec succès !`);
       } else {
         Alert.alert('Succès', `Fichier sauvegardé : ${fileUri}`);
       }
 
       closeExportModal();
     } catch (error) {
-      console.error('Erreur export Excel:', error);
-      Alert.alert('Erreur', 'Impossible de générer l\'export Excel. Vérifiez votre connexion et réessayez.');
+      console.error(`Erreur export ${label}:`, error);
+      Alert.alert('Erreur', `Impossible de générer l'export ${label}. Vérifiez votre connexion et réessayez.`);
     } finally {
       setExportLoading(false);
     }
@@ -572,7 +571,7 @@ export const DashboardScreen = ({ navigation }) => {
                   }}
                 />
                 {isAdmin && <QuickActionButton
-                  title="Export Excel"
+                  title="Exporter"
                   icon="cloud-download-outline"
                   color={colors.accent}
                   onPress={() => {
@@ -649,11 +648,11 @@ export const DashboardScreen = ({ navigation }) => {
 
                   <View style={styles.statsRow}>
                     <StatCard
-                      title="Bénéfice Net"
-                      value={formatPrice(stats.netProfit || 0)}
-                      subtitle={stats.netProfit >= 0 ? "Positif" : "Négatif"}
-                      icon="analytics"
-                      color={stats.netProfit >= 0 ? colors.success : colors.error}
+                      title="Masse salariale"
+                      value={formatPrice((stats.totalSalaries || 0) + (stats.totalCommissions || 0))}
+                      subtitle={`Salaires + Commissions`}
+                      icon="people"
+                      color={colors.warning}
                     />
                     <StatCard
                       title="Valeur Stock"
@@ -661,6 +660,16 @@ export const DashboardScreen = ({ navigation }) => {
                       subtitle={`${stats.stockItems || 0} articles`}
                       icon="cube"
                       color={colors.primary}
+                    />
+                  </View>
+
+                  <View style={styles.statsRow}>
+                    <StatCard
+                      title="Bénéfice Net"
+                      value={formatPrice(stats.netProfit || 0)}
+                      subtitle="Ventes - Dépenses - Salaires"
+                      icon="analytics"
+                      color={stats.netProfit >= 0 ? colors.success : colors.error}
                     />
                   </View>
 
@@ -685,6 +694,20 @@ export const DashboardScreen = ({ navigation }) => {
                         <Text style={styles.summaryLabel}>Nombre de dépenses</Text>
                       </View>
                       <Text style={styles.summaryValue}>{stats.expensesCount || 0}</Text>
+                    </View>
+                    <View style={styles.summaryRow}>
+                      <View style={styles.summaryRowLeft}>
+                        <View style={[styles.summaryDot, { backgroundColor: colors.warning }]} />
+                        <Text style={styles.summaryLabel}>Salaires</Text>
+                      </View>
+                      <Text style={styles.summaryValue}>{formatPrice(stats.totalSalaries || 0)}</Text>
+                    </View>
+                    <View style={styles.summaryRow}>
+                      <View style={styles.summaryRowLeft}>
+                        <View style={[styles.summaryDot, { backgroundColor: colors.accent }]} />
+                        <Text style={styles.summaryLabel}>Commissions</Text>
+                      </View>
+                      <Text style={styles.summaryValue}>{formatPrice(stats.totalCommissions || 0)}</Text>
                     </View>
                     <View style={styles.summaryRow}>
                       <View style={styles.summaryRowLeft}>
@@ -768,7 +791,7 @@ export const DashboardScreen = ({ navigation }) => {
 
                   {stats.expensesByCategory && (
                     <Card style={styles.chartCard}>
-                      <Text style={styles.chartTitle}>Répartition des dépenses</Text>
+                      <Text style={styles.chartTitle}>Répartition des charges</Text>
                       <PieChart
                         data={[
                           {
@@ -789,6 +812,13 @@ export const DashboardScreen = ({ navigation }) => {
                             name: 'Fixes',
                             population: stats.expensesByCategory.fixed || 0,
                             color: colors.error,
+                            legendFontColor: colors.textSecondary,
+                            legendFontSize: 13
+                          },
+                          {
+                            name: 'Salaires',
+                            population: stats.expensesByCategory.salaries || 0,
+                            color: colors.warning,
                             legendFontColor: colors.textSecondary,
                             legendFontSize: 13
                           }
@@ -871,7 +901,7 @@ export const DashboardScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>📊 Export Excel</Text>
+              <Text style={styles.modalTitle}>📊 Export des données</Text>
               <TouchableOpacity onPress={closeExportModal} style={styles.closeButton}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -882,7 +912,7 @@ export const DashboardScreen = ({ navigation }) => {
               showsVerticalScrollIndicator={false}
             >
               <Text style={styles.exportDescription}>
-                Sélectionnez la période pour exporter toutes les données : ventes, dépenses, stocks, salaires, employés, commissions, bilan et clients.
+                Sélectionnez la période et le format d'export (Excel ou PDF) pour toutes les données : ventes, dépenses, stocks, salaires, employés, commissions, bilan et clients.
               </Text>
 
               <Card style={styles.dateCard}>
@@ -978,31 +1008,59 @@ export const DashboardScreen = ({ navigation }) => {
                 </View>
               </Card>
 
-              <TouchableOpacity
-                style={[styles.exportButton, exportLoading && styles.exportButtonDisabled]}
-                onPress={handleExportExcel}
-                disabled={exportLoading}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={exportLoading ? [colors.textSecondary, colors.textLight] : [colors.success, colors.primary]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.exportButtonGradient}
+              <View style={styles.exportButtonsRow}>
+                <TouchableOpacity
+                  style={[styles.exportButton, { flex: 1, marginRight: 8 }, exportLoading && styles.exportButtonDisabled]}
+                  onPress={() => handleExport('excel')}
+                  disabled={exportLoading}
+                  activeOpacity={0.8}
                 >
-                  {exportLoading ? (
-                    <>
-                      <ActivityIndicator color={colors.background} size="small" />
-                      <Text style={styles.exportButtonText}>Génération en cours...</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Ionicons name="cloud-download" size={24} color={colors.background} />
-                      <Text style={styles.exportButtonText}>Générer l'export Excel</Text>
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
+                  <LinearGradient
+                    colors={exportLoading ? [colors.textSecondary, colors.textLight] : [colors.success, colors.primary]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.exportButtonGradient}
+                  >
+                    {exportLoading ? (
+                      <>
+                        <ActivityIndicator color={colors.background} size="small" />
+                        <Text style={styles.exportButtonText}>Export...</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Ionicons name="grid-outline" size={22} color={colors.background} />
+                        <Text style={styles.exportButtonText}>Excel</Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.exportButton, { flex: 1, marginLeft: 8 }, exportLoading && styles.exportButtonDisabled]}
+                  onPress={() => handleExport('pdf')}
+                  disabled={exportLoading}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={exportLoading ? [colors.textSecondary, colors.textLight] : ['#E74C3C', '#C0392B']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.exportButtonGradient}
+                  >
+                    {exportLoading ? (
+                      <>
+                        <ActivityIndicator color={colors.background} size="small" />
+                        <Text style={styles.exportButtonText}>Export...</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Ionicons name="document-text-outline" size={22} color={colors.background} />
+                        <Text style={styles.exportButtonText}>PDF</Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
             </ScrollView>
           </Animated.View>
         </View>
@@ -1046,21 +1104,27 @@ export const DashboardScreen = ({ navigation }) => {
 
                       // Mettre à jour la devise du projet dans le backend
                       await projectsAPI.updateCurrency(projectId, curr.code);
-                      
+
                       // Mettre à jour localement
                       setProjectCurrency(curr.code);
-                      
-                      // Mettre à jour le projet dans la liste
+
+                      // Mettre à jour le projet dans la liste locale
                       if (currentProject) {
                         setCurrentProject({ ...currentProject, currency: curr.code });
                       }
+
+                      // Mettre à jour availableProjects pour éviter que loadDashboardData réécrase la devise
+                      const updatedProjects = availableProjects.map(p =>
+                        p._id === projectId ? { ...p, currency: curr.code } : p
+                      );
+                      loadAvailableProjects(updatedProjects);
 
                       setCurrencyModalVisible(false);
                       Alert.alert(
                         'Devise changée',
                         `La devise du projet a été changée en ${curr.name} (${curr.symbol}). Toute l'équipe verra cette devise.`
                       );
-                      
+
                       // Recharger les données du dashboard
                       loadDashboardData();
                     } catch (error) {
@@ -1634,10 +1698,13 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: '500',
   },
+  exportButtonsRow: {
+    flexDirection: 'row',
+    marginBottom: 24,
+  },
   exportButton: {
     borderRadius: 20,
     overflow: 'hidden',
-    marginBottom: 24,
     elevation: 4,
     shadowColor: colors.success,
     shadowOffset: { width: 0, height: 4 },
