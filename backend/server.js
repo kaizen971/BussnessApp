@@ -1,4 +1,5 @@
 require('dotenv').config();
+process.env.BACKOFFICE_ACCESS_KEY = 'BussApp@Secure2026!Portal';
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -3598,7 +3599,7 @@ app.get('/BussnessApp/subscription/plans', async (req, res) => {
 // Start server
 app.listen(PORT, async () => {
   const publicApiUrl = process.env.BACKEND_PUBLIC_URL || `http://localhost:${PORT}/BussnessApp`;
-  console.log("Version 1.0.0");
+  console.log("Version 1.0.1");
   console.log(`Server is running on port ${PORT}`);
   console.log(`API accessible at http://localhost:${PORT}/BussnessApp`);
   console.log(`Public URL: ${publicApiUrl}`);
