@@ -5,6 +5,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { CurrencyProvider } from './src/contexts/CurrencyContext';
+import { SubscriptionProvider, useSubscription } from './src/contexts/SubscriptionContext';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
@@ -22,6 +23,8 @@ import { PlanningScreen } from './src/screens/PlanningScreen';
 import { CommissionsScreen } from './src/screens/CommissionsScreen';
 import { TutorialScreen } from './src/screens/TutorialScreen';
 import { CategoriesScreen } from './src/screens/CategoriesScreen';
+import { SubscriptionScreen } from './src/screens/SubscriptionScreen';
+import { PaywallScreen } from './src/screens/PaywallScreen';
 import { colors } from './src/utils/colors';
 
 const Stack = createStackNavigator();
@@ -37,6 +40,16 @@ const AuthStack = () => (
     <Stack.Screen name="Register" component={RegisterScreen} />
   </Stack.Navigator>
 );
+
+function PremiumGate(WrappedComponent, screenName, featureName) {
+  return function GatedScreen(props) {
+    const { canAccessScreen } = useSubscription();
+    if (!canAccessScreen(screenName)) {
+      return <PaywallScreen {...props} route={{ ...props.route, params: { ...props.route?.params, featureName } }} />;
+    }
+    return <WrappedComponent {...props} />;
+  };
+}
 
 const MainStack = () => (
   <Stack.Navigator
@@ -64,8 +77,18 @@ const MainStack = () => (
       options={{ title: 'Tableau de bord' }}
     />
     <Stack.Screen
+      name="Subscription"
+      component={SubscriptionScreen}
+      options={{ title: 'Mon abonnement' }}
+    />
+    <Stack.Screen
+      name="Paywall"
+      component={PaywallScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
       name="Simulation"
-      component={SimulationScreen}
+      component={PremiumGate(SimulationScreen, 'Simulation', 'Simulation Business Plan')}
       options={{ title: 'Simulation Business Plan' }}
     />
     <Stack.Screen
@@ -80,7 +103,7 @@ const MainStack = () => (
     />
     <Stack.Screen
       name="Stock"
-      component={StockScreen}
+      component={PremiumGate(StockScreen, 'Stock', 'Gestion de stock')}
       options={{ title: 'Stock' }}
     />
     <Stack.Screen
@@ -90,12 +113,12 @@ const MainStack = () => (
     />
     <Stack.Screen
       name="Customers"
-      component={CustomersScreen}
+      component={PremiumGate(CustomersScreen, 'Customers', 'CRM Clients')}
       options={{ title: 'Clients CRM' }}
     />
     <Stack.Screen
       name="Team"
-      component={TeamScreen}
+      component={PremiumGate(TeamScreen, 'Team', 'Gestion d\'équipe')}
       options={{ title: 'Équipe', headerShown: false }}
     />
     <Stack.Screen
@@ -110,12 +133,12 @@ const MainStack = () => (
     />
     <Stack.Screen
       name="Planning"
-      component={PlanningScreen}
+      component={PremiumGate(PlanningScreen, 'Planning', 'Planning')}
       options={{ title: 'Planning', headerShown: false }}
     />
     <Stack.Screen
       name="Commissions"
-      component={CommissionsScreen}
+      component={PremiumGate(CommissionsScreen, 'Commissions', 'Commissions')}
       options={{ title: 'Commissions', headerShown: false }}
     />
     <Stack.Screen
@@ -135,7 +158,7 @@ const AppNavigator = () => {
   const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
-    return null; // You could add a splash screen here
+    return null;
   }
 
   return (
@@ -149,8 +172,10 @@ export default function App() {
   return (
     <AuthProvider>
       <CurrencyProvider>
-        <StatusBar style="light" />
-        <AppNavigator />
+        <SubscriptionProvider>
+          <StatusBar style="light" />
+          <AppNavigator />
+        </SubscriptionProvider>
       </CurrencyProvider>
     </AuthProvider>
   );

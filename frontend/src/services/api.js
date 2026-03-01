@@ -53,6 +53,7 @@ export const authAPI = {
   register: (userData) => api.post('/auth/register', userData),
   getCurrentUser: () => api.get('/auth/me'),
   changePassword: (oldPassword, newPassword) => api.post('/auth/change-password', { oldPassword, newPassword }),
+  updateProfilePhoto: (photo) => api.put('/auth/profile-photo', { photo }),
 };
 
 // Projects API
@@ -155,6 +156,12 @@ export const exportAPI = {
     );
     return response;
   },
+};
+
+// Subscription API
+export const subscriptionAPI = {
+  getMySubscription: () => api.get('/subscription/my'),
+  getPlans: () => api.get('/subscription/plans'),
 };
 
 export default api;

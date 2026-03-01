@@ -12,6 +12,8 @@ import {
   ActivityIndicator,
   Dimensions,
   TextInput,
+  Share,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -308,6 +310,39 @@ export const SalesScreen = () => {
     );
   };
 
+  const handleShareSale = async (sale) => {
+    try {
+      const productName = sale.productId?.name || 'Produit';
+      const customerName = sale.customerId?.name || 'Client';
+      const sellerName = sale.employeeId?.fullName || sale.employeeId?.username || 'Vendeur';
+      const amount = formatPrice(sale.amount || 0);
+      const date = new Date(sale.date).toLocaleDateString('fr-FR', {
+        day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+      });
+      const qty = sale.quantity || 1;
+
+      const message =
+        `🧾 *Reçu de vente*\n\n` +
+        `📦 Produit : ${productName}\n` +
+        `📊 Quantité : ${qty}\n` +
+        `💰 Montant : ${amount}\n` +
+        (sale.discount > 0 ? `🏷️ Remise : ${formatPrice(sale.discount)}\n` : '') +
+        `👤 Client : ${customerName}\n` +
+        `🏪 Vendeur : ${sellerName}\n` +
+        `📅 Date : ${date}\n\n` +
+        `Merci pour votre achat ! 🙏`;
+
+      await Share.share({
+        message,
+        title: `Reçu - ${productName}`,
+      });
+    } catch (error) {
+      if (error.message !== 'User did not share') {
+        Alert.alert('Erreur', 'Impossible de partager la vente.');
+      }
+    }
+  };
+
   // Déterminer si l'utilisateur est admin/manager
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'responsable';
 
@@ -376,25 +411,33 @@ export const SalesScreen = () => {
               })}
             </Text>
           </View>
-          {!isRefund && !isRefunded && isAdmin && (
-            <View style={styles.saleActionsColumn}>
-              <TouchableOpacity
-                style={styles.editSaleButton}
-                onPress={() => openEditSale(item)}
-              >
-                <Ionicons name="create-outline" size={18} color={colors.accent} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.refundButton}
-                onPress={() => handleRefund(item)}
-              >
-                <View style={styles.refundButtonInner}>
-                  <Ionicons name="arrow-undo" size={18} color="#fff" />
-                  <Text style={styles.refundButtonText}>Rembourser</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          )}
+          <View style={styles.saleActionsColumn}>
+            <TouchableOpacity
+              style={styles.shareSaleButton}
+              onPress={() => handleShareSale(item)}
+            >
+              <Ionicons name="share-social-outline" size={18} color={colors.primary} />
+            </TouchableOpacity>
+            {!isRefund && !isRefunded && isAdmin && (
+              <>
+                <TouchableOpacity
+                  style={styles.editSaleButton}
+                  onPress={() => openEditSale(item)}
+                >
+                  <Ionicons name="create-outline" size={18} color={colors.accent} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.refundButton}
+                  onPress={() => handleRefund(item)}
+                >
+                  <View style={styles.refundButtonInner}>
+                    <Ionicons name="arrow-undo" size={18} color="#fff" />
+                    <Text style={styles.refundButtonText}>Rembourser</Text>
+                  </View>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
         </View>
       </Card>
     );
@@ -854,9 +897,13 @@ export const SalesScreen = () => {
                           onPress={() => handleAddToCart(product._id)}
                           activeOpacity={0.8}
                         >
-                          <View style={styles.productListIconContainer}>
-                            <Ionicons name="cube" size={24} color={colors.primary} />
-                          </View>
+                          {product.image ? (
+                            <Image source={{ uri: product.image }} style={styles.productListImage} />
+                          ) : (
+                            <View style={styles.productListIconContainer}>
+                              <Ionicons name="cube" size={24} color={colors.primary} />
+                            </View>
+                          )}
                           <View style={styles.productListInfo}>
                             <Text style={styles.productListName} numberOfLines={1}>
                               {product.name}
@@ -891,9 +938,13 @@ export const SalesScreen = () => {
                         onPress={() => handleAddToCart(product._id)}
                         activeOpacity={0.8}
                       >
-                        <View style={styles.productIconContainer}>
-                          <Ionicons name="cube" size={32} color={colors.primary} />
-                        </View>
+                        {product.image ? (
+                          <Image source={{ uri: product.image }} style={styles.productGridImage} />
+                        ) : (
+                          <View style={styles.productIconContainer}>
+                            <Ionicons name="cube" size={32} color={colors.primary} />
+                          </View>
+                        )}
                         <Text style={styles.productName} numberOfLines={2}>
                           {product.name}
                         </Text>
@@ -1434,6 +1485,16 @@ const styles = StyleSheet.create({
     gap: 8,
     marginLeft: 8,
   },
+  shareSaleButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
   editSaleButton: {
     width: 36,
     height: 36,
@@ -1775,6 +1836,12 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
   },
+  productListImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+  },
   productListIconContainer: {
     width: 48,
     height: 48,
@@ -1944,6 +2011,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     shadowOpacity: 0.15,
     elevation: 3,
+  },
+  productGridImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    marginBottom: 14,
   },
   productIconContainer: {
     width: 64,

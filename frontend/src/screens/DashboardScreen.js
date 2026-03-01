@@ -22,11 +22,13 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
+import { useSubscription } from '../contexts/SubscriptionContext';
 import { Card } from '../components/Card';
 import { LoadingScreen } from '../components/LoadingScreen';
-import api, { dashboardAPI, projectsAPI } from '../services/api';
+import api, { dashboardAPI, projectsAPI, authAPI } from '../services/api';
 import { colors, gradients } from '../utils/colors';
 
 const screenWidth = Dimensions.get('window').width;
@@ -34,7 +36,7 @@ const screenWidth = Dimensions.get('window').width;
 export const DashboardScreen = ({ navigation }) => {
   const { user, logout, selectedProjectId, availableProjects, loadAvailableProjects, selectProject } = useAuth();
   const { format: formatPrice, currency, setProjectCurrency, availableCurrencies } = useCurrency();
-  console.log(user)
+  const { subscription, isPremium, canAccessScreen } = useSubscription();
   const [stats, setStats] = useState(null);
   const [currentProject, setCurrentProject] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -54,8 +56,6 @@ export const DashboardScreen = ({ navigation }) => {
   const exportModalSlideAnim = useRef(new Animated.Value(0)).current;
   const commerceModalSlideAnim = useRef(new Animated.Value(0)).current;
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
-
-  console.log(user)
 
   // Charger les projets disponibles au montage si pas encore chargés
   useEffect(() => {
@@ -131,6 +131,35 @@ export const DashboardScreen = ({ navigation }) => {
   const onRefresh = () => {
     setRefreshing(true);
     loadDashboardData();
+  };
+
+  const handleChangeProfilePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission requise', 'Nous avons besoin d\'accéder à vos photos pour changer votre photo de profil.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+        base64: true,
+      });
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        const base64Image = `data:image/jpeg;base64,${asset.base64}`;
+        const response = await authAPI.updateProfilePhoto(base64Image);
+        if (response.data) {
+          Alert.alert('Succès', 'Photo de profil mise à jour !');
+          onRefresh();
+        }
+      }
+    } catch (error) {
+      console.error('Error changing profile photo:', error);
+      Alert.alert('Erreur', 'Impossible de mettre à jour la photo de profil.');
+    }
   };
 
   const handleLogout = () => {
@@ -351,7 +380,7 @@ export const DashboardScreen = ({ navigation }) => {
             style={styles.headerGradient}
           >
             <View style={styles.headerContent}>
-              <View style={styles.avatarContainer}>
+              <TouchableOpacity style={styles.avatarContainer} onPress={handleChangeProfilePhoto} activeOpacity={0.8}>
                 {user?.photo ? (
                   <Image source={{ uri: user.photo }} style={styles.avatarImage} />
                 ) : (
@@ -359,7 +388,10 @@ export const DashboardScreen = ({ navigation }) => {
                     <Text style={styles.avatarText}>{(user?.fullName || user?.username)?.charAt(0).toUpperCase()}</Text>
                   </LinearGradient>
                 )}
-              </View>
+                <View style={styles.avatarEditBadge}>
+                  <Ionicons name="camera" size={12} color="#fff" />
+                </View>
+              </TouchableOpacity>
               <View style={styles.headerInfo}>
                 <Text style={styles.greeting}>Bonjour 👋</Text>
                 <Text style={styles.userName}>{user?.fullName || user?.username}</Text>
@@ -427,6 +459,36 @@ export const DashboardScreen = ({ navigation }) => {
                 </View>
                 <Ionicons name="chevron-up" size={24} color={colors.background} />
               </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
+
+        {/* Subscription Banner */}
+        {isAdmin && subscription && (
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Subscription')}
+            activeOpacity={0.85}
+            style={{ marginBottom: 16 }}
+          >
+            <LinearGradient
+              colors={isPremium ? ['#8B5CF6', '#6D28D9'] : [colors.primary, colors.primaryDark]}
+              style={{ borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center' }}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            >
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                <Ionicons name={isPremium ? 'diamond' : 'star-outline'} size={20} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>
+                  {isPremium ? `Plan ${subscription.planLabel || 'Premium'}` : 'Passer au Premium'}
+                </Text>
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 2 }}>
+                  {isPremium
+                    ? (subscription.daysLeft !== null ? `${subscription.daysLeft}j restants · ${subscription.maxProjects} business` : 'Abonnement actif')
+                    : 'Débloquez toutes les fonctionnalités'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.7)" />
             </LinearGradient>
           </TouchableOpacity>
         )}
@@ -1215,6 +1277,19 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.background,
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: colors.primary,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.background,
   },
   headerInfo: {
     flex: 1,

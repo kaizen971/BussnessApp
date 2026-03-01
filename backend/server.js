@@ -14,7 +14,14 @@ app.set('trust proxy', 1);
 
 // Middleware
 app.use(cors());
-app.use(bodyParser.json({ limit: '50mb' })); // Augmenter la limite pour les images base64
+app.use(bodyParser.json({
+  limit: '50mb',
+  verify: (req, res, buf) => {
+    if (req.originalUrl.includes('/stripe/webhook')) {
+      req.rawBody = buf;
+    }
+  }
+}));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
 // MongoDB Connection
@@ -49,8 +56,9 @@ const ProductSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: String,
   unitPrice: { type: Number, required: true },
-  costPrice: { type: Number, required: true }, // Prix de revient
+  costPrice: { type: Number, required: true },
   category: String,
+  image: String,
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
@@ -238,6 +246,10 @@ const checkRole = (...roles) => {
     next();
   };
 };
+
+// Backoffice routes
+const backofficeRoutes = require('./backoffice');
+app.use('/BussnessApp/backoffice', backofficeRoutes);
 
 // Routes de base
 app.get('/BussnessApp', (req, res) => {
@@ -516,6 +528,27 @@ app.post('/BussnessApp/auth/change-password', authenticateToken, async (req, res
   }
 });
 
+// Update profile photo
+app.put('/BussnessApp/auth/profile-photo', authenticateToken, async (req, res) => {
+  try {
+    const { photo } = req.body;
+    if (!photo) {
+      return res.status(400).json({ error: 'Photo is required' });
+    }
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { photo },
+      { new: true }
+    ).select('-password');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Route utilitaire pour assigner un projectId par défaut aux utilisateurs (admin only)
 app.post('/BussnessApp/auth/assign-default-project', authenticateToken, checkRole('admin'), async (req, res) => {
   try {
@@ -674,10 +707,28 @@ app.get('/BussnessApp/projects', authenticateToken, async (req, res) => {
 
 app.post('/BussnessApp/projects', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
-    // Assigner automatiquement l'utilisateur comme propriétaire du projet
+    // Vérifier la limite de projets selon l'abonnement actif
+    const Subscription = mongoose.model('Subscription');
+    const activeSub = await Subscription.findOne({
+      adminId: req.user.id,
+      status: 'active'
+    }).sort({ createdAt: -1 });
+
+    if (activeSub && activeSub.maxProjects) {
+      const currentProjectCount = await Project.countDocuments({ ownerId: req.user.id });
+      if (currentProjectCount >= activeSub.maxProjects) {
+        return res.status(403).json({
+          error: `Limite atteinte : votre abonnement "${activeSub.planName || 'actuel'}" autorise ${activeSub.maxProjects} business maximum. Contactez l'administrateur pour upgrader votre plan.`,
+          code: 'PROJECT_LIMIT_REACHED',
+          maxProjects: activeSub.maxProjects,
+          currentProjects: currentProjectCount
+        });
+      }
+    }
+
     const project = new Project({
       ...req.body,
-      ownerId: req.user.id  // L'utilisateur connecté devient propriétaire
+      ownerId: req.user.id
     });
     await project.save();
 
@@ -3463,12 +3514,94 @@ async function generateRecurringExpenses() {
   }
 }
 
+// ============= SUBSCRIPTION ROUTES (Mobile App) =============
+
+app.get('/BussnessApp/subscription/my', authenticateToken, async (req, res) => {
+  try {
+    const Subscription = mongoose.model('Subscription');
+    const SubscriptionPlan = mongoose.model('SubscriptionPlan');
+
+    const subscription = await Subscription.findOne({
+      adminId: req.user.id,
+      status: { $in: ['active', 'pending_payment'] }
+    }).sort({ createdAt: -1 }).populate('planId');
+
+    if (!subscription) {
+      return res.json({
+        hasSubscription: false,
+        plan: 'free',
+        planLabel: 'Gratuit',
+        features: [],
+        maxProjects: 0,
+        status: 'none'
+      });
+    }
+
+    const isExpired = subscription.endDate && new Date(subscription.endDate) < new Date();
+    if (isExpired && subscription.status === 'active') {
+      subscription.status = 'expired';
+      await subscription.save();
+    }
+
+    const planData = subscription.planId || {};
+    const daysLeft = subscription.endDate
+      ? Math.max(0, Math.ceil((new Date(subscription.endDate) - new Date()) / (1000 * 60 * 60 * 24)))
+      : null;
+
+    res.json({
+      hasSubscription: subscription.status === 'active',
+      subscriptionId: subscription._id,
+      plan: subscription.planName || subscription.plan || 'basic',
+      planLabel: planData.name || subscription.planName || 'Basic',
+      status: subscription.status,
+      amount: subscription.amount,
+      currency: subscription.currency,
+      startDate: subscription.startDate,
+      endDate: subscription.endDate,
+      daysLeft,
+      maxProjects: subscription.maxProjects || planData.maxProjects || 1,
+      features: planData.features || [],
+      isRecurring: planData.isRecurring || false,
+      paymentMethod: subscription.paymentMethod,
+    });
+  } catch (error) {
+    console.error('Error fetching subscription:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/BussnessApp/subscription/plans', async (req, res) => {
+  try {
+    const SubscriptionPlan = mongoose.model('SubscriptionPlan');
+    const plans = await SubscriptionPlan.find({ isActive: true }).sort({ sortOrder: 1, price: 1 });
+
+    const plansWithTier = plans.map(p => ({
+      _id: p._id,
+      name: p.name,
+      description: p.description,
+      price: p.price,
+      currency: p.currency,
+      duration: p.duration,
+      durationType: p.durationType,
+      maxProjects: p.maxProjects,
+      features: p.features,
+      isRecurring: p.isRecurring,
+      tier: p.price === 0 ? 'free' : p.sortOrder <= 1 ? 'basic' : 'premium',
+    }));
+
+    res.json(plansWithTier);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Start server
 app.listen(PORT, async () => {
+  const publicApiUrl = process.env.BACKEND_PUBLIC_URL || `http://localhost:${PORT}/BussnessApp`;
   console.log("Version 1.0.0");
   console.log(`Server is running on port ${PORT}`);
   console.log(`API accessible at http://localhost:${PORT}/BussnessApp`);
-  console.log(`Public URL: http://localhost:3003/BussnessApp/BussnessApp`);
+  console.log(`Public URL: ${publicApiUrl}`);
 
   // Générer les dépenses récurrentes au démarrage
   await generateRecurringExpenses();

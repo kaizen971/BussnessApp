@@ -10,9 +10,11 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../utils/colors';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -38,6 +40,7 @@ export const ProductsScreen = ({ navigation }) => {
     unitPrice: '',
     costPrice: '',
     category: '',
+    image: '',
   });
 
   useEffect(() => {
@@ -127,6 +130,7 @@ export const ProductsScreen = ({ navigation }) => {
       unitPrice: product.unitPrice.toString(),
       costPrice: product.costPrice.toString(),
       category: product.category || '',
+      image: product.image || '',
       projectId: user?.projectId,
     });
     setModalVisible(true);
@@ -155,6 +159,29 @@ export const ProductsScreen = ({ navigation }) => {
     );
   };
 
+  const handlePickProductImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission requise', 'Nous avons besoin d\'accéder à vos photos.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.4,
+        base64: true,
+      });
+      if (!result.canceled && result.assets[0]) {
+        const base64Image = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        setFormData({ ...formData, image: base64Image });
+      }
+    } catch (error) {
+      Alert.alert('Erreur', 'Impossible de sélectionner l\'image.');
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       name: '',
@@ -162,6 +189,7 @@ export const ProductsScreen = ({ navigation }) => {
       unitPrice: '',
       costPrice: '',
       category: '',
+      image: '',
     });
     setEditingProduct(null);
   };
@@ -187,9 +215,16 @@ export const ProductsScreen = ({ navigation }) => {
     return (
       <Card style={styles.productCard}>
         <View style={styles.productHeader}>
+          {item.image ? (
+            <Image source={{ uri: item.image }} style={styles.productImage} />
+          ) : (
+            <View style={styles.productImagePlaceholder}>
+              <Ionicons name="cube" size={28} color={colors.primary} />
+            </View>
+          )}
           <View style={styles.productInfo}>
             <View style={styles.nameRow}>
-              <Text style={styles.productName}>{item.name}</Text>
+              <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
               {hasStock && (
                 <View style={[styles.stockBadge, { backgroundColor: stockColor + '20', borderColor: stockColor }]}>
                   <Ionicons
@@ -350,6 +385,29 @@ export const ProductsScreen = ({ navigation }) => {
               style={styles.modalForm}
               showsVerticalScrollIndicator={false}
             >
+              <TouchableOpacity style={styles.imagePickerContainer} onPress={handlePickProductImage} activeOpacity={0.8}>
+                {formData.image ? (
+                  <View style={styles.imagePickerPreview}>
+                    <Image source={{ uri: formData.image }} style={styles.imagePickerImage} />
+                    <View style={styles.imagePickerOverlay}>
+                      <Ionicons name="camera" size={20} color="#fff" />
+                      <Text style={styles.imagePickerOverlayText}>Changer</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <LinearGradient
+                    colors={[colors.primary + '20', colors.primary + '08']}
+                    style={styles.imagePickerEmpty}
+                  >
+                    <View style={styles.imagePickerIconCircle}>
+                      <Ionicons name="camera-outline" size={28} color={colors.primary} />
+                    </View>
+                    <Text style={styles.imagePickerText}>Ajouter une photo</Text>
+                    <Text style={styles.imagePickerSubtext}>Appuyez pour sélectionner</Text>
+                  </LinearGradient>
+                )}
+              </TouchableOpacity>
+
               <Input
                 placeholder="Nom du produit *"
                 value={formData.name}
@@ -554,8 +612,24 @@ const styles = StyleSheet.create({
   },
   productHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     marginBottom: 15,
+  },
+  productImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    marginRight: 12,
+  },
+  productImagePlaceholder: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    backgroundColor: colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
   },
   productInfo: {
     flex: 1,
@@ -879,5 +953,66 @@ const styles = StyleSheet.create({
   smallButtonTextSave: {
     color: '#000',
     fontWeight: 'bold',
+  },
+  imagePickerContainer: {
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  imagePickerPreview: {
+    width: 120,
+    height: 120,
+    borderRadius: 16,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  imagePickerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  imagePickerOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  imagePickerOverlayText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  imagePickerEmpty: {
+    width: '100%',
+    height: 120,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.primary + '30',
+    borderStyle: 'dashed',
+  },
+  imagePickerIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  imagePickerText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  imagePickerSubtext: {
+    fontSize: 12,
+    color: colors.textLight,
+    marginTop: 2,
   },
 });
