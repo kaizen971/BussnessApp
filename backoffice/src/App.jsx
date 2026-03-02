@@ -102,7 +102,7 @@ function AccessGateWrapper({ children }) {
 export default function App() {
   return (
     <ErrorBoundary>
-      <BrowserRouter>
+      <BrowserRouter basename="/admin">
         <Toaster
           position="top-right"
           gutter={8}
