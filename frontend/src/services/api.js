@@ -53,7 +53,17 @@ export const authAPI = {
   register: (userData) => api.post('/auth/register', userData),
   getCurrentUser: () => api.get('/auth/me'),
   changePassword: (oldPassword, newPassword) => api.post('/auth/change-password', { oldPassword, newPassword }),
-  updateProfilePhoto: (photo) => api.put('/auth/profile-photo', { photo }),
+  updateProfilePhoto: (imageUri) => {
+    const formData = new FormData();
+    formData.append('profilePhoto', {
+      uri: imageUri,
+      type: 'image/jpeg',
+      name: 'profile.jpg',
+    });
+    return api.put('/auth/profile-photo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 // Projects API
@@ -130,8 +140,40 @@ export const feedbackAPI = {
 // Products API
 export const productsAPI = {
   getAll: (projectId) => api.get('/products', { params: { projectId } }),
-  create: (data) => api.post('/products', data),
-  update: (id, data) => api.put(`/products/${id}`, data),
+  create: (data, imageUri) => {
+    if (imageUri) {
+      const formData = new FormData();
+      Object.keys(data).forEach(key => {
+        if (key !== 'image') formData.append(key, data[key]);
+      });
+      formData.append('productImage', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: 'product.jpg',
+      });
+      return api.post('/products', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    }
+    return api.post('/products', data);
+  },
+  update: (id, data, imageUri) => {
+    if (imageUri) {
+      const formData = new FormData();
+      Object.keys(data).forEach(key => {
+        if (key !== 'image') formData.append(key, data[key]);
+      });
+      formData.append('productImage', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: 'product.jpg',
+      });
+      return api.put(`/products/${id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+    }
+    return api.put(`/products/${id}`, data);
+  },
   delete: (id) => api.delete(`/products/${id}`),
 };
 

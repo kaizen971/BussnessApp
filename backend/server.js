@@ -6,6 +6,11 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
+const { S3Client, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const multer = require('multer');
+const multerS3 = require('multer-s3');
+const path = require('path');
 
 const app = express();
 const PORT = 3003;
@@ -39,6 +44,85 @@ const connectDB = async () => {
 };
 
 connectDB();
+
+// ============= AWS S3 CONFIGURATION =============
+
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
+
+const upload = multer({
+  storage: multerS3({
+    s3: s3Client,
+    bucket: process.env.S3_BUCKET_NAME,
+    contentType: multerS3.AUTO_CONTENT_TYPE,
+    key: function (req, file, cb) {
+      const folder = file.fieldname === 'profilePhoto' ? 'profiles' : 'products';
+      const uniqueName = `${folder}/${Date.now()}-${Math.random().toString(36).substring(7)}${path.extname(file.originalname || '.jpg')}`;
+      cb(null, uniqueName);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 Mo max
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Format non supporté. Utilisez JPEG, PNG ou WebP.'));
+    }
+  },
+});
+
+// Helper pour supprimer une image S3
+const deleteS3Image = async (imageUrl) => {
+  if (!imageUrl || !imageUrl.includes(process.env.S3_BUCKET_NAME)) return;
+  try {
+    const oldKey = imageUrl.split('.com/')[1];
+    if (oldKey) {
+      await s3Client.send(new DeleteObjectCommand({
+        Bucket: process.env.S3_BUCKET_NAME,
+        Key: decodeURIComponent(oldKey),
+      }));
+    }
+  } catch (e) {
+    console.warn('Impossible de supprimer l\'ancienne image S3:', e.message);
+  }
+};
+
+// ============= EMAIL SERVICE =============
+
+const createTransporter = () => {
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT) || 587,
+    secure: false,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    }
+  });
+};
+
+const sendEmail = async (to, subject, html) => {
+  try {
+    const transporter = createTransporter();
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || '"BussnessApp" <noreply@bussnessapp.com>',
+      to,
+      subject,
+      html
+    });
+    console.log(`Email sent to ${to}: ${subject}`);
+    return true;
+  } catch (error) {
+    console.error('Email sending error:', error.message);
+    return false;
+  }
+};
 
 // Schemas
 const ProjectSchema = new mongoose.Schema({
@@ -262,9 +346,8 @@ app.get('/BussnessApp', (req, res) => {
 // Register
 app.post('/BussnessApp/auth/register', async (req, res) => {
   try {
-    const { username, email, password, fullName, role, projectId } = req.body;
+    const { username, email, password, fullName, role, projectId, selectedPlanId } = req.body;
 
-    // Validation détaillée des champs requis
     if (!username || username.trim() === '') {
       return res.status(400).json({
         error: 'Nom d\'utilisateur requis',
@@ -281,7 +364,6 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
       });
     }
 
-    // Validation format email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({
@@ -315,6 +397,14 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
       });
     }
 
+    if (!selectedPlanId) {
+      return res.status(400).json({
+        error: 'Veuillez choisir un plan d\'accompagnement',
+        field: 'selectedPlanId',
+        code: 'MISSING_PLAN'
+      });
+    }
+
     // Check if user exists
     const existingUser = await User.findOne({ $or: [{ username }, { email }] });
     if (existingUser) {
@@ -334,27 +424,33 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
       }
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Récupérer le plan choisi
+    const SubscriptionPlan = mongoose.model('SubscriptionPlan');
+    const selectedPlan = await SubscriptionPlan.findById(selectedPlanId);
+    if (!selectedPlan) {
+      return res.status(400).json({
+        error: 'Plan d\'accompagnement invalide',
+        field: 'selectedPlanId',
+        code: 'INVALID_PLAN'
+      });
+    }
 
-    // IMPORTANT: Lors de l'inscription, l'utilisateur devient automatiquement "responsable"
-    // et non "cashier". Chaque responsable peut gérer plusieurs projets de business.
+    const hashedPassword = await bcrypt.hash(password, 10);
     const userRole = role || 'admin';
 
-    // Create user
     const user = new User({
       username: username.trim(),
       email: email.trim().toLowerCase(),
       password: hashedPassword,
       fullName: fullName.trim(),
       role: userRole,
+      isActive: false,
       projectId,
-      projectIds: [] // Initialisé vide, sera rempli après création du projet
+      projectIds: []
     });
 
     await user.save();
 
-    // Créer automatiquement un projet par défaut pour le nouveau responsable
     const defaultProject = new Project({
       name: `Business de ${fullName.trim()}`,
       description: 'Mon premier projet sur BussnessApp',
@@ -363,28 +459,100 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
     });
     await defaultProject.save();
 
-    // Assigner ce projet au nouvel utilisateur (projectId = projet actif, projectIds = liste de tous ses projets)
     user.projectId = defaultProject._id;
     user.projectIds = [defaultProject._id];
     await user.save();
 
-    console.log(`Nouveau responsable créé: ${user.username} avec projet: ${defaultProject.name}`);
+    console.log(`Nouvelle inscription: ${user.username} - Plan choisi: ${selectedPlan.name}`);
 
-    // Generate token
-    const token = jwt.sign(
-      { id: user._id, username: user.username, role: user.role, projectId: user.projectId },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    // Envoyer un email de notification à tous les super admins
+    const DURATION_LABELS = { days: 'jour(s)', months: 'mois', years: 'an(s)', lifetime: 'À vie' };
+    const durationLabel = selectedPlan.durationType === 'lifetime'
+      ? 'À vie'
+      : `${selectedPlan.duration} ${DURATION_LABELS[selectedPlan.durationType] || selectedPlan.durationType}`;
 
-    const userResponse = user.toObject();
-    delete userResponse.password;
+    try {
+      const SuperAdmin = mongoose.model('SuperAdmin');
+      const superAdmins = await SuperAdmin.find({ isActive: true });
 
-    res.status(201).json({ user: userResponse, token });
+      const emailHtml = `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
+          <div style="background: linear-gradient(135deg, #1A1A1A, #2D2D2D); border-radius: 12px; padding: 30px; margin-bottom: 20px;">
+            <h1 style="color: #D4AF37; margin: 0; font-size: 24px;">Nouvelle inscription</h1>
+            <p style="color: #999; margin: 8px 0 0;">Un nouvel utilisateur s'est inscrit sur BussnessApp</p>
+          </div>
+          <div style="background: white; border-radius: 12px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+            <h2 style="color: #1a1a2e; margin-top: 0; font-size: 18px;">Informations de l'utilisateur</h2>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 10px 0; color: #888; width: 140px;">Nom complet</td>
+                <td style="padding: 10px 0; color: #333; font-weight: 600;">${fullName.trim()}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; color: #888;">Nom d'utilisateur</td>
+                <td style="padding: 10px 0; color: #333; font-weight: 600;">${username.trim()}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; color: #888;">Email</td>
+                <td style="padding: 10px 0; color: #333; font-weight: 600;">
+                  <a href="mailto:${email.trim()}" style="color: #6C63FF; text-decoration: none;">${email.trim()}</a>
+                </td>
+              </tr>
+            </table>
+
+            <div style="margin-top: 20px; padding: 20px; background: linear-gradient(135deg, #f0f0ff, #e8e6ff); border-radius: 10px; border-left: 4px solid #6C63FF;">
+              <h3 style="margin: 0 0 12px; color: #1a1a2e; font-size: 16px;">Plan choisi : ${selectedPlan.name}</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 6px 0; color: #666;">Prix</td>
+                  <td style="padding: 6px 0; color: #333; font-weight: 600;">${selectedPlan.price}€ ${selectedPlan.isRecurring ? '(récurrent)' : ''}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #666;">Durée</td>
+                  <td style="padding: 6px 0; color: #333; font-weight: 600;">${durationLabel}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: #666;">Business max</td>
+                  <td style="padding: 6px 0; color: #333; font-weight: 600;">${selectedPlan.maxProjects}</td>
+                </tr>
+              </table>
+              ${selectedPlan.features && selectedPlan.features.length > 0 ? `
+                <div style="margin-top: 12px;">
+                  <p style="color: #666; margin: 0 0 8px; font-size: 13px;">Fonctionnalités :</p>
+                  ${selectedPlan.features.map(f => `<span style="display: inline-block; background: white; color: #6C63FF; padding: 4px 10px; border-radius: 20px; font-size: 12px; margin: 2px 4px 2px 0;">✓ ${f}</span>`).join('')}
+                </div>
+              ` : ''}
+            </div>
+
+            <div style="margin-top: 24px; padding: 16px; background: #fff8e1; border-radius: 8px; border-left: 4px solid #D4AF37;">
+              <p style="margin: 0; color: #856404; font-size: 14px;">
+                <strong>Action requise :</strong> Veuillez contacter cet utilisateur pour finaliser son inscription et activer son compte.
+              </p>
+            </div>
+          </div>
+          <p style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
+            BussnessApp - ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </p>
+        </div>
+      `;
+
+      for (const admin of superAdmins) {
+        await sendEmail(admin.email, `Nouvelle inscription - ${fullName.trim()} (${selectedPlan.name})`, emailHtml);
+      }
+
+      console.log(`Email de notification envoyé à ${superAdmins.length} super admin(s)`);
+    } catch (emailError) {
+      console.error('Erreur envoi email aux super admins:', emailError.message);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Inscription réussie ! Un administrateur vous contactera prochainement pour finaliser votre accompagnement.',
+      pendingActivation: true
+    });
   } catch (error) {
     console.error('Registration error:', error);
 
-    // Gestion des erreurs MongoDB spécifiques
     if (error.name === 'ValidationError') {
       const field = Object.keys(error.errors)[0];
       return res.status(400).json({
@@ -403,7 +571,6 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
       });
     }
 
-    // Erreur générique avec détails
     res.status(500).json({
       error: 'Erreur lors de l\'inscription. Veuillez réessayer.',
       details: error.message,
@@ -530,15 +697,21 @@ app.post('/BussnessApp/auth/change-password', authenticateToken, async (req, res
 });
 
 // Update profile photo
-app.put('/BussnessApp/auth/profile-photo', authenticateToken, async (req, res) => {
+app.put('/BussnessApp/auth/profile-photo', authenticateToken, upload.single('profilePhoto'), async (req, res) => {
   try {
-    const { photo } = req.body;
-    if (!photo) {
-      return res.status(400).json({ error: 'Photo is required' });
+    if (!req.file) {
+      return res.status(400).json({ error: 'Aucune image envoyée' });
     }
+
+    const photoUrl = req.file.location; // URL publique S3
+
+    // Supprimer l'ancienne photo si elle existe sur S3
+    const currentUser = await User.findById(req.user.id);
+    await deleteS3Image(currentUser?.photo);
+
     const user = await User.findByIdAndUpdate(
       req.user.id,
-      { photo },
+      { photo: photoUrl },
       { new: true }
     ).select('-password');
     if (!user) {
@@ -948,9 +1121,13 @@ app.get('/BussnessApp/products', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/BussnessApp/products', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+app.post('/BussnessApp/products', authenticateToken, checkRole('admin', 'manager', 'responsable'), upload.single('productImage'), async (req, res) => {
   try {
-    const product = new Product(req.body);
+    const productData = { ...req.body };
+    if (req.file) {
+      productData.image = req.file.location;
+    }
+    const product = new Product(productData);
     await product.save();
     res.status(201).json(product);
   } catch (error) {
@@ -958,13 +1135,16 @@ app.post('/BussnessApp/products', authenticateToken, checkRole('admin', 'manager
   }
 });
 
-app.put('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+app.put('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), upload.single('productImage'), async (req, res) => {
   try {
-    const product = await Product.findByIdAndUpdate(
-      req.params.id,
-      { ...req.body, updatedAt: Date.now() },
-      { new: true }
-    );
+    const updateData = { ...req.body, updatedAt: Date.now() };
+    if (req.file) {
+      // Supprimer l'ancienne image S3
+      const oldProduct = await Product.findById(req.params.id);
+      await deleteS3Image(oldProduct?.image);
+      updateData.image = req.file.location;
+    }
+    const product = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true });
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
@@ -980,6 +1160,8 @@ app.delete('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'm
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
+    // Supprimer l'image S3 du produit
+    await deleteS3Image(product.image);
     res.json({ message: 'Product deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -992,7 +1174,7 @@ app.get('/BussnessApp/sales', authenticateToken, async (req, res) => {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
     const sales = await Sale.find(filter)
-      .populate('productId', 'name unitPrice')
+      .populate('productId', 'name unitPrice image')
       .populate('customerId', 'name phone email')
       .populate('employeeId', 'username fullName')
       .sort({ date: -1 });
@@ -1142,7 +1324,7 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
     }
 
     const populatedSale = await Sale.findById(sale._id)
-      .populate('productId', 'name unitPrice')
+      .populate('productId', 'name unitPrice image')
       .populate('customerId', 'name phone')
       .populate('employeeId', 'username fullName');
 
@@ -1168,7 +1350,7 @@ app.put('/BussnessApp/sales/:id', authenticateToken, checkRole('admin', 'manager
     await sale.save();
 
     const updatedSale = await Sale.findById(sale._id)
-      .populate('productId', 'name unitPrice')
+      .populate('productId', 'name unitPrice image')
       .populate('customerId', 'name phone email')
       .populate('employeeId', 'username fullName');
 
@@ -1322,7 +1504,7 @@ app.post('/BussnessApp/sales/:id/refund', authenticateToken, checkRole('admin', 
     }
 
     const populatedRefund = await Sale.findById(refundSale._id)
-      .populate('productId', 'name unitPrice')
+      .populate('productId', 'name unitPrice image')
       .populate('customerId', 'name phone')
       .populate('employeeId', 'username fullName');
 
@@ -1376,6 +1558,36 @@ app.post('/BussnessApp/expenses', authenticateToken, async (req, res) => {
     res.status(201).json(expense);
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+// Modifier une dépense
+app.put('/BussnessApp/expenses/:id', authenticateToken, async (req, res) => {
+  try {
+    const expense = await Expense.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    );
+    if (!expense) {
+      return res.status(404).json({ error: 'Dépense non trouvée' });
+    }
+    res.json(expense);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Supprimer une dépense
+app.delete('/BussnessApp/expenses/:id', authenticateToken, async (req, res) => {
+  try {
+    const expense = await Expense.findByIdAndDelete(req.params.id);
+    if (!expense) {
+      return res.status(404).json({ error: 'Dépense non trouvée' });
+    }
+    res.json({ message: 'Dépense supprimée avec succès' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

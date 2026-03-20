@@ -90,13 +90,22 @@ export const AuthProvider = ({ children }) => {
   const register = async (userData) => {
     try {
       const response = await authAPI.register(userData);
-      const { user: newUser, token: userToken } = response.data;
+      const data = response.data;
 
-      await AsyncStorage.setItem('userToken', userToken);
-      await AsyncStorage.setItem('userData', JSON.stringify(newUser));
+      if (data.pendingActivation) {
+        return {
+          success: true,
+          pendingActivation: true,
+          message: data.message
+        };
+      }
 
-      setToken(userToken);
-      setUser(newUser);
+      if (data.token) {
+        await AsyncStorage.setItem('userToken', data.token);
+        await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+        setToken(data.token);
+        setUser(data.user);
+      }
 
       return { success: true };
     } catch (error) {

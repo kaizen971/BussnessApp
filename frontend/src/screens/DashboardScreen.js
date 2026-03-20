@@ -145,12 +145,9 @@ export const DashboardScreen = ({ navigation }) => {
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.5,
-        base64: true,
       });
       if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        const base64Image = `data:image/jpeg;base64,${asset.base64}`;
-        const response = await authAPI.updateProfilePhoto(base64Image);
+        const response = await authAPI.updateProfilePhoto(result.assets[0].uri);
         if (response.data) {
           Alert.alert('Succès', 'Photo de profil mise à jour !');
           onRefresh();

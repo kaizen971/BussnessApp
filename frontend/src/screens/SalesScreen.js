@@ -359,13 +359,20 @@ export const SalesScreen = () => {
     return (
       <Card style={[styles.saleItem, isRefund && styles.saleItemRefund]}>
         <View style={styles.saleHeader}>
-          <View style={[styles.saleIcon, isRefund && styles.saleIconRefund]}>
-            <Ionicons
-              name={isRefund ? "arrow-undo-outline" : "cash-outline"}
-              size={24}
-              color={isRefund ? colors.danger : colors.primary}
+          {item.productId?.image ? (
+            <Image
+              source={{ uri: item.productId.image }}
+              style={[styles.saleProductImage, isRefund && styles.saleProductImageRefund]}
             />
-          </View>
+          ) : (
+            <View style={[styles.saleIcon, isRefund && styles.saleIconRefund]}>
+              <Ionicons
+                name={isRefund ? "arrow-undo-outline" : "cube-outline"}
+                size={24}
+                color={isRefund ? colors.danger : colors.primary}
+              />
+            </View>
+          )}
           <View style={styles.saleInfo}>
             <Text style={[styles.saleAmount, isRefund && styles.saleAmountRefund]}>
               {isRefund ? '' : '+'}{formatPrice(item.amount || 0)}
@@ -1390,6 +1397,18 @@ const styles = StyleSheet.create({
   saleHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  saleProductImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  saleProductImageRefund: {
+    opacity: 0.5,
+    borderColor: colors.danger + '30',
   },
   saleIcon: {
     width: 48,

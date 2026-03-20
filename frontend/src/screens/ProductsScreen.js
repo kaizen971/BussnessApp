@@ -19,7 +19,7 @@ import { colors } from '../utils/colors';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
-import api from '../services/api';
+import api, { productsAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 
@@ -34,6 +34,7 @@ export const ProductsScreen = ({ navigation }) => {
   const [categories, setCategories] = useState([]);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [selectedImageUri, setSelectedImageUri] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -105,10 +106,13 @@ export const ProductsScreen = ({ navigation }) => {
         projectId: user?.projectId,
       };
 
+      // Déterminer si c'est une nouvelle image locale (URI) à uploader
+      const isNewImage = selectedImageUri ? selectedImageUri : null;
+
       if (editingProduct) {
-        await api.put(`/products/${editingProduct._id}`, productData, { params: { projectId: user?.projectId } });
+        await productsAPI.update(editingProduct._id, productData, isNewImage);
       } else {
-        await api.post('/products', productData, { params: { projectId: user?.projectId } });
+        await productsAPI.create(productData, isNewImage);
       }
 
       setModalVisible(false);
@@ -171,11 +175,10 @@ export const ProductsScreen = ({ navigation }) => {
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.4,
-        base64: true,
       });
       if (!result.canceled && result.assets[0]) {
-        const base64Image = `data:image/jpeg;base64,${result.assets[0].base64}`;
-        setFormData({ ...formData, image: base64Image });
+        setSelectedImageUri(result.assets[0].uri);
+        setFormData({ ...formData, image: result.assets[0].uri });
       }
     } catch (error) {
       Alert.alert('Erreur', 'Impossible de sélectionner l\'image.');
@@ -191,6 +194,7 @@ export const ProductsScreen = ({ navigation }) => {
       category: '',
       image: '',
     });
+    setSelectedImageUri(null);
     setEditingProduct(null);
   };
 
