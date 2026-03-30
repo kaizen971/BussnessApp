@@ -92,7 +92,7 @@ export const ProductsScreen = ({ navigation }) => {
   };
 
   const handleSave = async () => {
-    if (!formData.name || !formData.unitPrice || !formData.costPrice) {
+    if (!formData.name || formData.unitPrice === '' || formData.unitPrice === undefined || formData.costPrice === '' || formData.costPrice === undefined) {
       Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
       return;
     }

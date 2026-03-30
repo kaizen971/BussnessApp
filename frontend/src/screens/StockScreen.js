@@ -72,7 +72,7 @@ export const StockScreen = () => {
   };
 
   const handleSaveStock = async () => {
-    if (!formData.productId || !formData.quantity || !formData.unitPrice) {
+    if (!formData.productId || !formData.quantity || formData.unitPrice === '' || formData.unitPrice === undefined) {
       Alert.alert('Erreur', 'Veuillez sélectionner un produit et remplir tous les champs obligatoires');
       return;
     }

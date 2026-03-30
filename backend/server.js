@@ -1191,7 +1191,7 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
     console.log(req.body)
 
     // Validation des champs requis
-    if (!productId || !quantity || !unitPrice) {
+    if (!productId || !quantity || unitPrice === undefined || unitPrice === null || unitPrice === '') {
       return res.status(400).json({
         error: 'Produit, quantité et prix unitaire sont requis'
       });
