@@ -11,11 +11,12 @@ import {
   Animated,
   Dimensions,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { subscriptionAPI } from '../services/api';
+import { subscriptionAPI, legalAPI } from '../services/api';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
@@ -62,6 +63,10 @@ export const RegisterScreen = ({ navigation }) => {
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [loading, setLoading] = useState(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [cguAccepted, setCguAccepted] = useState(false);
+  const [cguModalVisible, setCguModalVisible] = useState(false);
+  const [cguData, setCguData] = useState(null);
+  const [loadingCgu, setLoadingCgu] = useState(false);
   const { register } = useAuth();
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -118,8 +123,27 @@ export const RegisterScreen = ({ navigation }) => {
     return true;
   };
 
+  const openCGU = async () => {
+    setCguModalVisible(true);
+    if (cguData) return;
+    setLoadingCgu(true);
+    try {
+      const response = await legalAPI.getCGU();
+      setCguData(response.data);
+    } catch {
+      Alert.alert('Erreur', 'Impossible de charger les CGU. Veuillez réessayer.');
+      setCguModalVisible(false);
+    } finally {
+      setLoadingCgu(false);
+    }
+  };
+
   const goToStep2 = () => {
     if (!validateStep1()) return;
+    if (!cguAccepted) {
+      Alert.alert('CGU requises', 'Vous devez accepter les Conditions Générales d\'Utilisation pour continuer.');
+      return;
+    }
     fetchPlans();
     animateTransition(2);
   };
@@ -210,6 +234,22 @@ export const RegisterScreen = ({ navigation }) => {
         icon="lock-closed-outline"
         secureTextEntry
       />
+      <TouchableOpacity
+        style={styles.cguRow}
+        onPress={() => setCguAccepted(!cguAccepted)}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.cguCheckbox, cguAccepted && styles.cguCheckboxChecked]}>
+          {cguAccepted && <Ionicons name="checkmark" size={14} color="#000" />}
+        </View>
+        <Text style={styles.cguText}>
+          J'accepte les{' '}
+          <Text style={styles.cguLink} onPress={openCGU}>
+            Conditions Générales d'Utilisation
+          </Text>
+        </Text>
+      </TouchableOpacity>
+
       <Button
         title="Suivant - Choisir un plan"
         onPress={goToStep2}
@@ -429,6 +469,79 @@ export const RegisterScreen = ({ navigation }) => {
           </Animated.View>
         </ScrollView>
       </LinearGradient>
+      <Modal visible={cguModalVisible} animationType="slide" transparent>
+        <View style={styles.cguModalOverlay}>
+          <View style={styles.cguModalContent}>
+            <View style={styles.cguModalHeader}>
+              <Text style={styles.cguModalTitle}>
+                {cguData?.title || "Conditions Générales d'Utilisation"}
+              </Text>
+              <TouchableOpacity onPress={() => setCguModalVisible(false)} style={styles.cguModalClose}>
+                <Ionicons name="close-circle" size={28} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {loadingCgu ? (
+              <View style={styles.cguLoading}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.cguLoadingText}>Chargement des CGU...</Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={styles.cguScroll}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.cguScrollContent}
+              >
+                {cguData && (
+                  <>
+                    <Text style={styles.cguAppName}>{cguData.appName}</Text>
+                    {cguData.sections.map((section) => (
+                      <View key={section.id} style={styles.cguSection}>
+                        <Text style={styles.cguSectionTitle}>
+                          {section.id}. {section.title}
+                        </Text>
+                        <Text style={styles.cguSectionContent}>{section.content}</Text>
+                      </View>
+                    ))}
+                    {cguData.updatedAt && (
+                      <Text style={styles.cguUpdatedAt}>
+                        Dernière mise à jour : {cguData.updatedAt}
+                      </Text>
+                    )}
+                  </>
+                )}
+              </ScrollView>
+            )}
+
+            <View style={styles.cguModalActions}>
+              <TouchableOpacity
+                style={styles.cguDeclineBtn}
+                onPress={() => {
+                  setCguAccepted(false);
+                  setCguModalVisible(false);
+                }}
+              >
+                <Text style={styles.cguDeclineBtnText}>Refuser</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cguAcceptBtn}
+                onPress={() => {
+                  setCguAccepted(true);
+                  setCguModalVisible(false);
+                }}
+              >
+                <LinearGradient
+                  colors={[colors.primary, colors.primaryDark]}
+                  style={styles.cguAcceptBtnGradient}
+                >
+                  <Ionicons name="checkmark-circle" size={18} color="#000" />
+                  <Text style={styles.cguAcceptBtnText}>Accepter</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -764,5 +877,157 @@ const styles = StyleSheet.create({
   },
   successButton: {
     width: '100%',
+  },
+
+  // CGU checkbox
+  cguRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 4,
+    paddingHorizontal: 4,
+  },
+  cguCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    flexShrink: 0,
+  },
+  cguCheckboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  cguText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  cguLink: {
+    color: colors.primary,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+
+  // CGU Modal
+  cguModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+  cguModalContent: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '88%',
+    borderTopWidth: 2,
+    borderColor: colors.primary + '40',
+  },
+  cguModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  cguModalTitle: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  cguModalClose: {
+    padding: 4,
+  },
+  cguLoading: {
+    padding: 60,
+    alignItems: 'center',
+  },
+  cguLoadingText: {
+    marginTop: 12,
+    color: colors.textSecondary,
+    fontSize: 14,
+  },
+  cguScroll: {
+    flex: 1,
+  },
+  cguScrollContent: {
+    padding: 20,
+    paddingBottom: 10,
+  },
+  cguAppName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primary,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  cguSection: {
+    marginBottom: 20,
+  },
+  cguSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 6,
+  },
+  cguSectionContent: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  cguUpdatedAt: {
+    fontSize: 12,
+    color: colors.textLight,
+    textAlign: 'center',
+    marginTop: 10,
+    marginBottom: 20,
+    fontStyle: 'italic',
+  },
+  cguModalActions: {
+    flexDirection: 'row',
+    padding: 16,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  cguDeclineBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cguDeclineBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  cguAcceptBtn: {
+    flex: 2,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  cguAcceptBtnGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 8,
+    borderRadius: 12,
+  },
+  cguAcceptBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#000',
   },
 });

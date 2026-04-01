@@ -13,6 +13,7 @@ import {
   Dimensions,
   TextInput,
   Share,
+  Linking,
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -310,37 +311,72 @@ export const SalesScreen = () => {
     );
   };
 
-  const handleShareSale = async (sale) => {
-    try {
-      const productName = sale.productId?.name || 'Produit';
-      const customerName = sale.customerId?.name || 'Client';
-      const sellerName = sale.employeeId?.fullName || sale.employeeId?.username || 'Vendeur';
-      const amount = formatPrice(sale.amount || 0);
-      const date = new Date(sale.date).toLocaleDateString('fr-FR', {
-        day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
-      });
-      const qty = sale.quantity || 1;
+  const buildReceiptMessage = (sale) => {
+    const productName = sale.productId?.name || 'Produit';
+    const customerName = sale.customerId?.name || 'Client inconnu';
+    const sellerName = sale.employeeId?.fullName || sale.employeeId?.username || 'Vendeur';
+    const amount = formatPrice(sale.amount || 0);
+    const unitPrice = formatPrice(sale.unitPrice || 0);
+    const date = new Date(sale.date).toLocaleDateString('fr-FR', {
+      day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+    const qty = sale.quantity || 1;
 
-      const message =
-        `🧾 *Reçu de vente*\n\n` +
-        `📦 Produit : ${productName}\n` +
-        `📊 Quantité : ${qty}\n` +
-        `💰 Montant : ${amount}\n` +
-        (sale.discount > 0 ? `🏷️ Remise : ${formatPrice(sale.discount)}\n` : '') +
-        `👤 Client : ${customerName}\n` +
-        `🏪 Vendeur : ${sellerName}\n` +
-        `📅 Date : ${date}\n\n` +
-        `Merci pour votre achat ! 🙏`;
+    return (
+      `🧾 *REÇU DE VENTE*\n` +
+      `━━━━━━━━━━━━━━━━━━\n\n` +
+      `📦 *Produit :* ${productName}\n` +
+      `📊 *Quantité :* ${qty}\n` +
+      `💵 *Prix unitaire :* ${unitPrice}\n` +
+      (sale.discount > 0 ? `🏷️ *Remise :* -${formatPrice(sale.discount)}\n` : '') +
+      `💰 *Total :* ${amount}\n\n` +
+      `👤 *Client :* ${customerName}\n` +
+      `🏪 *Vendeur :* ${sellerName}\n` +
+      `📅 *Date :* ${date}\n\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `Merci pour votre achat ! 🙏`
+    );
+  };
 
-      await Share.share({
-        message,
-        title: `Reçu - ${productName}`,
-      });
-    } catch (error) {
-      if (error.message !== 'User did not share') {
-        Alert.alert('Erreur', 'Impossible de partager la vente.');
-      }
-    }
+  const handleShareSale = (sale) => {
+    const message = buildReceiptMessage(sale);
+    const productName = sale.productId?.name || 'Produit';
+
+    Alert.alert(
+      'Partager le reçu',
+      'Choisissez comment envoyer ce reçu',
+      [
+        {
+          text: '💬 WhatsApp',
+          onPress: async () => {
+            const url = `whatsapp://send?text=${encodeURIComponent(message)}`;
+            const canOpen = await Linking.canOpenURL(url).catch(() => false);
+            if (canOpen) {
+              await Linking.openURL(url);
+            } else {
+              Alert.alert(
+                'WhatsApp non disponible',
+                'WhatsApp n\'est pas installé. Le reçu va s\'ouvrir dans d\'autres applications.',
+                [{ text: 'OK', onPress: () => Share.share({ message, title: `Reçu - ${productName}` }) }]
+              );
+            }
+          },
+        },
+        {
+          text: '📤 Autres applications',
+          onPress: async () => {
+            try {
+              await Share.share({ message, title: `Reçu - ${productName}` });
+            } catch (error) {
+              if (error.message !== 'User did not share') {
+                Alert.alert('Erreur', 'Impossible de partager le reçu.');
+              }
+            }
+          },
+        },
+        { text: 'Annuler', style: 'cancel' },
+      ]
+    );
   };
 
   // Déterminer si l'utilisateur est admin/manager

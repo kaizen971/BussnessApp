@@ -6,17 +6,28 @@ const API_BASE_URL = 'https://businessapp.installpostiz.com/bussnessapp';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 15000, // 15s max — évite d'attendre indéfiniment si le serveur est lent
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
+// Cache en mémoire pour éviter de lire AsyncStorage à chaque requête
+let cachedToken = null;
+
+export const setCachedToken = (token) => { cachedToken = token; };
+export const clearCachedToken = () => { cachedToken = null; };
+
+// Préchargement unique au démarrage — partagé avec l'intercepteur
+const tokenPreload = AsyncStorage.getItem('userToken').then(t => { cachedToken = t; });
+
 // Add token to requests
 api.interceptors.request.use(
   async (config) => {
-    const token = await AsyncStorage.getItem('userToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    // Attend la fin du préchargement si pas encore terminé (évite double lecture)
+    if (!cachedToken) await tokenPreload;
+    if (cachedToken) {
+      config.headers.Authorization = `Bearer ${cachedToken}`;
     }
     return config;
   },
@@ -204,6 +215,11 @@ export const exportAPI = {
 export const subscriptionAPI = {
   getMySubscription: () => api.get('/subscription/my'),
   getPlans: () => api.get('/subscription/plans'),
+};
+
+// Legal API (pas besoin d'authentification)
+export const legalAPI = {
+  getCGU: () => api.get('/legal/cgu'),
 };
 
 export default api;

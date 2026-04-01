@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authAPI } from '../services/api';
+import { authAPI, setCachedToken, clearCachedToken } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -25,11 +25,14 @@ export const AuthProvider = ({ children }) => {
 
   const loadStoredAuth = async () => {
     try {
-      const storedToken = await AsyncStorage.getItem('userToken');
-      const storedUser = await AsyncStorage.getItem('userData');
-      const storedProjectId = await AsyncStorage.getItem('selectedProjectId');
+      const [storedToken, storedUser, storedProjectId] = await Promise.all([
+        AsyncStorage.getItem('userToken'),
+        AsyncStorage.getItem('userData'),
+        AsyncStorage.getItem('selectedProjectId'),
+      ]);
 
       if (storedToken && storedUser) {
+        setCachedToken(storedToken);
         setToken(storedToken);
         const userData = JSON.parse(storedUser);
         setUser(userData);
@@ -63,9 +66,12 @@ export const AuthProvider = ({ children }) => {
         hasProjectId: !!userData.projectId
       });
 
-      await AsyncStorage.setItem('userToken', userToken);
-      await AsyncStorage.setItem('userData', JSON.stringify(userData));
+      await Promise.all([
+        AsyncStorage.setItem('userToken', userToken),
+        AsyncStorage.setItem('userData', JSON.stringify(userData)),
+      ]);
 
+      setCachedToken(userToken);
       setToken(userToken);
       setUser(userData);
 
@@ -130,6 +136,7 @@ export const AuthProvider = ({ children }) => {
       await AsyncStorage.removeItem('userToken');
       await AsyncStorage.removeItem('userData');
       await AsyncStorage.removeItem('selectedProjectId');
+      clearCachedToken();
       setToken(null);
       setUser(null);
       setSelectedProjectId(null);

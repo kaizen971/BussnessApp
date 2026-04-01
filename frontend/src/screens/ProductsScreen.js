@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -35,6 +35,7 @@ export const ProductsScreen = ({ navigation }) => {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [selectedImageUri, setSelectedImageUri] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -206,6 +207,17 @@ export const ProductsScreen = ({ navigation }) => {
 
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'responsable';
 
+  const filteredProducts = useMemo(() => {
+    if (!searchQuery.trim()) return products;
+    const q = searchQuery.toLowerCase();
+    return products.filter(
+      (p) =>
+        p.name?.toLowerCase().includes(q) ||
+        p.category?.toLowerCase().includes(q) ||
+        p.description?.toLowerCase().includes(q)
+    );
+  }, [products, searchQuery]);
+
   const renderProduct = ({ item }) => {
     const margin = calculateMargin(item.unitPrice, item.costPrice);
     const marginColor = margin > 30 ? colors.success : margin > 15 ? colors.warning : colors.error;
@@ -308,7 +320,9 @@ export const ProductsScreen = ({ navigation }) => {
           </TouchableOpacity>
           <View style={styles.titleContainer}>
             <Text style={styles.title}>Produits & Services</Text>
-            <Text style={styles.subtitle}>{products?.length || 0} produit(s)</Text>
+            <Text style={styles.subtitle}>
+              {filteredProducts?.length || 0}{searchQuery ? `/${products?.length || 0}` : ''} produit(s)
+            </Text>
           </View>
           <TouchableOpacity
             style={styles.addButtonWrapper}
@@ -325,10 +339,27 @@ export const ProductsScreen = ({ navigation }) => {
             </LinearGradient>
           </TouchableOpacity>
         </View>
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={18} color={colors.textSecondary} style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Rechercher un produit..."
+            placeholderTextColor={colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchClear}>
+              <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
       </LinearGradient>
 
       <FlatList
-        data={products}
+        data={filteredProducts}
         renderItem={renderProduct}
         keyExtractor={(item) => item._id}
         contentContainerStyle={styles.list}
@@ -336,9 +367,17 @@ export const ProductsScreen = ({ navigation }) => {
         onRefresh={loadProducts}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons name="cube-outline" size={80} color={colors.textSecondary} />
-            <Text style={styles.emptyText}>Aucun produit enregistré</Text>
-            <Text style={styles.emptySubtext}>Appuyez sur + pour ajouter un produit</Text>
+            <Ionicons
+              name={searchQuery ? 'search-outline' : 'cube-outline'}
+              size={80}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.emptyText}>
+              {searchQuery ? 'Aucun résultat trouvé' : 'Aucun produit enregistré'}
+            </Text>
+            <Text style={styles.emptySubtext}>
+              {searchQuery ? `Aucun produit ne correspond à "${searchQuery}"` : 'Appuyez sur + pour ajouter un produit'}
+            </Text>
           </View>
         }
       />
@@ -607,6 +646,28 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.border + '80',
+    height: 44,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text,
+  },
+  searchClear: {
+    padding: 4,
   },
   list: {
     padding: 20,

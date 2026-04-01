@@ -4,7 +4,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const { S3Client, DeleteObjectCommand } = require('@aws-sdk/client-s3');
@@ -34,7 +34,11 @@ app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      dbName: "BussnessApp"
+      dbName: "BussnessApp",
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 10,
+      minPoolSize: 2,
     });
     console.log(`MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
@@ -148,6 +152,7 @@ const ProductSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
+ProductSchema.index({ projectId: 1, name: 1 });
 
 const SaleSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
@@ -162,6 +167,8 @@ const SaleSchema = new mongoose.Schema({
   date: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now }
 });
+SaleSchema.index({ projectId: 1, date: -1 });
+SaleSchema.index({ projectId: 1, employeeId: 1 });
 
 const ExpenseSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
@@ -175,6 +182,8 @@ const ExpenseSchema = new mongoose.Schema({
   parentExpenseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Expense' }, // Référence à la dépense récurrente parente
   createdAt: { type: Date, default: Date.now }
 });
+ExpenseSchema.index({ projectId: 1, date: -1 });
+ExpenseSchema.index({ projectId: 1, isRecurring: 1 });
 
 const StockSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
@@ -187,6 +196,9 @@ const StockSchema = new mongoose.Schema({
   location: String, // Emplacement physique dans l'entrepôt
   updatedAt: { type: Date, default: Date.now }
 });
+StockSchema.index({ projectId: 1 });
+StockSchema.index({ productId: 1 });
+StockSchema.index({ projectId: 1, name: 1 });
 
 // Schema pour tracer les mouvements de stock
 const StockMovementSchema = new mongoose.Schema({
@@ -204,6 +216,8 @@ const StockMovementSchema = new mongoose.Schema({
   notes: String,
   createdAt: { type: Date, default: Date.now }
 });
+StockMovementSchema.index({ projectId: 1, createdAt: -1 });
+StockMovementSchema.index({ stockId: 1, createdAt: -1 });
 
 const CustomerSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
@@ -225,6 +239,7 @@ const CustomerSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
+CustomerSchema.index({ projectId: 1, name: 1 });
 
 const UserSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
@@ -241,6 +256,7 @@ const UserSchema = new mongoose.Schema({
   hourlyRate: { type: Number, default: 0 }, // Salaire horaire en € (ex: 15 pour 15€/h)
   createdAt: { type: Date, default: Date.now }
 });
+UserSchema.index({ projectId: 1 });
 
 const FeedbackSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -266,6 +282,9 @@ const ScheduleSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
+ScheduleSchema.index({ projectId: 1, date: -1 });
+ScheduleSchema.index({ userId: 1, date: -1 });
+ScheduleSchema.index({ projectId: 1, userId: 1, status: 1 });
 
 // Schema pour suivre les commissions des employés
 const CommissionSchema = new mongoose.Schema({
@@ -279,6 +298,8 @@ const CommissionSchema = new mongoose.Schema({
   status: { type: String, enum: ['pending', 'paid'], default: 'pending' },
   createdAt: { type: Date, default: Date.now }
 });
+CommissionSchema.index({ projectId: 1, userId: 1, date: -1 });
+CommissionSchema.index({ saleId: 1 });
 
 const CategorySchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
@@ -286,6 +307,7 @@ const CategorySchema = new mongoose.Schema({
   color: { type: String, default: '#4CAF50' },
   createdAt: { type: Date, default: Date.now }
 });
+CategorySchema.index({ projectId: 1 });
 
 // Models
 const Project = mongoose.model('Project', ProjectSchema);
@@ -1094,18 +1116,30 @@ app.get('/BussnessApp/products', authenticateToken, async (req, res) => {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
     console.log(filter)
-    const products = await Product.find(filter).sort({ name: 1 });
-    // NOUVEAU : Enrichir les produits avec les informations de stock
-    const productsWithStock = await Promise.all(products.map(async (product) => {
-      const stockItem = await Stock.findOne({
-        $or: [
-          { productId: product._id },
-          { name: product.name }
-        ]
-      });
+    const products = await Product.find(filter).sort({ name: 1 }).lean();
 
+    // Batch query: une seule requête pour tous les stocks liés
+    const productIds = products.map(p => p._id);
+    const productNames = products.map(p => p.name);
+    const stockItems = await Stock.find({
+      $or: [
+        { productId: { $in: productIds } },
+        { name: { $in: productNames } }
+      ]
+    }).lean();
+
+    // Indexer les stocks par productId et par name pour lookup O(1)
+    const stockByProductId = {};
+    const stockByName = {};
+    for (const s of stockItems) {
+      if (s.productId) stockByProductId[s.productId.toString()] = s;
+      if (s.name) stockByName[s.name] = s;
+    }
+
+    const productsWithStock = products.map(product => {
+      const stockItem = stockByProductId[product._id.toString()] || stockByName[product.name] || null;
       return {
-        ...product.toObject(),
+        ...product,
         stock: stockItem ? {
           quantity: stockItem.quantity,
           minQuantity: stockItem.minQuantity,
@@ -1113,7 +1147,7 @@ app.get('/BussnessApp/products', authenticateToken, async (req, res) => {
           stockId: stockItem._id
         } : null
       };
-    }));
+    });
 
     res.json({ data: productsWithStock });
   } catch (error) {
@@ -1177,7 +1211,8 @@ app.get('/BussnessApp/sales', authenticateToken, async (req, res) => {
       .populate('productId', 'name unitPrice image')
       .populate('customerId', 'name phone email')
       .populate('employeeId', 'username fullName')
-      .sort({ date: -1 });
+      .sort({ date: -1 })
+      .lean();
     res.json({ data: sales });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1248,19 +1283,20 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
       }
     }
 
-    // NOUVEAU : Gestion automatique du stock
-    // Chercher un article de stock lié à ce produit
-    // D'abord récupérer les infos du produit
-    const product = await Product.findById(productId);
+    // Récupérer product + employee en parallèle
+    const [product, employee] = await Promise.all([
+      Product.findById(productId).lean(),
+      User.findById(req.user.id)
+    ]);
 
     const stockItem = await Stock.findOne({
       projectId,
       $or: [
-        { productId: productId }, // Chercher par productId
-        ...(product ? [{ name: product.name }] : []) // Fallback par nom du produit si le produit existe
+        { productId: productId },
+        ...(product ? [{ name: product.name }] : [])
       ]
     });
-    
+
     console.log(stockItem);
 
     if (stockItem) {
@@ -1300,8 +1336,7 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
       console.log(`Aucun stock trouvé pour le produit ${product?.name || productId}. La vente est enregistrée mais le stock n'est pas mis à jour.`);
     }
 
-    // NOUVEAU : Calcul automatique des commissions pour l'employé
-    const employee = await User.findById(req.user.id);
+    // Calcul automatique des commissions pour l'employé
     if (employee && employee.commissionRate > 0) {
       const commissionAmount = (amount * employee.commissionRate) / 100;
 
@@ -2247,14 +2282,13 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
       const finalEndDate = endDate ? new Date(endDate) : new Date(startDate.getTime() + 90 * 24 * 60 * 60 * 1000); // 90 jours par défaut
       const createdSchedules = [];
 
-      // Créer les plannings pour chaque occurrence
+      // Construire tous les documents en mémoire, puis insertMany en une seule requête
+      const scheduleDocs = [];
       let currentDate = new Date(startDate);
       while (currentDate <= finalEndDate) {
-        const dayOfWeek = currentDate.getDay(); // 0 = Dimanche, 1 = Lundi, etc.
-
-        // Si ce jour est dans la liste des jours récurrents
+        const dayOfWeek = currentDate.getDay();
         if (recurringDays.includes(dayOfWeek)) {
-          const schedule = new Schedule({
+          scheduleDocs.push({
             projectId: projectId || req.user.projectId,
             userId,
             date: new Date(currentDate),
@@ -2264,23 +2298,22 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
             notes,
             createdBy: req.user.id
           });
-          await schedule.save();
-          createdSchedules.push(schedule);
         }
-
-        // Passer au jour suivant
         currentDate.setDate(currentDate.getDate() + 1);
       }
 
+      const inserted = await Schedule.insertMany(scheduleDocs);
+
       const populatedSchedules = await Schedule.find({
-        _id: { $in: createdSchedules.map(s => s._id) }
+        _id: { $in: inserted.map(s => s._id) }
       })
         .populate('userId', 'username fullName role photo hourlyRate')
-        .populate('createdBy', 'username fullName');
+        .populate('createdBy', 'username fullName')
+        .lean();
 
       res.status(201).json({
         data: populatedSchedules,
-        count: createdSchedules.length,
+        count: inserted.length,
         message: `${createdSchedules.length} planning(s) créé(s) avec succès`
       });
     } else {
@@ -2764,18 +2797,42 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, asyn
     const employees = await User.find({
       $or: [{ projectId }, { projectIds: projectId }],
       isActive: true
-    }).select('-password');
+    }).select('-password').lean();
 
-    const results = [];
+    const employeeIds = employees.map(e => e._id);
 
-    for (const emp of employees) {
-      // Schedules complétés du mois
-      const schedules = await Schedule.find({
-        userId: emp._id,
+    // Batch : une seule requête pour tous les schedules + commissions du mois
+    const [allSchedules, allCommissions] = await Promise.all([
+      Schedule.find({
+        userId: { $in: employeeIds },
         projectId,
         status: 'completed',
         date: { $gte: periodStart, $lte: periodEnd }
-      });
+      }).lean(),
+      Commission.find({
+        userId: { $in: employeeIds },
+        projectId,
+        date: { $gte: periodStart, $lte: periodEnd }
+      }).lean()
+    ]);
+
+    // Indexer par userId pour lookup O(1)
+    const schedulesByUser = {};
+    for (const s of allSchedules) {
+      const uid = s.userId.toString();
+      if (!schedulesByUser[uid]) schedulesByUser[uid] = [];
+      schedulesByUser[uid].push(s);
+    }
+    const commissionsByUser = {};
+    for (const c of allCommissions) {
+      const uid = c.userId.toString();
+      if (!commissionsByUser[uid]) commissionsByUser[uid] = [];
+      commissionsByUser[uid].push(c);
+    }
+
+    const results = employees.map(emp => {
+      const schedules = schedulesByUser[emp._id.toString()] || [];
+      const commissions = commissionsByUser[emp._id.toString()] || [];
 
       const totalHours = schedules.reduce((sum, s) => sum + (s.duration || 0), 0);
       const totalSalary = schedules.reduce((sum, s) => {
@@ -2784,16 +2841,9 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, asyn
         }
         return sum + ((s.duration || 0) * (emp.hourlyRate || 0));
       }, 0);
-
-      // Commissions du mois
-      const commissions = await Commission.find({
-        userId: emp._id,
-        projectId,
-        date: { $gte: periodStart, $lte: periodEnd }
-      });
       const totalCommissions = commissions.reduce((sum, c) => sum + c.amount, 0);
 
-      results.push({
+      return {
         user: {
           _id: emp._id,
           fullName: emp.fullName,
@@ -2807,8 +2857,8 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, asyn
         salary: totalSalary,
         commissions: totalCommissions,
         totalDue: totalSalary + totalCommissions
-      });
-    }
+      };
+    });
 
     // Trier par totalDue décroissant
     results.sort((a, b) => b.totalDue - a.totalDue);
@@ -2937,16 +2987,19 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
   try {
     const { projectId } = req.params;
 
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
     const [sales, expenses, stock, schedules, commissions, employees] = await Promise.all([
-      Sale.find({ projectId }).populate('productId', 'name'),
-      Expense.find({ projectId }),
-      Stock.find({ projectId }),
-      Schedule.find({ projectId, status: 'completed' }),
-      Commission.find({ projectId }),
+      Sale.find({ projectId, date: { $gte: sixMonthsAgo } }).populate('productId', 'name').lean(),
+      Expense.find({ projectId, date: { $gte: sixMonthsAgo } }).lean(),
+      Stock.find({ projectId }).lean(),
+      Schedule.find({ projectId, status: 'completed', date: { $gte: sixMonthsAgo } }).lean(),
+      Commission.find({ projectId, date: { $gte: sixMonthsAgo } }).lean(),
       User.find({
         $or: [{ projectId }, { projectIds: projectId }],
         isActive: true
-      }).select('hourlyRate')
+      }).select('hourlyRate').lean()
     ]);
 
     const employeeMap = {};
@@ -3806,6 +3859,90 @@ app.get('/BussnessApp/subscription/plans', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// ============= CGU =============
+const CGU_DATA = {
+  version: '1.0',
+  updatedAt: '2025-01-01',
+  title: "Conditions Générales d'Utilisation (CGU)",
+  appName: "EAS – Entreprendre avec Succès",
+  sections: [
+    {
+      id: 1,
+      title: "Objet",
+      content: "Les présentes Conditions Générales d'Utilisation (CGU) ont pour objet de définir les modalités d'accès et d'utilisation de l'application mobile EAS – Entreprendre avec Succès (ci-après « l'Application »).\nL'Application permet aux utilisateurs de gérer, suivre et analyser leur activité commerciale (ventes, dépenses, stock, équipes, rentabilité, etc.).",
+    },
+    {
+      id: 2,
+      title: "Éditeur de l'application",
+      content: "L'Application est éditée par : SASU COD&COV",
+    },
+    {
+      id: 3,
+      title: "Accès au service",
+      content: "L'accès à l'Application est possible via téléchargement sur les stores (Google Play / App Store).\nL'utilisateur doit créer un compte pour accéder aux fonctionnalités.\nL'éditeur se réserve le droit de modifier, suspendre ou interrompre l'accès au service à tout moment.",
+    },
+    {
+      id: 4,
+      title: "Description des services",
+      content: "L'Application propose notamment les fonctionnalités suivantes :\n• Gestion des ventes\n• Suivi des dépenses\n• Gestion du stock\n• Gestion des employés et commissions\n• Calcul de la rentabilité\n• Module de simulation de business (business plan)\n• Export de données (selon abonnement)\n• Gestion multi-business\n\nLes fonctionnalités disponibles dépendent du plan d'abonnement souscrit.",
+    },
+    {
+      id: 5,
+      title: "Compte utilisateur",
+      content: "L'utilisateur est responsable des informations fournies lors de la création de son compte.\nIl est seul responsable de la confidentialité de ses identifiants.\nToute utilisation du compte est réputée faite par l'utilisateur.",
+    },
+    {
+      id: 6,
+      title: "Abonnements et paiements",
+      content: "L'Application propose plusieurs formules d'abonnement (Basic, Standard, Premium).\nLes tarifs peuvent être modifiés à tout moment.\nLes abonnements sont généralement annuels et renouvelables.\nAucun remboursement ne pourra être exigé sauf disposition légale contraire.",
+    },
+    {
+      id: 7,
+      title: "Responsabilité",
+      content: "L'Application est un outil d'aide à la gestion.\nL'éditeur ne garantit pas l'exactitude des résultats financiers générés, ceux-ci dépendant des données saisies par l'utilisateur.\nL'utilisateur reste seul responsable de :\n• La gestion de son activité\n• Ses décisions commerciales\n• La conformité de ses obligations légales et fiscales\n\nL'éditeur ne saurait être tenu responsable de pertes financières, erreurs de gestion ou décisions prises sur la base des données de l'Application.",
+    },
+    {
+      id: 8,
+      title: "Données",
+      content: "Les données saisies dans l'Application appartiennent à l'utilisateur.\nL'éditeur s'engage à mettre en œuvre des moyens raisonnables pour assurer la sécurité des données.\nToutefois, l'utilisateur est responsable de la sauvegarde de ses informations.",
+    },
+    {
+      id: 9,
+      title: "Disponibilité",
+      content: "L'éditeur s'efforce d'assurer un accès continu à l'Application.\nCependant, des interruptions peuvent survenir (maintenance, incident technique, réseau…).\nAucune garantie de disponibilité permanente n'est fournie.",
+    },
+    {
+      id: 10,
+      title: "Utilisation conforme",
+      content: "L'utilisateur s'engage à utiliser l'Application conformément à sa destination.\nIl est interdit de :\n• Utiliser l'Application à des fins frauduleuses\n• Tenter d'accéder aux systèmes de manière non autorisée\n• Porter atteinte au bon fonctionnement du service",
+    },
+    {
+      id: 11,
+      title: "Propriété intellectuelle",
+      content: "L'ensemble des éléments de l'Application (code, design, contenu) est protégé.\nToute reproduction, modification ou exploitation sans autorisation est interdite.",
+    },
+    {
+      id: 12,
+      title: "Résiliation",
+      content: "L'utilisateur peut cesser d'utiliser l'Application à tout moment.\nL'éditeur peut suspendre ou supprimer un compte en cas de non-respect des CGU.",
+    },
+    {
+      id: 13,
+      title: "Évolution des CGU",
+      content: "Les présentes CGU peuvent être modifiées à tout moment.\nL'utilisateur sera informé en cas de modification importante.",
+    },
+    {
+      id: 14,
+      title: "Droit applicable",
+      content: "Les présentes CGU sont régies par le droit applicable du pays de l'éditeur.",
+    },
+  ],
+};
+
+app.get('/BussnessApp/legal/cgu', (req, res) => {
+  res.json(CGU_DATA);
 });
 
 // Start server

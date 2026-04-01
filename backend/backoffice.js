@@ -50,10 +50,16 @@ setInterval(() => {
 
 // ============= ACCESS KEY MIDDLEWARE =============
 
+// Routes exemptées de la vérification de clé d'accès :
+// - /auth/verify-access : vérification publique de la clé
+// - /stripe/webhook    : Stripe n'envoie pas de x-access-key (signature Stripe utilisée à la place)
+// - /plans/active      : accessible depuis l'app mobile sans clé backoffice
+const ACCESS_KEY_EXEMPT = ['/auth/verify-access', '/stripe/webhook', '/plans/active'];
+
 const verifyAccessKey = (req, res, next) => {
   if (!ACCESS_KEY) return next();
 
-  if (req.path === '/auth/verify-access') return next();
+  if (ACCESS_KEY_EXEMPT.includes(req.path)) return next();
 
   const clientKey = req.headers['x-access-key'];
   if (!clientKey || clientKey !== ACCESS_KEY) {
@@ -537,8 +543,8 @@ router.post('/admins', authenticateSuperAdmin, async (req, res) => {
             quantity: 1
           }],
           mode: isRecurring ? 'subscription' : 'payment',
-          success_url: `${process.env.BACKOFFICE_URL || 'http://localhost:5173'}/admins?payment=success`,
-          cancel_url: `${process.env.BACKOFFICE_URL || 'http://localhost:5173'}/admins?payment=cancelled`,
+          success_url: `${process.env.BACKOFFICE_URL || 'http://localhost:5173'}/admin/admins/${admin._id}?payment=success`,
+          cancel_url: `${process.env.BACKOFFICE_URL || 'http://localhost:5173'}/admin/admins/${admin._id}?payment=cancelled`,
           customer_email: email,
           metadata: { adminId: admin._id.toString(), subscriptionId: 'pending' }
         });
@@ -652,11 +658,14 @@ router.put('/admins/:id/status', authenticateSuperAdmin, async (req, res) => {
         { status: 'suspended', updatedAt: new Date() }
       );
     } else {
-      const latestSub = await Subscription.findOne({ adminId: admin._id }).sort({ createdAt: -1 });
-      if (latestSub && latestSub.status === 'suspended') {
-        latestSub.status = 'active';
-        latestSub.updatedAt = new Date();
-        await latestSub.save();
+      const latestSuspended = await Subscription.findOne({
+        adminId: admin._id,
+        status: 'suspended',
+      }).sort({ createdAt: -1 });
+      if (latestSuspended) {
+        latestSuspended.status = 'active';
+        latestSuspended.updatedAt = new Date();
+        await latestSuspended.save();
       }
     }
 
@@ -836,8 +845,8 @@ router.post('/admins/:id/subscription', authenticateSuperAdmin, async (req, res)
             quantity: 1
           }],
           mode: isRecurring ? 'subscription' : 'payment',
-          success_url: `${process.env.BACKOFFICE_URL || 'http://localhost:5173'}/admins/${admin._id}?payment=success`,
-          cancel_url: `${process.env.BACKOFFICE_URL || 'http://localhost:5173'}/admins/${admin._id}?payment=cancelled`,
+          success_url: `${process.env.BACKOFFICE_URL || 'http://localhost:5173'}/admin/admins/${admin._id}?payment=success`,
+          cancel_url: `${process.env.BACKOFFICE_URL || 'http://localhost:5173'}/admin/admins/${admin._id}?payment=cancelled`,
           customer_email: admin.email,
           metadata: { adminId: admin._id.toString(), subscriptionId: 'pending' }
         });
@@ -1138,23 +1147,42 @@ router.post('/stripe/webhook', async (req, res) => {
 
             const admin = await User.findById(adminId);
             if (admin) {
-              const tempPassword = generatePassword();
-              admin.password = await bcrypt.hash(tempPassword, 10);
-              await admin.save();
+              // Ne régénère le mot de passe que pour les nouveaux comptes (premier paiement)
+              // Pour les renouvellements, l'admin a déjà un mot de passe — ne pas l'écraser
+              const isFirstPayment = !admin.lastLogin;
+              let tempPassword = null;
 
-              await sendEmail(admin.email, 'Paiement confirmé - Vos identifiants BussnessApp', `
+              if (isFirstPayment) {
+                tempPassword = generatePassword();
+                admin.password = await bcrypt.hash(tempPassword, 10);
+                await admin.save();
+              }
+
+              const emailSubject = isFirstPayment
+                ? 'Paiement confirmé - Vos identifiants BussnessApp'
+                : 'Paiement confirmé - Renouvellement BussnessApp';
+
+              await sendEmail(admin.email, emailSubject, `
                 <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
                   <div style="background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
                     <div style="text-align: center; margin-bottom: 20px;">
                       <div style="display: inline-block; background: #d4edda; color: #155724; padding: 10px 20px; border-radius: 50px; font-weight: 600;">Paiement confirmé</div>
                     </div>
                     <p style="color: #555;">Bonjour <strong>${admin.fullName}</strong>,</p>
+                    ${isFirstPayment ? `
                     <p style="color: #555;">Votre paiement a été reçu avec succès. Voici vos identifiants :</p>
                     <div style="background: #f0f0ff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #6C63FF;">
                       <p style="margin: 5px 0;"><strong>Email :</strong> ${admin.email}</p>
                       <p style="margin: 5px 0;"><strong>Mot de passe :</strong> ${tempPassword}</p>
                     </div>
                     <p style="color: #e74c3c; font-size: 13px;">Changez votre mot de passe dès votre première connexion.</p>
+                    ` : `
+                    <p style="color: #555;">Votre abonnement a été renouvelé avec succès. Vous pouvez continuer à utiliser BussnessApp normalement.</p>
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                      <p style="margin: 5px 0; color: #555;">Plan : <strong>${subscription.planName || subscription.plan}</strong></p>
+                      <p style="margin: 5px 0; color: #555;">Montant : <strong>${subscription.amount}\u20AC</strong></p>
+                    </div>
+                    `}
                     <hr style="border: none; border-top: 1px solid #eee; margin: 25px 0;">
                     <p style="color: #bbb; font-size: 12px; text-align: center;">BussnessApp - Gestion d'entreprise simplifiée</p>
                   </div>
