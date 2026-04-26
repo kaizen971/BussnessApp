@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -52,11 +52,17 @@ export const SalesScreen = () => {
   const [editCustomerSearch, setEditCustomerSearch] = useState('');
   const [editSellerSearch, setEditSellerSearch] = useState('');
 
+  // Pagination
+  const [salesPage, setSalesPage] = useState(1);
+  const [salesHasMore, setSalesHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [salesTotalAmount, setSalesTotalAmount] = useState(0);
+
   // Nouveaux états pour la recherche et l'affichage
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
-  const [sellerSearch, setSellerSearch] = useState(''); // Recherche vendeur pour managers
-  const [productViewMode, setProductViewMode] = useState('grid'); // 'grid' ou 'list'
+  const [sellerSearch, setSellerSearch] = useState('');
+  const [productViewMode, setProductViewMode] = useState('grid');
 
   useEffect(() => {
     // Log pour déboguer le projectId
@@ -75,13 +81,19 @@ export const SalesScreen = () => {
   const loadData = async () => {
     try {
       const [salesRes, productsRes, customersRes, usersRes] = await Promise.all([
-        salesAPI.getAll(user?.projectId),
+        salesAPI.getAll(user?.projectId, 1, 50),
         productsAPI.getAll(user?.projectId),
         customersAPI.getAll(user?.projectId),
         usersAPI.getAll(user?.projectId),
       ]);
-      console.log(productsRes.data)
-      setSales(salesRes.data?.data || []);
+      const salesData = salesRes.data?.data || [];
+      const pagination = salesRes.data?.pagination;
+      setSales(salesData);
+      setSalesPage(1);
+      setSalesHasMore(pagination?.hasMore ?? false);
+      setSalesTotalAmount(
+        salesData.reduce((sum, s) => sum + (s.amount || 0), 0)
+      );
       setProducts(productsRes?.data?.data || []);
       setCustomers(customersRes?.data?.data || []);
       setSellers(usersRes?.data || []);
@@ -92,6 +104,24 @@ export const SalesScreen = () => {
       setLoading(false);
     }
   };
+
+  const loadMoreSales = useCallback(async () => {
+    if (loadingMore || !salesHasMore) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = salesPage + 1;
+      const res = await salesAPI.getAll(user?.projectId, nextPage, 50);
+      const newSales = res.data?.data || [];
+      const pagination = res.data?.pagination;
+      setSales(prev => [...prev, ...newSales]);
+      setSalesPage(nextPage);
+      setSalesHasMore(pagination?.hasMore ?? false);
+    } catch (error) {
+      console.error('Error loading more sales:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, salesHasMore, salesPage, user?.projectId]);
 
   // Fonction pour jouer un son
   const playSound = async (soundType) => {
@@ -486,45 +516,53 @@ export const SalesScreen = () => {
     );
   };
 
-  const totalSales = (sales && Array.isArray(sales)) ? sales.reduce((sum, sale) => sum + (sale.amount || 0), 0) : 0;
-  const selectedCustomer = (customers && Array.isArray(customers)) ? customers.find(c => c._id === formData.customerId) : null;
-  const selectedSeller = (sellers && Array.isArray(sellers)) ? sellers.find(s => s._id === formData.sellerId) : null;
-
-  // Calcul du montant total du panier
-  const cartTotal = cart.reduce((sum, item) =>
-    sum + (item.quantity * item.unitPrice - (item.discount || 0)), 0
+  const totalSales = useMemo(() =>
+    (sales && Array.isArray(sales)) ? sales.reduce((sum, sale) => sum + (sale.amount || 0), 0) : 0,
+    [sales]
   );
 
-  // Filtrage des clients selon la recherche
-  const filteredCustomers = customers.filter(customer => {
-    if (!customerSearch) return true;
+  const selectedCustomer = useMemo(() =>
+    (customers && Array.isArray(customers)) ? customers.find(c => c._id === formData.customerId) : null,
+    [customers, formData.customerId]
+  );
+
+  const selectedSeller = useMemo(() =>
+    (sellers && Array.isArray(sellers)) ? sellers.find(s => s._id === formData.sellerId) : null,
+    [sellers, formData.sellerId]
+  );
+
+  const cartTotal = useMemo(() =>
+    cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice - (item.discount || 0)), 0),
+    [cart]
+  );
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch) return customers;
     const searchLower = customerSearch.toLowerCase();
-    return (
+    return customers.filter(customer =>
       customer.name?.toLowerCase().includes(searchLower) ||
       customer.phone?.toLowerCase().includes(searchLower) ||
       customer.email?.toLowerCase().includes(searchLower)
     );
-  });
+  }, [customers, customerSearch]);
 
-  // Filtrage des produits selon la recherche
-  const filteredProducts = products.filter(product => {
-    if (!productSearch) return true;
+  const filteredProducts = useMemo(() => {
+    if (!productSearch) return products;
     const searchLower = productSearch.toLowerCase();
-    return (
+    return products.filter(product =>
       product.name?.toLowerCase().includes(searchLower) ||
       product.description?.toLowerCase().includes(searchLower)
     );
-  });
+  }, [products, productSearch]);
 
-  // Filtrage des vendeurs selon la recherche (pour managers)
-  const filteredSellers = sellers.filter(seller => {
-    if (!sellerSearch) return true;
+  const filteredSellers = useMemo(() => {
+    if (!sellerSearch) return sellers;
     const searchLower = sellerSearch.toLowerCase();
-    return (
+    return sellers.filter(seller =>
       seller.fullName?.toLowerCase().includes(searchLower) ||
       seller.username?.toLowerCase().includes(searchLower)
     );
-  });
+  }, [sellers, sellerSearch]);
 
   return (
     <View style={styles.container}>
@@ -569,6 +607,14 @@ export const SalesScreen = () => {
           renderItem={renderSaleItem}
           keyExtractor={(item) => item._id}
           contentContainerStyle={styles.listContainer}
+          onEndReached={loadMoreSales}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={loadingMore ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.loadingText}>Chargement...</Text>
+            </View>
+          ) : null}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="cart-outline" size={64} color={colors.textLight} />
@@ -918,25 +964,25 @@ export const SalesScreen = () => {
               )}
 
               {/* Affichage des produits selon le mode */}
-              <View style={productViewMode === 'grid' ? styles.productsGrid : styles.productsList}>
-                {filteredProducts && filteredProducts.length > 0 ? filteredProducts.map(product => {
+              <FlatList
+                data={filteredProducts}
+                keyExtractor={(item) => item._id}
+                numColumns={productViewMode === 'grid' ? 2 : 1}
+                key={productViewMode}
+                scrollEnabled={false}
+                contentContainerStyle={productViewMode === 'grid' ? styles.productsGrid : styles.productsList}
+                columnWrapperStyle={productViewMode === 'grid' ? { gap: 10 } : undefined}
+                renderItem={({ item: product }) => {
                   if (!product || !product._id) return null;
                   const isFlashing = flashingProduct === product._id;
-                  const animStyle = isFlashing ? {
-                    transform: [{ scale: flashAnim }],
-                  } : {};
+                  const animStyle = isFlashing ? { transform: [{ scale: flashAnim }] } : {};
+                  const inCart = cart.find(ci => ci.productId === product._id);
 
-                  const inCart = cart.find(item => item.productId === product._id);
-
-                  // Vue Liste
                   if (productViewMode === 'list') {
                     return (
-                      <Animated.View key={product._id} style={animStyle}>
+                      <Animated.View style={animStyle}>
                         <TouchableOpacity
-                          style={[
-                            styles.productListItem,
-                            isFlashing && styles.productCardFlashing
-                          ]}
+                          style={[styles.productListItem, isFlashing && styles.productCardFlashing]}
                           onPress={() => handleAddToCart(product._id)}
                           activeOpacity={0.8}
                         >
@@ -948,16 +994,12 @@ export const SalesScreen = () => {
                             </View>
                           )}
                           <View style={styles.productListInfo}>
-                            <Text style={styles.productListName} numberOfLines={1}>
-                              {product.name}
-                            </Text>
+                            <Text style={styles.productListName} numberOfLines={1}>{product.name}</Text>
                             <Text style={styles.productListPrice}>{formatPrice(product.unitPrice)}</Text>
                           </View>
                           {inCart && (
                             <View style={styles.productListBadge}>
-                              <Text style={styles.productBadgeText}>
-                                {inCart.quantity}
-                              </Text>
+                              <Text style={styles.productBadgeText}>{inCart.quantity}</Text>
                             </View>
                           )}
                           <Ionicons
@@ -970,14 +1012,10 @@ export const SalesScreen = () => {
                     );
                   }
 
-                  // Vue Grille (existante)
                   return (
-                    <Animated.View key={product._id} style={animStyle}>
+                    <Animated.View style={[animStyle, { flex: 1, maxWidth: '50%' }]}>
                       <TouchableOpacity
-                        style={[
-                          styles.productCard,
-                          isFlashing && styles.productCardFlashing
-                        ]}
+                        style={[styles.productCard, isFlashing && styles.productCardFlashing]}
                         onPress={() => handleAddToCart(product._id)}
                         activeOpacity={0.8}
                       >
@@ -988,9 +1026,7 @@ export const SalesScreen = () => {
                             <Ionicons name="cube" size={32} color={colors.primary} />
                           </View>
                         )}
-                        <Text style={styles.productName} numberOfLines={2}>
-                          {product.name}
-                        </Text>
+                        <Text style={styles.productName} numberOfLines={2}>{product.name}</Text>
                         <View style={styles.productPriceContainer}>
                           <Text style={styles.productPrice}>{formatPrice(product.unitPrice)}</Text>
                           {inCart && (
@@ -999,18 +1035,15 @@ export const SalesScreen = () => {
                         </View>
                         {inCart && (
                           <View style={styles.productBadge}>
-                            <Text style={styles.productBadgeText}>
-                              {inCart.quantity}
-                            </Text>
+                            <Text style={styles.productBadgeText}>{inCart.quantity}</Text>
                           </View>
                         )}
                       </TouchableOpacity>
                     </Animated.View>
                   );
-                }) : (
-                  <Text style={styles.emptyText}>Aucun produit disponible</Text>
-                )}
-              </View>
+                }}
+                ListEmptyComponent={<Text style={styles.emptyText}>Aucun produit disponible</Text>}
+              />
 
               {/* Panier */}
               {cart.length > 0 && (
@@ -2039,18 +2072,16 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   productsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -10,
+    paddingHorizontal: 0,
+    gap: 10,
   },
   productCard: {
-    width: (width - 60) / 2,
+    flex: 1,
     backgroundColor: colors.surface,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
     padding: 20,
-    margin: 10,
     alignItems: 'center',
     position: 'relative',
     minHeight: 200,

@@ -1,4 +1,15 @@
-require('dotenv').config();
+// ====== CHARGEMENT DE L'ENVIRONNEMENT ======
+// 1) On lit d'abord .env (qui contient APP_ENV ou rien)
+// 2) Puis on charge .env.${APP_ENV} en surchargeant les valeurs
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
+const APP_ENV = process.env.APP_ENV || 'production';
+require('dotenv').config({
+  path: path.resolve(__dirname, `.env.${APP_ENV}`),
+  override: true,
+});
+console.log(`🌍 Environnement chargé : ${APP_ENV.toUpperCase()}`);
+
 process.env.BACKOFFICE_ACCESS_KEY = 'BussApp@Secure2026!Portal';
 const express = require('express');
 const mongoose = require('mongoose');
@@ -10,7 +21,6 @@ const nodemailer = require('nodemailer');
 const { S3Client, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const multer = require('multer');
 const multerS3 = require('multer-s3');
-const path = require('path');
 
 const app = express();
 const PORT = 3003;
@@ -1205,15 +1215,34 @@ app.delete('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'm
 // Sales Routes
 app.get('/BussnessApp/sales', authenticateToken, async (req, res) => {
   try {
-    const { projectId } = req.query;
+    const { projectId, page = 1, limit = 50 } = req.query;
     const filter = projectId ? { projectId } : {};
-    const sales = await Sale.find(filter)
-      .populate('productId', 'name unitPrice image')
-      .populate('customerId', 'name phone email')
-      .populate('employeeId', 'username fullName')
-      .sort({ date: -1 })
-      .lean();
-    res.json({ data: sales });
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [sales, total] = await Promise.all([
+      Sale.find(filter)
+        .populate('productId', 'name unitPrice image')
+        .populate('customerId', 'name phone email')
+        .populate('employeeId', 'username fullName')
+        .sort({ date: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      Sale.countDocuments(filter),
+    ]);
+
+    res.json({
+      data: sales,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum),
+        hasMore: skip + sales.length < total,
+      },
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2014,7 +2043,10 @@ app.get('/BussnessApp/customers', authenticateToken, async (req, res) => {
   try {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
-    const customers = await Customer.find(filter).sort({ name: 1 });
+    const customers = await Customer.find(filter)
+      .select('-history')
+      .sort({ name: 1 })
+      .lean();
     res.json({ data: customers });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2199,10 +2231,20 @@ app.get('/BussnessApp/schedules', authenticateToken, async (req, res) => {
       if (endDate) filter.date.$lte = new Date(endDate);
     }
 
+    // Auto-complétion côté serveur : marquer les plannings passés comme terminés
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const autoCompleteFilter = { ...filter, status: 'scheduled', date: { $lt: today } };
+    if (filter.date) {
+      autoCompleteFilter.date = { ...filter.date, $lt: today };
+    }
+    await Schedule.updateMany(autoCompleteFilter, { $set: { status: 'completed', updatedAt: new Date() } });
+
     const schedules = await Schedule.find(filter)
       .populate('userId', 'username fullName role photo hourlyRate')
       .populate('createdBy', 'username fullName')
-      .sort({ date: 1, startTime: 1 });
+      .sort({ date: 1, startTime: 1 })
+      .lean();
 
     res.json({ data: schedules });
   } catch (error) {

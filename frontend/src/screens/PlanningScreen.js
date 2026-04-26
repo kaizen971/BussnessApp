@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -70,14 +70,20 @@ export const PlanningScreen = ({ navigation }) => {
     { label: 'Dimanche', value: 0, short: 'Dim' },
   ];
 
-  useEffect(() => {
-    loadSchedules();
-    if (isAdmin) {
-      loadUsers();
-    }
-  }, [selectedProjectId, selectedWeek]);
+  const weekDebounceRef = useRef(null);
 
-  const loadSchedules = async () => {
+  useEffect(() => {
+    if (weekDebounceRef.current) clearTimeout(weekDebounceRef.current);
+    weekDebounceRef.current = setTimeout(() => {
+      loadSchedules();
+      if (isAdmin) {
+        loadUsers();
+      }
+    }, 300);
+    return () => clearTimeout(weekDebounceRef.current);
+  }, [selectedProjectId, selectedWeek, loadSchedules, isAdmin]);
+
+  const loadSchedules = useCallback(async () => {
     try {
       setLoading(true);
       const weekStart = getWeekStart(selectedWeek);
@@ -94,40 +100,16 @@ export const PlanningScreen = ({ navigation }) => {
       }
 
       const response = await api.get('/schedules', { params });
-      const schedulesData = response.data.data || [];
-
-      // Marquer automatiquement les plannings passés comme terminés
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const updatePromises = schedulesData
-        .filter(schedule => {
-          const scheduleDate = new Date(schedule.date);
-          scheduleDate.setHours(0, 0, 0, 0);
-          return scheduleDate < today && schedule.status === 'scheduled';
-        })
-        .map(schedule =>
-          api.put(`/schedules/${schedule._id}`, { status: 'completed' })
-            .catch(err => console.error('Erreur auto-complete:', err))
-        );
-
-      if (updatePromises.length > 0) {
-        await Promise.all(updatePromises);
-        // Recharger les données après mise à jour
-        const updatedResponse = await api.get('/schedules', { params });
-        setSchedules(updatedResponse.data.data || []);
-      } else {
-        setSchedules(schedulesData);
-      }
+      setSchedules(response.data.data || []);
     } catch (error) {
       console.error('Erreur chargement planning:', error);
       Alert.alert('Erreur', 'Impossible de charger les plannings');
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedWeek, selectedProjectId, user?.projectId, user?.id, isCashier]);
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       const response = await api.get('/users', {
         params: { projectId: selectedProjectId || user?.projectId }
@@ -136,7 +118,7 @@ export const PlanningScreen = ({ navigation }) => {
     } catch (error) {
       console.error('Erreur chargement utilisateurs:', error);
     }
-  };
+  }, [selectedProjectId, user?.projectId]);
 
   const handleCreateOrUpdate = async () => {
     if (!formData.userId) {
@@ -228,7 +210,7 @@ export const PlanningScreen = ({ navigation }) => {
     return end;
   };
 
-  const getWeekDays = () => {
+  const weekDays = useMemo(() => {
     const start = getWeekStart(selectedWeek);
     const days = [];
     for (let i = 0; i < 7; i++) {
@@ -237,26 +219,37 @@ export const PlanningScreen = ({ navigation }) => {
       days.push(day);
     }
     return days;
-  };
+  }, [selectedWeek]);
 
-  const getSchedulesForDay = (date) => {
-    return schedules.filter(schedule => {
-      const scheduleDate = new Date(schedule.date);
-      return scheduleDate.toDateString() === date.toDateString();
+  const schedulesByDay = useMemo(() => {
+    const map = {};
+    for (const schedule of schedules) {
+      const key = new Date(schedule.date).toDateString();
+      if (!map[key]) map[key] = [];
+      map[key].push(schedule);
+    }
+    return map;
+  }, [schedules]);
+
+  const getSchedulesForDay = useCallback((date) => {
+    return schedulesByDay[date.toDateString()] || [];
+  }, [schedulesByDay]);
+
+  const previousWeek = useCallback(() => {
+    setSelectedWeek(prev => {
+      const newDate = new Date(prev);
+      newDate.setDate(newDate.getDate() - 7);
+      return newDate;
     });
-  };
+  }, []);
 
-  const previousWeek = () => {
-    const newDate = new Date(selectedWeek);
-    newDate.setDate(newDate.getDate() - 7);
-    setSelectedWeek(newDate);
-  };
-
-  const nextWeek = () => {
-    const newDate = new Date(selectedWeek);
-    newDate.setDate(newDate.getDate() + 7);
-    setSelectedWeek(newDate);
-  };
+  const nextWeek = useCallback(() => {
+    setSelectedWeek(prev => {
+      const newDate = new Date(prev);
+      newDate.setDate(newDate.getDate() + 7);
+      return newDate;
+    });
+  }, []);
 
   const toggleDay = (dayValue) => {
     if (formData.recurringDays.includes(dayValue)) {
@@ -287,11 +280,12 @@ export const PlanningScreen = ({ navigation }) => {
     }
   };
 
-  const calculateTotalHours = () => {
-    return schedules
+  const totalCompletedHours = useMemo(() =>
+    schedules
       .filter(s => s.status === 'completed')
-      .reduce((sum, s) => sum + (s.duration || 0), 0);
-  };
+      .reduce((sum, s) => sum + (s.duration || 0), 0),
+    [schedules]
+  );
 
   const loadSalaryStats = async () => {
     try {
@@ -402,8 +396,6 @@ export const PlanningScreen = ({ navigation }) => {
   };
 
   const renderWeekView = () => {
-    const weekDays = getWeekDays();
-    
     return (
       <ScrollView style={styles.weekContainer} showsVerticalScrollIndicator={false}>
         {/* Navigation de semaine */}
@@ -637,7 +629,7 @@ export const PlanningScreen = ({ navigation }) => {
           style={styles.statCard}
         >
           <Ionicons name="time" size={28} color={colors.info} />
-          <Text style={styles.statValue}>{calculateTotalHours().toFixed(0)}h</Text>
+          <Text style={styles.statValue}>{totalCompletedHours.toFixed(0)}h</Text>
           <Text style={styles.statLabel}>Heures</Text>
         </LinearGradient>
       </LinearGradient>
