@@ -363,6 +363,64 @@ app.get('/BussnessApp', (req, res) => {
   res.json({ message: 'BussnessApp API is running', version: '1.0.0' });
 });
 
+app.get('/paiement-confirme', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paiement confirmé - BussnessApp</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f0f1a; color: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .card { background: #1a1a2e; border-radius: 16px; padding: 48px 40px; max-width: 480px; width: 90%; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+    .icon { width: 80px; height: 80px; background: linear-gradient(135deg, #22c55e, #16a34a); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; font-size: 40px; }
+    h1 { font-size: 1.8rem; margin-bottom: 12px; color: #fff; }
+    p { color: #94a3b8; line-height: 1.6; margin-bottom: 8px; }
+    .badge { display: inline-block; background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); padding: 6px 16px; border-radius: 50px; font-size: 0.85rem; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✓</div>
+    <h1>Paiement confirmé !</h1>
+    <p>Votre paiement a bien été reçu.</p>
+    <p>Vous allez recevoir un email avec vos identifiants de connexion pour accéder à <strong>BussnessApp</strong>.</p>
+    <div class="badge">Merci pour votre confiance</div>
+  </div>
+</body>
+</html>`);
+});
+
+app.get('/paiement-annule', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paiement annulé - BussnessApp</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f0f1a; color: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .card { background: #1a1a2e; border-radius: 16px; padding: 48px 40px; max-width: 480px; width: 90%; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+    .icon { width: 80px; height: 80px; background: linear-gradient(135deg, #ef4444, #dc2626); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; font-size: 40px; }
+    h1 { font-size: 1.8rem; margin-bottom: 12px; color: #fff; }
+    p { color: #94a3b8; line-height: 1.6; }
+    .badge { display: inline-block; background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); padding: 6px 16px; border-radius: 50px; font-size: 0.85rem; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✕</div>
+    <h1>Paiement annulé</h1>
+    <p>Votre paiement n'a pas été finalisé. Aucun montant n'a été débité.</p>
+    <p style="margin-top:12px;">Si vous avez des questions, contactez-nous.</p>
+    <div class="badge">Paiement non effectué</div>
+  </div>
+</body>
+</html>`);
+});
+
 // ============= AUTH ROUTES =============
 
 // Register

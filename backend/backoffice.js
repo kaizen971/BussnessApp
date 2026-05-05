@@ -543,8 +543,8 @@ router.post('/admins', authenticateSuperAdmin, async (req, res) => {
             quantity: 1
           }],
           mode: isRecurring ? 'subscription' : 'payment',
-          success_url: `${process.env.BACKOFFICE_URL || 'http://localhost:5173'}/admin/admins/${admin._id}?payment=success`,
-          cancel_url: `${process.env.BACKOFFICE_URL || 'http://localhost:5173'}/admin/admins/${admin._id}?payment=cancelled`,
+          success_url: `${process.env.BACKEND_PUBLIC_URL ? process.env.BACKEND_PUBLIC_URL.replace('/bussnessapp', '').replace('/BussnessApp', '') : 'http://localhost:3000'}/paiement-confirme`,
+          cancel_url: `${process.env.BACKEND_PUBLIC_URL ? process.env.BACKEND_PUBLIC_URL.replace('/bussnessapp', '').replace('/BussnessApp', '') : 'http://localhost:3000'}/paiement-annule`,
           customer_email: email,
           metadata: { adminId: admin._id.toString(), subscriptionId: 'pending' }
         });
@@ -845,8 +845,8 @@ router.post('/admins/:id/subscription', authenticateSuperAdmin, async (req, res)
             quantity: 1
           }],
           mode: isRecurring ? 'subscription' : 'payment',
-          success_url: `${process.env.BACKOFFICE_URL || 'http://localhost:5173'}/admin/admins/${admin._id}?payment=success`,
-          cancel_url: `${process.env.BACKOFFICE_URL || 'http://localhost:5173'}/admin/admins/${admin._id}?payment=cancelled`,
+          success_url: `${process.env.BACKEND_PUBLIC_URL ? process.env.BACKEND_PUBLIC_URL.replace('/bussnessapp', '').replace('/BussnessApp', '') : 'http://localhost:3000'}/paiement-confirme`,
+          cancel_url: `${process.env.BACKEND_PUBLIC_URL ? process.env.BACKEND_PUBLIC_URL.replace('/bussnessapp', '').replace('/BussnessApp', '') : 'http://localhost:3000'}/paiement-annule`,
           customer_email: admin.email,
           metadata: { adminId: admin._id.toString(), subscriptionId: 'pending' }
         });
