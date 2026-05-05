@@ -14,6 +14,7 @@ import {
   Platform,
   ActivityIndicator,
   Image,
+  AppState,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,7 +37,7 @@ const screenWidth = Dimensions.get('window').width;
 export const DashboardScreen = ({ navigation }) => {
   const { user, logout, selectedProjectId, availableProjects, loadAvailableProjects, selectProject } = useAuth();
   const { format: formatPrice, currency, setProjectCurrency, availableCurrencies } = useCurrency();
-  const { subscription, isPremium, canAccessScreen } = useSubscription();
+  const { subscription, isPremium, canAccessScreen, refreshSubscription } = useSubscription();
   const [stats, setStats] = useState(null);
   const [currentProject, setCurrentProject] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -55,6 +56,7 @@ export const DashboardScreen = ({ navigation }) => {
   const modalSlideAnim = useRef(new Animated.Value(0)).current;
   const exportModalSlideAnim = useRef(new Animated.Value(0)).current;
   const commerceModalSlideAnim = useRef(new Animated.Value(0)).current;
+  const appState = useRef(AppState.currentState);
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   // Charger les projets disponibles au montage si pas encore chargés
@@ -80,6 +82,7 @@ export const DashboardScreen = ({ navigation }) => {
 
   useEffect(() => {
     loadDashboardData();
+    refreshSubscription();
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -93,6 +96,24 @@ export const DashboardScreen = ({ navigation }) => {
       }),
     ]).start();
   }, []);
+
+  useEffect(() => {
+    const unsubscribeFocus = navigation.addListener('focus', () => {
+      refreshSubscription();
+    });
+
+    const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        refreshSubscription();
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      unsubscribeFocus();
+      appStateSubscription.remove();
+    };
+  }, [navigation, refreshSubscription]);
 
   useEffect(() => {
     if (selectedProjectId) {
@@ -130,6 +151,7 @@ export const DashboardScreen = ({ navigation }) => {
 
   const onRefresh = () => {
     setRefreshing(true);
+    refreshSubscription();
     loadDashboardData();
   };
 

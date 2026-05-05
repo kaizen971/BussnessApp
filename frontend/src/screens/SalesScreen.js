@@ -62,7 +62,7 @@ export const SalesScreen = () => {
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [sellerSearch, setSellerSearch] = useState('');
-  const [productViewMode, setProductViewMode] = useState('grid');
+  const [productViewMode, setProductViewMode] = useState('list');
 
   useEffect(() => {
     // Log pour déboguer le projectId
@@ -245,6 +245,11 @@ export const SalesScreen = () => {
 
     setSubmitting(true);
     try {
+      // Snapshot du panier avant nettoyage pour pouvoir partager le reçu après validation
+      const cartSnapshot = [...cart];
+      const customerSnapshot = selectedCustomer;
+      const sellerSnapshot = isAdmin ? selectedSeller : user;
+
       // Créer toutes les ventes en parallèle
       await Promise.all(
         cart.map(item =>
@@ -266,7 +271,17 @@ export const SalesScreen = () => {
       setFormData({ customerId: '', sellerId: '' });
       setModalVisible(false);
       await loadData();
-      Alert.alert('Succès', `${cart.length} vente(s) enregistrée(s) avec succès`);
+      Alert.alert(
+        'Succès',
+        `${cartSnapshot.length} vente(s) enregistrée(s) avec succès`,
+        [
+          {
+            text: 'Partager le reçu',
+            onPress: () => handleShareCart(cartSnapshot, customerSnapshot, sellerSnapshot),
+          },
+          { text: 'OK', style: 'cancel' },
+        ]
+      );
     } catch (error) {
       console.error('Error adding sales:', error);
       playSound('error');
@@ -368,10 +383,47 @@ export const SalesScreen = () => {
     );
   };
 
-  const handleShareSale = (sale) => {
-    const message = buildReceiptMessage(sale);
-    const productName = sale.productId?.name || 'Produit';
+  const buildCartReceiptMessage = (cartItems, customer, seller, receiptDate = new Date()) => {
+    const customerName = customer?.name || 'Client inconnu';
+    const sellerName = seller?.fullName || seller?.username || 'Vendeur';
+    const date = new Date(receiptDate).toLocaleDateString('fr-FR', {
+      day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
 
+    let total = 0;
+    let totalDiscount = 0;
+    let productsLines = '';
+
+    cartItems.forEach((item) => {
+      const lineSubtotal = item.quantity * item.unitPrice;
+      const lineDiscount = item.discount || 0;
+      const lineTotal = lineSubtotal - lineDiscount;
+      total += lineTotal;
+      totalDiscount += lineDiscount;
+      productsLines +=
+        `📦 *${item.productName}*\n` +
+        `   ${item.quantity} x ${formatPrice(item.unitPrice)} = ${formatPrice(lineSubtotal)}\n`;
+      if (lineDiscount > 0) {
+        productsLines += `   🏷️ Remise : -${formatPrice(lineDiscount)}\n`;
+      }
+    });
+
+    return (
+      `🧾 *REÇU DE VENTE*\n` +
+      `━━━━━━━━━━━━━━━━━━\n\n` +
+      productsLines +
+      `\n` +
+      (totalDiscount > 0 ? `🏷️ *Remise totale :* -${formatPrice(totalDiscount)}\n` : '') +
+      `💰 *Total :* ${formatPrice(total)}\n\n` +
+      `👤 *Client :* ${customerName}\n` +
+      `🏪 *Vendeur :* ${sellerName}\n` +
+      `📅 *Date :* ${date}\n\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `Merci pour votre achat ! 🙏`
+    );
+  };
+
+  const shareReceiptMessage = (message, title) => {
     Alert.alert(
       'Partager le reçu',
       'Choisissez comment envoyer ce reçu',
@@ -387,7 +439,7 @@ export const SalesScreen = () => {
               Alert.alert(
                 'WhatsApp non disponible',
                 'WhatsApp n\'est pas installé. Le reçu va s\'ouvrir dans d\'autres applications.',
-                [{ text: 'OK', onPress: () => Share.share({ message, title: `Reçu - ${productName}` }) }]
+                [{ text: 'OK', onPress: () => Share.share({ message, title }) }]
               );
             }
           },
@@ -396,7 +448,7 @@ export const SalesScreen = () => {
           text: '📤 Autres applications',
           onPress: async () => {
             try {
-              await Share.share({ message, title: `Reçu - ${productName}` });
+              await Share.share({ message, title });
             } catch (error) {
               if (error.message !== 'User did not share') {
                 Alert.alert('Erreur', 'Impossible de partager le reçu.');
@@ -407,6 +459,71 @@ export const SalesScreen = () => {
         { text: 'Annuler', style: 'cancel' },
       ]
     );
+  };
+
+  const getSalePartyKey = (sale) => {
+    const customerId = sale.customerId?._id || sale.customerId || 'no-customer';
+    const sellerId = sale.employeeId?._id || sale.employeeId || 'no-seller';
+    return `${customerId}-${sellerId}`;
+  };
+
+  const getSaleCartGroup = (sale) => {
+    if (!sale?.date || !Array.isArray(sales)) return [sale].filter(Boolean);
+
+    const saleTime = new Date(sale.date).getTime();
+    const salePartyKey = getSalePartyKey(sale);
+    const groupWindowMs = 10000;
+
+    return sales
+      .filter(candidate => {
+        if (!candidate?.date || candidate.amount < 0) return false;
+        const candidateTime = new Date(candidate.date).getTime();
+        return (
+          getSalePartyKey(candidate) === salePartyKey &&
+          Math.abs(candidateTime - saleTime) <= groupWindowMs
+        );
+      })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  };
+
+  const buildCartItemsFromSales = (saleItems) => (
+    saleItems.map(sale => ({
+      productId: sale.productId?._id || sale.productId,
+      productName: sale.productId?.name || 'Produit',
+      quantity: sale.quantity || 1,
+      unitPrice: sale.unitPrice || 0,
+      discount: sale.discount || 0,
+    }))
+  );
+
+  const handleShareSale = (sale) => {
+    const saleItems = getSaleCartGroup(sale);
+    const customer = sale.customerId || null;
+    const seller = sale.employeeId || null;
+
+    if (saleItems.length > 1) {
+      const message = buildCartReceiptMessage(
+        buildCartItemsFromSales(saleItems),
+        customer,
+        seller,
+        sale.date
+      );
+      shareReceiptMessage(message, `Recu - ${saleItems.length} produit(s)`);
+      return;
+    }
+
+    const message = buildReceiptMessage(sale);
+    const productName = sale.productId?.name || 'Produit';
+    shareReceiptMessage(message, `Reçu - ${productName}`);
+  };
+
+  const handleShareCart = (items = cart, customer = selectedCustomer, seller = (isAdmin ? selectedSeller : user)) => {
+    if (!items || items.length === 0) {
+      Alert.alert('Panier vide', 'Ajoutez des produits au panier avant de partager');
+      return;
+    }
+    const message = buildCartReceiptMessage(items, customer, seller);
+    shareReceiptMessage(message, `Reçu - ${items.length} produit(s)`);
   };
 
   // Déterminer si l'utilisateur est admin/manager
@@ -729,6 +846,7 @@ export const SalesScreen = () => {
 
             <ScrollView
               style={styles.modalForm}
+              contentContainerStyle={cart.length > 0 ? styles.modalFormWithOverlay : styles.modalFormContent}
               showsVerticalScrollIndicator={false}
             >
               {!isAdmin && (
@@ -1100,44 +1218,58 @@ export const SalesScreen = () => {
                     </View>
                   ))}
 
-                  <View style={styles.cartTotal}>
-                    <Text style={styles.cartTotalLabel}>Total du panier:</Text>
-                    <Text style={styles.cartTotalValue}>{formatPrice(cartTotal)}</Text>
-                  </View>
-
-                  <TouchableOpacity
-                    style={styles.validateButtonWrapper}
-                    onPress={handleValidateCart}
-                    disabled={submitting}
-                  >
-                    <LinearGradient
-                      colors={[colors.primary, colors.primaryDark]}
-                      style={styles.validateButton}
-                    >
-                      {submitting ? (
-                        <ActivityIndicator color="#000" />
-                      ) : (
-                        <>
-                          <Ionicons name="checkmark-circle" size={22} color="#000" />
-                          <Text style={styles.validateButtonText}>
-                            Valider {cart.length} vente(s)
-                          </Text>
-                        </>
-                      )}
-                    </LinearGradient>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.clearButton}
-                    onPress={handleClearCart}
-                    disabled={submitting}
-                  >
-                    <Ionicons name="trash-outline" size={18} color={colors.danger} />
-                    <Text style={styles.clearButtonText}>Vider le panier</Text>
-                  </TouchableOpacity>
                 </>
               )}
             </ScrollView>
+
+            {cart.length > 0 && (
+              <View style={styles.validateOverlay}>
+                <View style={styles.validateOverlaySummary}>
+                  <Text style={styles.validateOverlayLabel}>Total panier</Text>
+                  <Text style={styles.validateOverlayTotal}>{formatPrice(cartTotal)}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.validateOverlayButtonWrapper}
+                  onPress={handleValidateCart}
+                  disabled={submitting}
+                >
+                  <LinearGradient
+                    colors={[colors.primary, colors.primaryDark]}
+                    style={styles.validateButton}
+                  >
+                    {submitting ? (
+                      <ActivityIndicator color="#000" />
+                    ) : (
+                      <>
+                        <Ionicons name="checkmark-circle" size={22} color="#000" />
+                        <Text style={styles.validateButtonText}>
+                          Valider {cart.length} vente(s)
+                        </Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+                <View style={styles.validateOverlayActions}>
+                  <TouchableOpacity
+                    style={[styles.shareCartButton, styles.validateOverlaySecondaryButton]}
+                    onPress={() => handleShareCart()}
+                    disabled={submitting}
+                  >
+                    <Ionicons name="share-social-outline" size={18} color={colors.primary} />
+                    <Text style={styles.shareCartButtonText}>Partager</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.clearButton, styles.validateOverlaySecondaryButton]}
+                    onPress={handleClearCart}
+                    disabled={submitting}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={colors.error} />
+                    <Text style={styles.clearButtonText}>Vider</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
           </LinearGradient>
         </View>
       </Modal>
@@ -1783,6 +1915,7 @@ const styles = StyleSheet.create({
     maxHeight: '92%',
     borderTopWidth: 2,
     borderColor: colors.primary + '40',
+    position: 'relative',
   },
   modalHeaderContainer: {
     padding: 20,
@@ -1832,6 +1965,12 @@ const styles = StyleSheet.create({
   },
   modalForm: {
     paddingHorizontal: 20,
+  },
+  modalFormContent: {
+    paddingBottom: 16,
+  },
+  modalFormWithOverlay: {
+    paddingBottom: 196,
   },
   employeeInfo: {
     flexDirection: 'row',
@@ -2012,6 +2151,57 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  validateOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 18,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  validateOverlaySummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  validateOverlayLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  validateOverlayTotal: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  validateOverlayButtonWrapper: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  validateOverlayActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  validateOverlaySecondaryButton: {
+    flex: 1,
+    marginBottom: 0,
+  },
   validateButton: {
     paddingVertical: 18,
     flexDirection: 'row',
@@ -2030,15 +2220,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 14,
     borderRadius: 14,
-    backgroundColor: colors.danger + '15',
+    backgroundColor: colors.error + '18',
     borderWidth: 1,
-    borderColor: colors.danger + '30',
+    borderColor: colors.error + '55',
     gap: 8,
+  },
+  shareCartButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: colors.primary + '15',
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+    gap: 8,
+    marginBottom: 12,
+  },
+  shareCartButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.primary,
   },
   clearButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.danger,
+    color: colors.error,
   },
   selectedItemBadge: {
     flexDirection: 'row',
@@ -2361,4 +2568,3 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
-

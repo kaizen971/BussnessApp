@@ -33,8 +33,28 @@ export const AuthProvider = ({ children }) => {
 
       if (storedToken && storedUser) {
         setCachedToken(storedToken);
-        setToken(storedToken);
-        const userData = JSON.parse(storedUser);
+        let activeToken = storedToken;
+        let userData = JSON.parse(storedUser);
+
+        try {
+          const refreshed = await authAPI.refreshToken();
+          activeToken = refreshed.token;
+          userData = refreshed.user;
+        } catch (refreshError) {
+          console.log('Stored session refresh failed:', refreshError.response?.data || refreshError.message);
+          if (refreshError.response) {
+            await Promise.all([
+              AsyncStorage.removeItem('userToken'),
+              AsyncStorage.removeItem('userData'),
+              AsyncStorage.removeItem('selectedProjectId'),
+            ]);
+            clearCachedToken();
+            return;
+          }
+        }
+
+        setCachedToken(activeToken);
+        setToken(activeToken);
         setUser(userData);
         console.log(storedProjectId);
         // Charger le projectId sélectionné ou utiliser celui de l'utilisateur
@@ -109,11 +129,17 @@ export const AuthProvider = ({ children }) => {
       if (data.token) {
         await AsyncStorage.setItem('userToken', data.token);
         await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+        setCachedToken(data.token);
         setToken(data.token);
         setUser(data.user);
       }
 
-      return { success: true };
+      return {
+        success: true,
+        autoActivated: data.autoActivated,
+        pendingActivation: data.pendingActivation,
+        message: data.message
+      };
     } catch (error) {
       console.log('Registration error details:', error.response?.data);
       const errorData = error.response?.data;

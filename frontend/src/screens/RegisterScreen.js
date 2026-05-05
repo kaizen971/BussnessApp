@@ -160,6 +160,13 @@ export const RegisterScreen = ({ navigation }) => {
     setLoading(false);
 
     if (result.success) {
+      if (result.autoActivated) {
+        Alert.alert(
+          'Essai active',
+          result.message || 'Votre compte essai est actif. Vous etes connecte automatiquement.'
+        );
+        return;
+      }
       setRegistrationSuccess(true);
       animateTransition(3);
     } else {

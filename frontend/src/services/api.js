@@ -14,9 +14,39 @@ const api = axios.create({
 
 // Cache en mémoire pour éviter de lire AsyncStorage à chaque requête
 let cachedToken = null;
+let refreshPromise = null;
 
 export const setCachedToken = (token) => { cachedToken = token; };
 export const clearCachedToken = () => { cachedToken = null; };
+
+const refreshAuthToken = async () => {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const token = cachedToken || await AsyncStorage.getItem('userToken');
+    if (!token) throw new Error('No token to refresh');
+
+    const response = await api.post('/auth/refresh', null, {
+      headers: { Authorization: `Bearer ${token}` },
+      skipAuthRefresh: true,
+    });
+
+    const { token: newToken, user } = response.data || {};
+    if (!newToken || !user) throw new Error('Invalid refresh response');
+
+    cachedToken = newToken;
+    await Promise.all([
+      AsyncStorage.setItem('userToken', newToken),
+      AsyncStorage.setItem('userData', JSON.stringify(user)),
+    ]);
+
+    return { token: newToken, user };
+  })().finally(() => {
+    refreshPromise = null;
+  });
+
+  return refreshPromise;
+};
 
 // Préchargement unique au démarrage — partagé avec l'intercepteur
 const tokenPreload = AsyncStorage.getItem('userToken').then(t => { cachedToken = t; });
@@ -39,7 +69,7 @@ api.interceptors.request.use(
 // Add response interceptor for better error handling
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response) {
       // Server responded with error status
       console.error('API Error Response:', {
@@ -47,6 +77,26 @@ api.interceptors.response.use(
         data: error.response.data,
         url: error.config?.url
       });
+
+      const originalRequest = error.config;
+      const isExpiredToken =
+        error.response.status === 403 &&
+        error.response.data?.code === 'TOKEN_EXPIRED';
+
+      if (isExpiredToken && originalRequest && !originalRequest._retry && !originalRequest.skipAuthRefresh) {
+        originalRequest._retry = true;
+        try {
+          const refreshed = await refreshAuthToken();
+          originalRequest.headers = originalRequest.headers || {};
+          originalRequest.headers.Authorization = `Bearer ${refreshed.token}`;
+          return api(originalRequest);
+        } catch (refreshError) {
+          await AsyncStorage.removeItem('userToken');
+          await AsyncStorage.removeItem('userData');
+          cachedToken = null;
+          return Promise.reject(refreshError);
+        }
+      }
     } else if (error.request) {
       // Request was made but no response received
       console.error('API No Response:', error.request);
@@ -62,6 +112,7 @@ api.interceptors.response.use(
 export const authAPI = {
   login: (username, password) => api.post('/auth/login', { username, password }),
   register: (userData) => api.post('/auth/register', userData),
+  refreshToken: () => refreshAuthToken(),
   getCurrentUser: () => api.get('/auth/me'),
   changePassword: (oldPassword, newPassword) => api.post('/auth/change-password', { oldPassword, newPassword }),
   updateProfilePhoto: (imageUri) => {
