@@ -501,7 +501,7 @@ export const TeamScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.userActions}>
-          {user?.role === 'admin' && item._id !== user.id && (
+          {user?.role === 'admin' && item._id !== user.id && item.role !== 'admin' && (
             <TouchableOpacity
               style={styles.actionButton}
               onPress={() => handleToggleStatus(item)}

@@ -16,13 +16,36 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { subscriptionAPI, legalAPI } from '../services/api';
+import { subscriptionAPI } from '../services/api';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
 import { colors, gradients } from '../utils/colors';
 
 const { width } = Dimensions.get('window');
+
+const CGU_DATA = {
+  version: '1.0',
+  updatedAt: '2025-01-01',
+  title: "Conditions Générales d'Utilisation (CGU)",
+  appName: "EAS – Entreprendre avec Succès",
+  sections: [
+    { id: 1, title: "Objet", content: "Les présentes Conditions Générales d'Utilisation (CGU) ont pour objet de définir les modalités d'accès et d'utilisation de l'application mobile EAS – Entreprendre avec Succès (ci-après « l'Application »).\nL'Application permet aux utilisateurs de gérer, suivre et analyser leur activité commerciale (ventes, dépenses, stock, équipes, rentabilité, etc.)." },
+    { id: 2, title: "Éditeur de l'application", content: "L'Application est éditée par : SASU COD&COV" },
+    { id: 3, title: "Accès au service", content: "L'accès à l'Application est possible via téléchargement sur les stores (Google Play / App Store).\nL'utilisateur doit créer un compte pour accéder aux fonctionnalités.\nL'éditeur se réserve le droit de modifier, suspendre ou interrompre l'accès au service à tout moment." },
+    { id: 4, title: "Description des services", content: "L'Application propose notamment les fonctionnalités suivantes :\n• Gestion des ventes\n• Suivi des dépenses\n• Gestion du stock\n• Gestion des employés et commissions\n• Calcul de la rentabilité\n• Module de simulation de business (business plan)\n• Export de données (selon abonnement)\n• Gestion multi-business\n\nLes fonctionnalités disponibles dépendent du plan d'abonnement souscrit." },
+    { id: 5, title: "Compte utilisateur", content: "L'utilisateur est responsable des informations fournies lors de la création de son compte.\nIl est seul responsable de la confidentialité de ses identifiants.\nToute utilisation du compte est réputée faite par l'utilisateur." },
+    { id: 6, title: "Abonnements et paiements", content: "L'Application propose plusieurs formules d'abonnement (Basic, Standard, Premium).\nLes tarifs peuvent être modifiés à tout moment.\nLes abonnements sont généralement annuels et renouvelables.\nAucun remboursement ne pourra être exigé sauf disposition légale contraire." },
+    { id: 7, title: "Responsabilité", content: "L'Application est un outil d'aide à la gestion.\nL'éditeur ne garantit pas l'exactitude des résultats financiers générés, ceux-ci dépendant des données saisies par l'utilisateur.\nL'utilisateur reste seul responsable de :\n• La gestion de son activité\n• Ses décisions commerciales\n• La conformité de ses obligations légales et fiscales\n\nL'éditeur ne saurait être tenu responsable de pertes financières, erreurs de gestion ou décisions prises sur la base des données de l'Application." },
+    { id: 8, title: "Données", content: "Les données saisies dans l'Application appartiennent à l'utilisateur.\nL'éditeur s'engage à mettre en œuvre des moyens raisonnables pour assurer la sécurité des données.\nToutefois, l'utilisateur est responsable de la sauvegarde de ses informations." },
+    { id: 9, title: "Disponibilité", content: "L'éditeur s'efforce d'assurer un accès continu à l'Application.\nCependant, des interruptions peuvent survenir (maintenance, incident technique, réseau…).\nAucune garantie de disponibilité permanente n'est fournie." },
+    { id: 10, title: "Utilisation conforme", content: "L'utilisateur s'engage à utiliser l'Application conformément à sa destination.\nIl est interdit de :\n• Utiliser l'Application à des fins frauduleuses\n• Tenter d'accéder aux systèmes de manière non autorisée\n• Porter atteinte au bon fonctionnement du service" },
+    { id: 11, title: "Propriété intellectuelle", content: "L'ensemble des éléments de l'Application (code, design, contenu) est protégé.\nToute reproduction, modification ou exploitation sans autorisation est interdite." },
+    { id: 12, title: "Résiliation", content: "L'utilisateur peut cesser d'utiliser l'Application à tout moment.\nL'éditeur peut suspendre ou supprimer un compte en cas de non-respect des CGU." },
+    { id: 13, title: "Évolution des CGU", content: "Les présentes CGU peuvent être modifiées à tout moment.\nL'utilisateur sera informé en cas de modification importante." },
+    { id: 14, title: "Droit applicable", content: "Les présentes CGU sont régies par le droit applicable du pays de l'éditeur." },
+  ],
+};
 const DURATION_LABELS = { days: 'jour(s)', months: 'mois', years: 'an(s)', lifetime: 'À vie' };
 
 const TIER_ICONS = {
@@ -66,7 +89,6 @@ export const RegisterScreen = ({ navigation }) => {
   const [cguAccepted, setCguAccepted] = useState(false);
   const [cguModalVisible, setCguModalVisible] = useState(false);
   const [cguData, setCguData] = useState(null);
-  const [loadingCgu, setLoadingCgu] = useState(false);
   const { register } = useAuth();
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -123,19 +145,9 @@ export const RegisterScreen = ({ navigation }) => {
     return true;
   };
 
-  const openCGU = async () => {
+  const openCGU = () => {
+    setCguData(CGU_DATA);
     setCguModalVisible(true);
-    if (cguData) return;
-    setLoadingCgu(true);
-    try {
-      const response = await legalAPI.getCGU();
-      setCguData(response.data);
-    } catch {
-      Alert.alert('Erreur', 'Impossible de charger les CGU. Veuillez réessayer.');
-      setCguModalVisible(false);
-    } finally {
-      setLoadingCgu(false);
-    }
   };
 
   const goToStep2 = () => {
@@ -162,8 +174,8 @@ export const RegisterScreen = ({ navigation }) => {
     if (result.success) {
       if (result.autoActivated) {
         Alert.alert(
-          'Essai active',
-          result.message || 'Votre compte essai est actif. Vous etes connecte automatiquement.'
+          'Essai activé !',
+          result.message || 'Votre compte essai est actif. Vous êtes connecté automatiquement.'
         );
         return;
       }
@@ -488,13 +500,7 @@ export const RegisterScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
 
-            {loadingCgu ? (
-              <View style={styles.cguLoading}>
-                <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={styles.cguLoadingText}>Chargement des CGU...</Text>
-              </View>
-            ) : (
-              <ScrollView
+            <ScrollView
                 style={styles.cguScroll}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.cguScrollContent}
@@ -518,7 +524,6 @@ export const RegisterScreen = ({ navigation }) => {
                   </>
                 )}
               </ScrollView>
-            )}
 
             <View style={styles.cguModalActions}>
               <TouchableOpacity
@@ -932,6 +937,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+    flex: 1,
     maxHeight: '88%',
     borderTopWidth: 2,
     borderColor: colors.primary + '40',

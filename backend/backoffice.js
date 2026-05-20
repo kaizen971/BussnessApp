@@ -1224,9 +1224,7 @@ router.post('/stripe/webhook', async (req, res) => {
             subscription.updatedAt = new Date();
             await subscription.save();
 
-            if (sub.status !== 'canceled') {
-              await User.findByIdAndUpdate(subscription.adminId, { isActive: false });
-            }
+            await User.findByIdAndUpdate(subscription.adminId, { isActive: false });
 
             await logActivity(null, 'system', 'subscription_' + sub.status,
               `Abonnement Stripe ${sub.status}`, 'Subscription', subscription._id);

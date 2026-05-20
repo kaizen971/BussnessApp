@@ -545,12 +545,146 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
 
     console.log(`Nouvelle inscription: ${user.username} - Plan choisi: ${selectedPlan.name}`);
 
-    // Envoyer un email de notification à tous les super admins
     const DURATION_LABELS = { days: 'jour(s)', months: 'mois', years: 'an(s)', lifetime: 'À vie' };
     const durationLabel = selectedPlan.durationType === 'lifetime'
       ? 'À vie'
       : `${selectedPlan.duration} ${DURATION_LABELS[selectedPlan.durationType] || selectedPlan.durationType}`;
 
+    // Plan gratuit : activation automatique sans intervention admin
+    if (selectedPlan.price === 0) {
+      user.isActive = true;
+      await user.save();
+
+      // Créer l'abonnement actif immédiatement
+      const Subscription = mongoose.model('Subscription');
+      const startDate = new Date();
+      const endDate = new Date();
+      if (selectedPlan.durationType === 'lifetime') {
+        endDate.setFullYear(endDate.getFullYear() + 100);
+      } else if (selectedPlan.durationType === 'days') {
+        endDate.setDate(endDate.getDate() + selectedPlan.duration);
+      } else if (selectedPlan.durationType === 'months') {
+        endDate.setMonth(endDate.getMonth() + selectedPlan.duration);
+      } else if (selectedPlan.durationType === 'years') {
+        endDate.setFullYear(endDate.getFullYear() + selectedPlan.duration);
+      }
+
+      const subscription = new Subscription({
+        adminId: user._id,
+        planId: selectedPlan._id,
+        planName: selectedPlan.name,
+        plan: 'custom',
+        status: 'active',
+        startDate,
+        endDate,
+        amount: 0,
+        duration: selectedPlan.duration,
+        durationType: selectedPlan.durationType,
+        maxProjects: selectedPlan.maxProjects,
+        paymentMethod: 'donation',
+      });
+      await subscription.save();
+
+      // Générer le JWT
+      const token = jwt.sign(
+        { id: user._id, username: user.username, role: user.role, projectId: user.projectId },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      // Envoyer email de bienvenue avec identifiants
+      try {
+        const welcomeHtml = `
+          <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
+            <div style="background: linear-gradient(135deg, #1A1A1A, #2D2D2D); border-radius: 12px; padding: 30px; margin-bottom: 20px;">
+              <h1 style="color: #D4AF37; margin: 0; font-size: 24px;">Bienvenue sur BussnessApp !</h1>
+              <p style="color: #999; margin: 8px 0 0;">Votre essai gratuit est activé</p>
+            </div>
+            <div style="background: white; border-radius: 12px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+              <p style="color: #333; font-size: 15px;">Bonjour <strong>${fullName.trim()}</strong>,</p>
+              <p style="color: #555;">Votre compte essai <strong>${selectedPlan.name}</strong> (${durationLabel}) est maintenant actif. Voici vos identifiants de connexion :</p>
+              <div style="background: #f0f0ff; border-radius: 10px; padding: 20px; margin: 20px 0;">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="padding: 8px 0; color: #888; width: 160px;">Nom d'utilisateur</td>
+                    <td style="padding: 8px 0; color: #333; font-weight: 600;">${username.trim()}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #888;">Email</td>
+                    <td style="padding: 8px 0; color: #333; font-weight: 600;">${email.trim()}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #888;">Mot de passe</td>
+                    <td style="padding: 8px 0; color: #333; font-weight: 600;">Celui choisi lors de l'inscription</td>
+                  </tr>
+                </table>
+              </div>
+              <div style="background: #e8f5e9; border-radius: 8px; padding: 16px; border-left: 4px solid #4CAF50;">
+                <p style="margin: 0; color: #2e7d32; font-size: 14px;">
+                  <strong>${selectedPlan.name}</strong> — ${durationLabel} offert(s) à partir d'aujourd'hui
+                </p>
+              </div>
+              <p style="color: #555; margin-top: 20px; font-size: 14px;">Vous êtes déjà connecté automatiquement dans l'application. Bonne découverte !</p>
+            </div>
+            <p style="text-align: center; color: #999; font-size: 12px; margin-top: 20px;">
+              BussnessApp — ${new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          </div>
+        `;
+        await sendEmail(user.email, `Bienvenue sur BussnessApp - Essai ${selectedPlan.name} activé`, welcomeHtml);
+        console.log(`Email de bienvenue envoyé à ${user.email}`);
+      } catch (emailError) {
+        console.error('Erreur envoi email bienvenue:', emailError.message);
+      }
+
+      // Notifier les super-admins (info seulement)
+      try {
+        const SuperAdmin = mongoose.model('SuperAdmin');
+        const superAdmins = await SuperAdmin.find({ isActive: true });
+        const notifHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
+            <div style="background: linear-gradient(135deg, #1A1A1A, #2D2D2D); border-radius: 12px; padding: 30px; margin-bottom: 20px;">
+              <h1 style="color: #4CAF50; margin: 0; font-size: 22px;">Nouvel essai gratuit</h1>
+              <p style="color: #999; margin: 8px 0 0;">Inscription automatique — aucune action requise</p>
+            </div>
+            <div style="background: white; border-radius: 12px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr><td style="padding: 8px 0; color: #888; width: 140px;">Nom</td><td style="padding: 8px 0; color: #333; font-weight: 600;">${fullName.trim()}</td></tr>
+                <tr><td style="padding: 8px 0; color: #888;">Email</td><td style="padding: 8px 0; color: #333;">${email.trim()}</td></tr>
+                <tr><td style="padding: 8px 0; color: #888;">Plan</td><td style="padding: 8px 0; color: #333;">${selectedPlan.name} (${durationLabel})</td></tr>
+              </table>
+              <div style="margin-top: 16px; padding: 12px; background: #e8f5e9; border-radius: 8px;">
+                <p style="margin: 0; color: #2e7d32; font-size: 13px;">Compte activé automatiquement — aucune action requise de votre part.</p>
+              </div>
+            </div>
+          </div>
+        `;
+        for (const admin of superAdmins) {
+          await sendEmail(admin.email, `Nouvel essai gratuit - ${fullName.trim()} (${selectedPlan.name})`, notifHtml);
+        }
+      } catch (emailError) {
+        console.error('Erreur notification super admins:', emailError.message);
+      }
+
+      return res.status(201).json({
+        success: true,
+        autoActivated: true,
+        message: `Compte essai activé ! Vos identifiants ont été envoyés à ${email.trim()}. Vous êtes connecté automatiquement.`,
+        token,
+        user: {
+          id: user._id,
+          username: user.username,
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+          isActive: user.isActive,
+          projectId: user.projectId,
+          projectIds: user.projectIds
+        }
+      });
+    }
+
+    // Envoyer un email de notification à tous les super admins (plans payants)
     try {
       const SuperAdmin = mongoose.model('SuperAdmin');
       const superAdmins = await SuperAdmin.find({ isActive: true });
@@ -2216,17 +2350,24 @@ app.put('/BussnessApp/users/:id/role', authenticateToken, checkRole('admin'), as
 // Deactivate/activate user (admin only)
 app.put('/BussnessApp/users/:id/status', authenticateToken, checkRole('admin'), async (req, res) => {
   try {
-    const { isActive } = req.body;
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { isActive },
-      { new: true }
-    ).select('-password');
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'Vous ne pouvez pas modifier votre propre statut' });
     }
-    res.json(user);
+
+    const targetUser = await User.findById(req.params.id);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    if (targetUser.role === 'admin') {
+      return res.status(403).json({ error: 'Vous ne pouvez pas désactiver un autre administrateur' });
+    }
+
+    const { isActive } = req.body;
+    targetUser.isActive = isActive;
+    await targetUser.save();
+
+    res.json(targetUser.toObject ? { ...targetUser.toObject(), password: undefined } : targetUser);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -3863,8 +4004,18 @@ app.get('/BussnessApp/subscription/my', authenticateToken, async (req, res) => {
 
     const isExpired = subscription.endDate && new Date(subscription.endDate) < new Date();
     if (isExpired && subscription.status === 'active') {
+      // Annuler côté Stripe si applicable
+      if (stripeForExpiry && subscription.stripeSubscriptionId) {
+        try {
+          await stripeForExpiry.subscriptions.cancel(subscription.stripeSubscriptionId);
+        } catch (e) {
+          console.warn(`[subscription check] Stripe cancel ignoré: ${e.message}`);
+        }
+      }
       subscription.status = 'expired';
+      subscription.updatedAt = new Date();
       await subscription.save();
+      await User.findByIdAndUpdate(subscription.adminId, { isActive: false });
     }
 
     const planData = subscription.planId || {};
@@ -4003,6 +4154,96 @@ app.get('/BussnessApp/legal/cgu', (req, res) => {
   res.json(CGU_DATA);
 });
 
+// ============= STRIPE (pour expiration) =============
+
+let stripeForExpiry = null;
+if (process.env.STRIPE_SECRET_KEY) {
+  try {
+    stripeForExpiry = require('stripe')(process.env.STRIPE_SECRET_KEY);
+  } catch (e) {
+    console.log('[expireSubscriptions] Stripe non disponible');
+  }
+}
+
+// ============= JOB : EXPIRATION DES ABONNEMENTS =============
+
+const expireSubscriptions = async () => {
+  try {
+    const Subscription = mongoose.model('Subscription');
+    const now = new Date();
+
+    // Récupérer les abonnements actifs expirés (un par un pour traitement individuel)
+    const expiredSubs = await Subscription.find({ status: 'active', endDate: { $lt: now } });
+
+    if (expiredSubs.length === 0) return;
+
+    for (const subscription of expiredSubs) {
+      // 1. Annuler côté Stripe si un stripeSubscriptionId existe
+      if (stripeForExpiry && subscription.stripeSubscriptionId) {
+        try {
+          await stripeForExpiry.subscriptions.cancel(subscription.stripeSubscriptionId);
+          console.log(`[expireSubscriptions] Stripe subscription ${subscription.stripeSubscriptionId} annulée`);
+        } catch (stripeErr) {
+          // Si déjà annulée côté Stripe, on continue sans bloquer
+          console.warn(`[expireSubscriptions] Stripe cancel ignoré (${subscription.stripeSubscriptionId}): ${stripeErr.message}`);
+        }
+      }
+
+      // 2. Passer le statut à 'expired' et bloquer le compte
+      subscription.status = 'expired';
+      subscription.updatedAt = new Date();
+      await subscription.save();
+      await User.findByIdAndUpdate(subscription.adminId, { isActive: false });
+
+      // 3. Envoyer un email de notification à l'utilisateur
+      try {
+        const User = mongoose.model('User');
+        const user = await User.findById(subscription.adminId);
+        if (user && user.email) {
+          const planLabel = subscription.planName || subscription.plan || 'votre abonnement';
+          const expirationDate = subscription.endDate
+            ? new Date(subscription.endDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
+            : 'la date prévue';
+
+          await sendEmail(
+            user.email,
+            'Votre abonnement BussnessApp a expiré',
+            `
+            <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
+              <div style="background: linear-gradient(135deg, #1A1A1A, #2D2D2D); border-radius: 12px; padding: 30px; margin-bottom: 20px; text-align: center;">
+                <h1 style="color: #FFFFFF; margin: 0; font-size: 24px;">BussnessApp</h1>
+              </div>
+              <div style="background: #FFFFFF; border-radius: 12px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                <h2 style="color: #E53E3E; margin-top: 0;">Abonnement expiré</h2>
+                <p style="color: #4A5568;">Bonjour <strong>${user.fullName || user.username}</strong>,</p>
+                <p style="color: #4A5568;">
+                  Votre abonnement <strong>${planLabel}</strong> a expiré le <strong>${expirationDate}</strong>.
+                  Votre accès à BussnessApp est maintenant limité.
+                </p>
+                <div style="background: #FFF5F5; border-left: 4px solid #E53E3E; padding: 15px; border-radius: 4px; margin: 20px 0;">
+                  <p style="margin: 0; color: #C53030; font-size: 14px;">
+                    Pour continuer à utiliser toutes les fonctionnalités, veuillez renouveler votre abonnement.
+                  </p>
+                </div>
+                <p style="color: #718096; font-size: 13px; margin-top: 30px;">
+                  Si vous avez des questions, contactez-nous à <a href="mailto:support@bussnessapp.com" style="color: #1A1A1A;">support@bussnessapp.com</a>.
+                </p>
+              </div>
+            </div>
+            `
+          );
+        }
+      } catch (mailErr) {
+        console.warn(`[expireSubscriptions] Email non envoyé pour adminId ${subscription.adminId}: ${mailErr.message}`);
+      }
+    }
+
+    console.log(`[expireSubscriptions] ${expiredSubs.length} abonnement(s) expiré(s) traité(s)`);
+  } catch (error) {
+    console.error('[expireSubscriptions] Erreur:', error.message);
+  }
+};
+
 // Start server
 app.listen(PORT, async () => {
   const publicApiUrl = process.env.BACKEND_PUBLIC_URL || `http://localhost:${PORT}/BussnessApp`;
@@ -4016,4 +4257,8 @@ app.listen(PORT, async () => {
 
   // Vérifier les dépenses récurrentes toutes les heures
   setInterval(generateRecurringExpenses, 60 * 60 * 1000);
+
+  // Expirer les abonnements dépassés au démarrage puis toutes les heures
+  await expireSubscriptions();
+  setInterval(expireSubscriptions, 60 * 60 * 1000);
 });
