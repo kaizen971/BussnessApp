@@ -10,7 +10,10 @@
       "PowerShell(Get-ChildItem -Force | Select-Object Name, @{Name=\"Type\"; Expression={if \\($_.PSIsContainer\\) {\"Directory\"} else {\"File\"}}})",
       "PowerShell(Get-ChildItem -Path C:\\\\Users\\\\Cheetoh\\\\Desktop\\\\Projet\\\\BussnessApp\\\\backend -Force | Where-Object {-not $_.PSIsContainer})",
       "PowerShell(Get-ChildItem -Path C:\\\\Users\\\\Cheetoh\\\\Desktop\\\\Projet\\\\BussnessApp\\\\frontend -Force | Where-Object {-not $_.PSIsContainer})",
-      "PowerShell(Get-ChildItem -Path C:\\\\Users\\\\Cheetoh\\\\Desktop\\\\Projet\\\\BussnessApp\\\\backoffice\\\\src -Recurse | Where-Object {$_.Extension -in '.js', '.jsx'} | Select-Object -ExpandProperty Name)"
+      "PowerShell(Get-ChildItem -Path C:\\\\Users\\\\Cheetoh\\\\Desktop\\\\Projet\\\\BussnessApp\\\\backoffice\\\\src -Recurse | Where-Object {$_.Extension -in '.js', '.jsx'} | Select-Object -ExpandProperty Name)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Cheetoh\\\\Desktop\\\\Projet\\\\BussnessApp\" -Force)",
+      "Bash(Select-Object Mode, Name)",
+      "Bash(Format-Table -AutoSize)"
     ]
   }
 }
