@@ -1,13 +1,12 @@
 import React, { useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Animated, Dimensions, ScrollView,
+  View, Text, StyleSheet, TouchableOpacity, Animated, ScrollView,
+  ActivityIndicator, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useSubscription } from '../contexts/SubscriptionContext';
+import { useIAP } from '../contexts/IAPContext';
 import { colors } from '../utils/colors';
-
-const { width } = Dimensions.get('window');
 
 const PREMIUM_FEATURES = [
   { icon: 'analytics-outline', label: 'Simulation Business Plan', desc: 'Simulez et planifiez votre activité' },
@@ -18,9 +17,24 @@ const PREMIUM_FEATURES = [
   { icon: 'cash-outline', label: 'Commissions', desc: 'Calcul automatique des commissions' },
 ];
 
+function formatIAPPrice(product) {
+  if (!product) return '';
+  if (product.localizedPrice) return product.localizedPrice;
+  if (product.price) return `${product.price} ${product.currency || '€'}`;
+  return '';
+}
+
+function getSubscriptionPeriod(product) {
+  if (!product) return '';
+  const id = product.productId || '';
+  if (id.includes('yearly') || id.includes('annual')) return '/an';
+  if (id.includes('monthly')) return '/mois';
+  return '';
+}
+
 export const PaywallScreen = ({ navigation, route }) => {
   const { featureName } = route.params || {};
-  const { plans } = useSubscription();
+  const { products, purchasing, handlePurchase, handleRestorePurchases } = useIAP();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
@@ -31,13 +45,16 @@ export const PaywallScreen = ({ navigation, route }) => {
     ]).start();
   }, []);
 
-  const premiumPlan = plans.find(p => p.tier === 'premium') || plans[plans.length - 1];
+  const premiumProducts = products.filter(p => {
+    const info = p.displayInfo || {};
+    return info.tier === 'premium';
+  });
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Animated.View style={{ opacity: fadeAnim, transform: [{ scale: scaleAnim }] }}>
-          {/* Header illustration */}
+          {/* Header */}
           <View style={styles.headerSection}>
             <LinearGradient colors={['#8B5CF6', '#6D28D9']} style={styles.iconCircle}>
               <Ionicons name="lock-closed" size={36} color="#fff" />
@@ -54,13 +71,7 @@ export const PaywallScreen = ({ navigation, route }) => {
           <View style={styles.featuresSection}>
             <Text style={styles.featuresTitle}>Débloquez toutes ces fonctionnalités :</Text>
             {PREMIUM_FEATURES.map((f, i) => (
-              <Animated.View
-                key={i}
-                style={[styles.featureItem, {
-                  opacity: fadeAnim,
-                  transform: [{ translateX: Animated.multiply(fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }), 1) }]
-                }]}
-              >
+              <View key={i} style={styles.featureItem}>
                 <LinearGradient colors={['rgba(139,92,246,0.15)', 'rgba(109,40,217,0.08)']} style={styles.featureIcon}>
                   <Ionicons name={f.icon} size={20} color="#8B5CF6" />
                 </LinearGradient>
@@ -69,52 +80,84 @@ export const PaywallScreen = ({ navigation, route }) => {
                   <Text style={styles.featureDesc}>{f.desc}</Text>
                 </View>
                 <Ionicons name="checkmark-circle" size={20} color="#8B5CF6" />
-              </Animated.View>
+              </View>
             ))}
           </View>
 
-          {/* Plan card */}
-          {premiumPlan && (
-            <LinearGradient colors={['#8B5CF6', '#6D28D9']} style={styles.planPromo} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-              <View style={styles.planPromoHeader}>
-                <View>
-                  <Text style={styles.planPromoName}>{premiumPlan.name}</Text>
-                  {premiumPlan.description && <Text style={styles.planPromoDesc}>{premiumPlan.description}</Text>}
-                </View>
-                <View style={styles.planPromoPrice}>
-                  <Text style={styles.planPromoPriceAmount}>{premiumPlan.price}€</Text>
-                  <Text style={styles.planPromoPricePeriod}>
-                    /{premiumPlan.durationType === 'lifetime' ? 'à vie' : `${premiumPlan.duration} ${premiumPlan.durationType === 'months' ? 'mois' : premiumPlan.durationType}`}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.planPromoStats}>
-                <View style={styles.planPromoStat}>
-                  <Ionicons name="business" size={16} color="rgba(255,255,255,0.8)" />
-                  <Text style={styles.planPromoStatText}>{premiumPlan.maxProjects} business</Text>
-                </View>
-                <View style={styles.planPromoStat}>
-                  <Ionicons name="infinite" size={16} color="rgba(255,255,255,0.8)" />
-                  <Text style={styles.planPromoStatText}>Toutes les fonctionnalités</Text>
-                </View>
-              </View>
-            </LinearGradient>
-          )}
-
-          {/* Contact CTA */}
-          <View style={styles.ctaSection}>
+          {/* IAP Purchase options */}
+          {premiumProducts.length > 0 ? (
+            <View style={styles.plansSection}>
+              {premiumProducts.map((product) => {
+                const info = product.displayInfo || {};
+                return (
+                  <TouchableOpacity
+                    key={product.productId}
+                    style={[styles.planOption, purchasing && styles.planOptionDisabled]}
+                    onPress={() => handlePurchase(product.productId)}
+                    disabled={purchasing}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient
+                      colors={['#8B5CF6', '#6D28D9']}
+                      style={styles.planOptionGradient}
+                      start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                    >
+                      {info.badge && (
+                        <View style={styles.planBadge}>
+                          <Text style={styles.planBadgeText}>{info.badge}</Text>
+                        </View>
+                      )}
+                      <View style={styles.planOptionContent}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.planOptionName}>{info.label || product.title}</Text>
+                          <View style={styles.planOptionMeta}>
+                            <Ionicons name="business" size={14} color="rgba(255,255,255,0.7)" />
+                            <Text style={styles.planOptionMetaText}>Toutes les fonctionnalités</Text>
+                          </View>
+                        </View>
+                        <View style={styles.planOptionPriceWrap}>
+                          <Text style={styles.planOptionPrice}>{formatIAPPrice(product)}</Text>
+                          <Text style={styles.planOptionPeriod}>{getSubscriptionPeriod(product)}</Text>
+                        </View>
+                      </View>
+                      {purchasing ? (
+                        <ActivityIndicator color="#fff" style={{ marginTop: 12 }} />
+                      ) : (
+                        <View style={styles.planOptionCTA}>
+                          <Text style={styles.planOptionCTAText}>S'abonner maintenant</Text>
+                          <Ionicons name="arrow-forward" size={16} color="#8B5CF6" />
+                        </View>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : (
             <TouchableOpacity style={styles.ctaButton} onPress={() => navigation.navigate('Subscription')}>
               <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.ctaGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                 <Ionicons name="diamond" size={20} color="#fff" />
-                <Text style={styles.ctaButtonText}>Voir mon abonnement</Text>
+                <Text style={styles.ctaButtonText}>Voir les abonnements</Text>
               </LinearGradient>
+            </TouchableOpacity>
+          )}
+
+          {/* Restore + Back */}
+          <View style={styles.ctaSection}>
+            <TouchableOpacity style={styles.restoreButton} onPress={handleRestorePurchases}>
+              <Ionicons name="refresh-outline" size={16} color={colors.primary} />
+              <Text style={styles.restoreButtonText}>Restaurer mes achats</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
               <Text style={styles.backButtonText}>Retour</Text>
             </TouchableOpacity>
 
-            <Text style={styles.ctaHint}>Contactez votre administrateur pour passer au Premium</Text>
+            <Text style={styles.ctaHint}>
+              {Platform.OS === 'ios'
+                ? 'Paiement via votre compte Apple. Abonnement renouvelable automatiquement. Annulable à tout moment dans les réglages.'
+                : 'Paiement via Google Play. Abonnement renouvelable automatiquement.'}
+            </Text>
           </View>
         </Animated.View>
       </ScrollView>
@@ -138,22 +181,30 @@ const styles = StyleSheet.create({
   featureLabel: { fontSize: 14, fontWeight: '600', color: colors.text },
   featureDesc: { fontSize: 11, color: colors.textLight, marginTop: 2 },
 
-  planPromo: { borderRadius: 20, padding: 20, marginBottom: 24 },
-  planPromoHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  planPromoName: { fontSize: 20, fontWeight: '700', color: '#fff' },
-  planPromoDesc: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  planPromoPrice: { alignItems: 'flex-end' },
-  planPromoPriceAmount: { fontSize: 28, fontWeight: '800', color: '#fff' },
-  planPromoPricePeriod: { fontSize: 11, color: 'rgba(255,255,255,0.6)' },
-  planPromoStats: { flexDirection: 'row', gap: 20, marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.15)' },
-  planPromoStat: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  planPromoStatText: { fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: '500' },
+  plansSection: { marginBottom: 16, gap: 12 },
+  planOption: { borderRadius: 20, overflow: 'hidden' },
+  planOptionDisabled: { opacity: 0.7 },
+  planOptionGradient: { padding: 20, borderRadius: 20 },
+  planBadge: { backgroundColor: 'rgba(52,211,153,0.25)', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10, alignSelf: 'flex-start', marginBottom: 10 },
+  planBadgeText: { fontSize: 11, fontWeight: '700', color: '#34d399' },
+  planOptionContent: { flexDirection: 'row', alignItems: 'center' },
+  planOptionName: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  planOptionMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  planOptionMetaText: { fontSize: 12, color: 'rgba(255,255,255,0.7)' },
+  planOptionPriceWrap: { alignItems: 'flex-end' },
+  planOptionPrice: { fontSize: 24, fontWeight: '800', color: '#fff' },
+  planOptionPeriod: { fontSize: 11, color: 'rgba(255,255,255,0.6)' },
+  planOptionCTA: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#fff', paddingVertical: 12, borderRadius: 12, marginTop: 16 },
+  planOptionCTAText: { fontSize: 15, fontWeight: '700', color: '#8B5CF6' },
 
-  ctaSection: { alignItems: 'center', marginBottom: 20 },
   ctaButton: { width: '100%', borderRadius: 16, overflow: 'hidden', marginBottom: 12 },
   ctaGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16 },
   ctaButtonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+
+  ctaSection: { alignItems: 'center', marginBottom: 20 },
+  restoreButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 12, paddingHorizontal: 20, marginBottom: 8 },
+  restoreButtonText: { fontSize: 14, fontWeight: '600', color: colors.primary },
   backButton: { paddingVertical: 12, paddingHorizontal: 24 },
   backButtonText: { fontSize: 14, fontWeight: '600', color: colors.textLight },
-  ctaHint: { fontSize: 12, color: colors.textLight, marginTop: 8, textAlign: 'center' },
+  ctaHint: { fontSize: 11, color: colors.textLight, marginTop: 8, textAlign: 'center', lineHeight: 16, paddingHorizontal: 20 },
 });

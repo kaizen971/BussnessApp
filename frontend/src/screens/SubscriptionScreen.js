@@ -1,31 +1,42 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Animated, Dimensions, ActivityIndicator, RefreshControl, Linking,
+  Animated, Dimensions, ActivityIndicator, RefreshControl, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscription } from '../contexts/SubscriptionContext';
+import { useIAP } from '../contexts/IAPContext';
 import { useAuth } from '../contexts/AuthContext';
-import { colors, gradients } from '../utils/colors';
+import { colors } from '../utils/colors';
 
 const { width } = Dimensions.get('window');
 
-const DURATION_LABELS = { days: 'jour(s)', months: 'mois', years: 'an(s)', lifetime: 'À vie' };
-
 const TIER_CONFIG = {
   free: { icon: 'leaf-outline', gradient: ['#4a4a4a', '#2d2d2d'], label: 'Gratuit' },
-  basic: { icon: 'star-outline', gradient: ['#D4AF37', '#B8941E'], label: 'Basic' },
-  premium: { icon: 'diamond-outline', gradient: ['#8B5CF6', '#6D28D9'], label: 'Premium' },
+  basic: { icon: 'star-outline', gradient: ['#D4AF37', '#B8941E'], label: 'EAS Basic' },
+  standard: { icon: 'rocket-outline', gradient: ['#6C63FF', '#4A42D4'], label: 'EAS Standard' },
+  premium: { icon: 'diamond-outline', gradient: ['#8B5CF6', '#6D28D9'], label: 'EAS Premium' },
 };
 
-function getDurationLabel(plan) {
-  if (plan.durationType === 'lifetime') return 'À vie';
-  return `${plan.duration} ${DURATION_LABELS[plan.durationType] || plan.durationType}`;
+function formatIAPPrice(product) {
+  if (!product) return '';
+  if (product.localizedPrice) return product.localizedPrice;
+  if (product.price) return `${product.price} ${product.currency || '€'}`;
+  return '';
+}
+
+function getSubscriptionPeriod(product) {
+  if (!product) return '';
+  const id = product.productId || '';
+  if (id.includes('yearly') || id.includes('annual')) return '/an';
+  if (id.includes('monthly')) return '/mois';
+  return '';
 }
 
 export const SubscriptionScreen = ({ navigation }) => {
-  const { subscription, plans, loading, isPremium, refreshSubscription } = useSubscription();
+  const { subscription, loading: subLoading, isPremium, refreshSubscription } = useSubscription();
+  const { products, loading: iapLoading, purchasing, handlePurchase, handleRestorePurchases, connected } = useIAP();
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -44,7 +55,9 @@ export const SubscriptionScreen = ({ navigation }) => {
     setRefreshing(false);
   };
 
-  if (loading) {
+  const loading = subLoading || iapLoading;
+
+  if (loading && !refreshing) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -111,9 +124,7 @@ export const SubscriptionScreen = ({ navigation }) => {
           {!subscription?.hasSubscription && (
             <View style={styles.currentPlanDetails}>
               <Text style={styles.noPlanText}>
-                {subscription?.status === 'pending_payment'
-                  ? 'Votre paiement est en cours de traitement. Vous serez notifié par email.'
-                  : 'Vous n\'avez pas d\'abonnement actif. Contactez votre administrateur pour souscrire.'}
+                Vous n'avez pas d'abonnement actif. Choisissez un plan ci-dessous pour débloquer toutes les fonctionnalités.
               </Text>
             </View>
           )}
@@ -136,29 +147,33 @@ export const SubscriptionScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Plans comparison */}
-        {plans.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Plans disponibles</Text>
-            <Text style={styles.sectionSubtitle}>Comparez les offres et choisissez la plus adaptée</Text>
+        {/* IAP Subscription Plans */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Plans disponibles</Text>
+          <Text style={styles.sectionSubtitle}>Choisissez l'offre adaptée à vos besoins</Text>
 
-            {plans.map((plan, index) => {
-              const tier = plan.tier || 'basic';
+          {products.length > 0 ? (
+            products.map((product) => {
+              const info = product.displayInfo || {};
+              const tier = info.tier || 'basic';
               const cfg = TIER_CONFIG[tier] || TIER_CONFIG.basic;
-              const isCurrent = subscription?.planLabel === plan.name && isPremium;
+              const isCurrent = isPremium && currentTier === tier;
 
               return (
-                <View key={plan._id} style={[styles.planCard, isCurrent && styles.planCardActive]}>
+                <View key={product.productId} style={[styles.planCard, isCurrent && styles.planCardActive]}>
                   <LinearGradient colors={cfg.gradient} style={styles.planCardHeader} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                     <View style={styles.planCardHeaderContent}>
-                      <View>
-                        <Text style={styles.planCardName}>{plan.name}</Text>
-                        {plan.description && <Text style={styles.planCardDesc}>{plan.description}</Text>}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.planCardName}>{info.label || product.title || product.productId}</Text>
+                        {info.badge && (
+                          <View style={styles.bestOfferBadge}>
+                            <Text style={styles.bestOfferText}>{info.badge}</Text>
+                          </View>
+                        )}
                       </View>
                       <View style={styles.planCardPrice}>
-                        <Text style={styles.priceAmount}>{plan.price}</Text>
-                        <Text style={styles.priceCurrency}>€</Text>
-                        <Text style={styles.pricePeriod}>/{getDurationLabel(plan)}</Text>
+                        <Text style={styles.priceAmount}>{formatIAPPrice(product)}</Text>
+                        <Text style={styles.pricePeriod}>{getSubscriptionPeriod(product)}</Text>
                       </View>
                     </View>
                     {isCurrent && (
@@ -170,39 +185,66 @@ export const SubscriptionScreen = ({ navigation }) => {
                   </LinearGradient>
 
                   <View style={styles.planCardBody}>
-                    <View style={styles.planStat}>
-                      <Ionicons name="business-outline" size={18} color={colors.primary} />
-                      <Text style={styles.planStatText}><Text style={{ fontWeight: '700' }}>{plan.maxProjects}</Text> business max</Text>
-                    </View>
-                    <View style={styles.planStat}>
-                      <Ionicons name="time-outline" size={18} color={colors.primary} />
-                      <Text style={styles.planStatText}>{getDurationLabel(plan)} {plan.isRecurring ? '(renouvelable)' : ''}</Text>
-                    </View>
-
-                    {plan.features?.length > 0 && (
-                      <View style={styles.planFeatures}>
-                        {plan.features.map((f, i) => (
-                          <View key={i} style={styles.planFeatureRow}>
-                            <Ionicons name="checkmark-circle" size={16} color="#34d399" />
-                            <Text style={styles.planFeatureText}>{f}</Text>
-                          </View>
-                        ))}
+                    {info.features?.map((f, i) => (
+                      <View key={i} style={styles.planFeatureRow}>
+                        <Ionicons name="checkmark-circle" size={16} color="#34d399" />
+                        <Text style={styles.planFeatureText}>{f}</Text>
                       </View>
+                    ))}
+
+                    {!isCurrent && (
+                      <TouchableOpacity
+                        style={[styles.purchaseButton, purchasing && styles.purchaseButtonDisabled]}
+                        onPress={() => handlePurchase(product.productId)}
+                        disabled={purchasing}
+                        activeOpacity={0.8}
+                      >
+                        <LinearGradient
+                          colors={purchasing ? ['#555', '#444'] : cfg.gradient}
+                          style={styles.purchaseButtonGradient}
+                          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                        >
+                          {purchasing ? (
+                            <ActivityIndicator color="#fff" size="small" />
+                          ) : (
+                            <>
+                              <Ionicons name="cart-outline" size={18} color="#fff" />
+                              <Text style={styles.purchaseButtonText}>S'abonner</Text>
+                            </>
+                          )}
+                        </LinearGradient>
+                      </TouchableOpacity>
                     )}
                   </View>
                 </View>
               );
-            })}
-          </View>
-        )}
+            })
+          ) : (
+            <View style={styles.noProductsCard}>
+              <Ionicons name="cloud-offline-outline" size={40} color={colors.textLight} />
+              <Text style={styles.noProductsText}>
+                {connected
+                  ? 'Les plans seront bientôt disponibles.'
+                  : 'Connexion au store en cours...'}
+              </Text>
+            </View>
+          )}
+        </View>
 
-        {/* Contact info */}
-        <View style={styles.contactCard}>
-          <Ionicons name="mail-outline" size={24} color={colors.primary} />
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.contactTitle}>Besoin de changer de plan ?</Text>
-            <Text style={styles.contactText}>Contactez votre administrateur pour modifier ou upgrader votre abonnement.</Text>
-          </View>
+        {/* Restore purchases */}
+        <TouchableOpacity style={styles.restoreButton} onPress={handleRestorePurchases}>
+          <Ionicons name="refresh-outline" size={18} color={colors.primary} />
+          <Text style={styles.restoreButtonText}>Restaurer mes achats</Text>
+        </TouchableOpacity>
+
+        {/* Subscription info */}
+        <View style={styles.infoCard}>
+          <Ionicons name="information-circle-outline" size={20} color={colors.textLight} />
+          <Text style={styles.infoText}>
+            {Platform.OS === 'ios'
+              ? 'Les abonnements sont gérés via votre compte Apple. Vous pouvez les modifier dans les réglages de votre appareil > votre identifiant Apple > Abonnements.'
+              : 'Les abonnements sont gérés via votre compte Google Play. Vous pouvez les modifier dans les paramètres de Google Play.'}
+          </Text>
         </View>
 
         <View style={{ height: 40 }} />
@@ -247,21 +289,28 @@ const styles = StyleSheet.create({
   planCardHeader: { padding: 16 },
   planCardHeaderContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   planCardName: { fontSize: 18, fontWeight: '700', color: '#fff' },
-  planCardDesc: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  planCardPrice: { flexDirection: 'row', alignItems: 'baseline' },
-  priceAmount: { fontSize: 28, fontWeight: '800', color: '#fff' },
-  priceCurrency: { fontSize: 16, fontWeight: '600', color: 'rgba(255,255,255,0.8)', marginLeft: 2 },
-  pricePeriod: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginLeft: 4 },
+  planCardPrice: { alignItems: 'flex-end' },
+  priceAmount: { fontSize: 24, fontWeight: '800', color: '#fff' },
+  pricePeriod: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 2 },
   currentBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.15)', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginTop: 10 },
   currentBadgeText: { fontSize: 11, fontWeight: '700', color: '#fff' },
+  bestOfferBadge: { backgroundColor: 'rgba(52,211,153,0.25)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, alignSelf: 'flex-start', marginTop: 6 },
+  bestOfferText: { fontSize: 11, fontWeight: '700', color: '#34d399' },
   planCardBody: { padding: 16 },
-  planStat: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  planStatText: { fontSize: 14, color: colors.text },
-  planFeatures: { marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
   planFeatureRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   planFeatureText: { fontSize: 13, color: colors.textLight, flex: 1 },
 
-  contactCard: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border },
-  contactTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
-  contactText: { fontSize: 12, color: colors.textLight, marginTop: 4, lineHeight: 18 },
+  purchaseButton: { marginTop: 12, borderRadius: 12, overflow: 'hidden' },
+  purchaseButtonDisabled: { opacity: 0.6 },
+  purchaseButtonGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 12 },
+  purchaseButtonText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+
+  noProductsCard: { alignItems: 'center', padding: 30, backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border },
+  noProductsText: { fontSize: 14, color: colors.textLight, textAlign: 'center', marginTop: 12 },
+
+  restoreButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, marginBottom: 16 },
+  restoreButtonText: { fontSize: 14, fontWeight: '600', color: colors.primary },
+
+  infoCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border },
+  infoText: { fontSize: 12, color: colors.textLight, flex: 1, lineHeight: 18 },
 });

@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { CurrencyProvider } from './src/contexts/CurrencyContext';
 import { SubscriptionProvider, useSubscription } from './src/contexts/SubscriptionContext';
+import { IAPProvider } from './src/contexts/IAPContext';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
@@ -173,8 +174,10 @@ export default function App() {
     <AuthProvider>
       <CurrencyProvider>
         <SubscriptionProvider>
-          <StatusBar style="light" />
-          <AppNavigator />
+          <IAPProvider>
+            <StatusBar style="light" />
+            <AppNavigator />
+          </IAPProvider>
         </SubscriptionProvider>
       </CurrencyProvider>
     </AuthProvider>

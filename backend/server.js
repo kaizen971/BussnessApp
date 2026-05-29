@@ -477,14 +477,6 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
       });
     }
 
-    if (!selectedPlanId) {
-      return res.status(400).json({
-        error: 'Veuillez choisir un plan d\'accompagnement',
-        field: 'selectedPlanId',
-        code: 'MISSING_PLAN'
-      });
-    }
-
     // Check if user exists
     const existingUser = await User.findOne({ $or: [{ username }, { email }] });
     if (existingUser) {
@@ -504,15 +496,18 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
       }
     }
 
-    // Récupérer le plan choisi
-    const SubscriptionPlan = mongoose.model('SubscriptionPlan');
-    const selectedPlan = await SubscriptionPlan.findById(selectedPlanId);
-    if (!selectedPlan) {
-      return res.status(400).json({
-        error: 'Plan d\'accompagnement invalide',
-        field: 'selectedPlanId',
-        code: 'INVALID_PLAN'
-      });
+    // Récupérer le plan choisi (optionnel - l'abonnement peut se faire via IAP après inscription)
+    let selectedPlan = null;
+    if (selectedPlanId) {
+      const SubscriptionPlan = mongoose.model('SubscriptionPlan');
+      selectedPlan = await SubscriptionPlan.findById(selectedPlanId);
+      if (!selectedPlan) {
+        return res.status(400).json({
+          error: 'Plan d\'accompagnement invalide',
+          field: 'selectedPlanId',
+          code: 'INVALID_PLAN'
+        });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -543,7 +538,62 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
     user.projectIds = [defaultProject._id];
     await user.save();
 
-    console.log(`Nouvelle inscription: ${user.username} - Plan choisi: ${selectedPlan.name}`);
+    console.log(`Nouvelle inscription: ${user.username} - Plan choisi: ${selectedPlan ? selectedPlan.name : 'Aucun (IAP)'}`);
+
+    // Inscription sans plan sélectionné : compte activé, abonnement via IAP
+    if (!selectedPlan) {
+      user.isActive = true;
+      await user.save();
+
+      const token = jwt.sign(
+        { id: user._id, username: user.username, role: user.role, projectId: user.projectId },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      // Notification aux super admins
+      try {
+        const SuperAdmin = mongoose.model('SuperAdmin');
+        const superAdmins = await SuperAdmin.find({ isActive: true });
+        const notifHtml = `
+          <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
+            <div style="background: linear-gradient(135deg, #1A1A1A, #2D2D2D); border-radius: 12px; padding: 30px; margin-bottom: 20px;">
+              <h1 style="color: #D4AF37; margin: 0; font-size: 24px;">Nouvelle inscription</h1>
+              <p style="color: #999; margin: 8px 0 0;">Un nouvel utilisateur s'est inscrit (abonnement via In-App Purchase)</p>
+            </div>
+            <div style="background: white; border-radius: 12px; padding: 30px;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr><td style="padding: 8px 0; color: #888; width: 140px;">Nom</td><td style="padding: 8px 0; color: #333; font-weight: 600;">${fullName.trim()}</td></tr>
+                <tr><td style="padding: 8px 0; color: #888;">Email</td><td style="padding: 8px 0; color: #333;">${email.trim()}</td></tr>
+                <tr><td style="padding: 8px 0; color: #888;">Plan</td><td style="padding: 8px 0; color: #333;">Abonnement via l'application (In-App Purchase)</td></tr>
+              </table>
+            </div>
+          </div>
+        `;
+        for (const admin of superAdmins) {
+          await sendEmail(admin.email, `Nouvelle inscription - ${fullName.trim()} (via app)`, notifHtml);
+        }
+      } catch (emailError) {
+        console.error('Erreur notification super admins:', emailError.message);
+      }
+
+      return res.status(201).json({
+        success: true,
+        autoActivated: true,
+        message: 'Compte créé avec succès ! Vous pouvez souscrire un abonnement depuis l\'application.',
+        token,
+        user: {
+          id: user._id,
+          username: user.username,
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+          isActive: user.isActive,
+          projectId: user.projectId,
+          projectIds: user.projectIds
+        }
+      });
+    }
 
     const DURATION_LABELS = { days: 'jour(s)', months: 'mois', years: 'an(s)', lifetime: 'À vie' };
     const durationLabel = selectedPlan.durationType === 'lifetime'
@@ -907,6 +957,50 @@ app.post('/BussnessApp/auth/change-password', authenticateToken, async (req, res
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete account
+app.post('/BussnessApp/auth/delete-account', authenticateToken, async (req, res) => {
+  try {
+    const { password } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur introuvable' });
+    }
+
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({ error: 'Mot de passe incorrect' });
+    }
+
+    const userId = req.user.id;
+
+    const db = mongoose.connection.db;
+    const collections = ['sales', 'expenses', 'recurringexpenses', 'stockitems',
+      'stockmovements', 'customers', 'feedbacks', 'schedules', 'commissions'];
+
+    for (const col of collections) {
+      try {
+        await db.collection(col).deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
+      } catch (e) { /* collection might not exist */ }
+    }
+
+    // Cancel active subscriptions
+    try {
+      const Subscription = mongoose.model('Subscription');
+      await Subscription.updateMany(
+        { adminId: userId },
+        { status: 'cancelled', updatedAt: new Date() }
+      );
+    } catch (e) { /* ignore */ }
+
+    await User.findByIdAndDelete(userId);
+
+    res.json({ message: 'Compte supprimé avec succès' });
+  } catch (error) {
+    console.error('Delete account error:', error);
+    res.status(500).json({ error: 'Erreur lors de la suppression du compte' });
   }
 });
 
@@ -4067,6 +4161,84 @@ app.get('/BussnessApp/subscription/plans', async (req, res) => {
     res.json(plansWithTier);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= IAP Receipt Validation =============
+app.post('/BussnessApp/subscription/validate-receipt', authenticateToken, async (req, res) => {
+  try {
+    const { receipt, productId, platform } = req.body;
+    if (!receipt || !productId) {
+      return res.status(400).json({ error: 'Receipt and productId are required' });
+    }
+
+    const Subscription = mongoose.model('Subscription');
+    const userId = req.user.id;
+
+    // Determine plan tier from product ID
+    let tier = 'basic';
+    let planName = 'EAS Basic';
+    let maxProjects = 1;
+    let durationMonths = 12;
+
+    if (productId.includes('standard')) {
+      tier = 'standard';
+      planName = 'EAS Standard';
+      maxProjects = 3;
+    } else if (productId.includes('premium')) {
+      tier = 'premium';
+      planName = 'EAS Premium';
+      maxProjects = 100;
+    }
+
+    if (productId.includes('monthly')) {
+      durationMonths = 1;
+    }
+
+    const now = new Date();
+    const endDate = new Date(now);
+    endDate.setMonth(endDate.getMonth() + durationMonths);
+
+    // Deactivate old subscriptions
+    await Subscription.updateMany(
+      { adminId: userId, status: 'active' },
+      { status: 'replaced', updatedAt: now }
+    );
+
+    // Create new subscription from IAP
+    const newSub = new Subscription({
+      adminId: userId,
+      planName: planName,
+      plan: tier,
+      status: 'active',
+      amount: 0,
+      currency: 'EUR',
+      startDate: now,
+      endDate: endDate,
+      maxProjects: maxProjects,
+      paymentMethod: platform === 'ios' ? 'apple_iap' : 'google_play',
+      iapProductId: productId,
+      iapReceipt: receipt.substring(0, 500),
+      createdAt: now,
+      updatedAt: now,
+    });
+    await newSub.save();
+
+    await User.findByIdAndUpdate(userId, { isActive: true });
+
+    res.json({
+      success: true,
+      message: 'Subscription activated via In-App Purchase',
+      subscription: {
+        id: newSub._id,
+        plan: tier,
+        status: 'active',
+        endDate: endDate,
+      }
+    });
+  } catch (error) {
+    console.error('IAP receipt validation error:', error);
+    res.status(500).json({ error: 'Receipt validation failed' });
   }
 });
 

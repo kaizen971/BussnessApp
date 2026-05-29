@@ -161,21 +161,16 @@ export const RegisterScreen = ({ navigation }) => {
   };
 
   const handleRegister = async () => {
-    if (!selectedPlanId) {
-      Alert.alert('Erreur', 'Veuillez choisir un plan d\'accompagnement');
-      return;
-    }
-
     setLoading(true);
     const { username, email, password, fullName } = formData;
-    const result = await register({ username, email, password, fullName, selectedPlanId });
+    const result = await register({ username, email, password, fullName, selectedPlanId: selectedPlanId || undefined });
     setLoading(false);
 
     if (result.success) {
       if (result.autoActivated) {
         Alert.alert(
-          'Essai activé !',
-          result.message || 'Votre compte essai est actif. Vous êtes connecté automatiquement.'
+          'Compte créé !',
+          result.message || 'Votre compte est actif. Vous êtes connecté automatiquement.'
         );
         return;
       }
@@ -283,121 +278,101 @@ export const RegisterScreen = ({ navigation }) => {
     </Card>
   );
 
-  const renderPlanCard = (plan) => {
-    const tier = getTier(plan);
-    const isSelected = selectedPlanId === plan._id;
-    const gradient = TIER_GRADIENTS[tier] || TIER_GRADIENTS.basic;
-    const icon = TIER_ICONS[tier] || 'star-outline';
-
-    return (
-      <TouchableOpacity
-        key={plan._id}
-        activeOpacity={0.8}
-        onPress={() => setSelectedPlanId(plan._id)}
-        style={[styles.planCard, isSelected && styles.planCardSelected]}
-      >
-        {isSelected && (
-          <View style={styles.planCheckBadge}>
-            <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
+  const renderStep2 = () => (
+    <View>
+      <Card style={styles.planSectionCard}>
+        <View style={styles.planSectionHeader}>
+          <Ionicons name="rocket-outline" size={24} color={colors.primary} />
+          <View style={{ marginLeft: 12, flex: 1 }}>
+            <Text style={styles.planSectionTitle}>Fonctionnalités de l'app</Text>
+            <Text style={styles.planSectionSubtitle}>
+              Découvrez tout ce que EAS peut faire pour vous. Vous pourrez souscrire un abonnement après l'inscription.
+            </Text>
           </View>
-        )}
+        </View>
+      </Card>
 
+      <View style={styles.planCard}>
         <LinearGradient
-          colors={isSelected ? gradient : ['#2D2D2D', '#1A1A1A']}
+          colors={['#D4AF37', '#B8941E']}
           style={styles.planCardGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
           <View style={styles.planHeader}>
             <View style={styles.planIconWrap}>
-              <Ionicons name={icon} size={22} color={isSelected ? '#fff' : colors.primary} />
-            </View>
-            <View style={styles.planPriceWrap}>
-              <Text style={styles.planPrice}>{plan.price}</Text>
-              <Text style={styles.planCurrency}>€</Text>
+              <Ionicons name="star-outline" size={22} color="#fff" />
             </View>
           </View>
-
-          <Text style={styles.planName}>{plan.name}</Text>
-
-          <View style={styles.planMeta}>
-            <View style={styles.planMetaItem}>
-              <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.6)" />
-              <Text style={styles.planMetaText}>{getDurationLabel(plan)}</Text>
+          <Text style={styles.planName}>Gestion commerciale</Text>
+          <View style={styles.planFeatures}>
+            <View style={styles.planFeatureRow}>
+              <Ionicons name="checkmark-circle" size={14} color="#34d399" />
+              <Text style={styles.planFeatureText}>Gestion des ventes et dépenses</Text>
             </View>
-            {plan.isRecurring && (
-              <View style={[styles.planBadge, isSelected && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                <Text style={styles.planBadgeText}>récurrent</Text>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.planMetaItem}>
-            <Ionicons name="business-outline" size={14} color="rgba(255,255,255,0.6)" />
-            <Text style={styles.planMetaText}>{plan.maxProjects} business max</Text>
-          </View>
-
-          {plan.features && plan.features.length > 0 && (
-            <View style={styles.planFeatures}>
-              {plan.features.map((feature, idx) => (
-                <View key={idx} style={styles.planFeatureRow}>
-                  <Ionicons name="checkmark-circle" size={14} color={isSelected ? '#34d399' : colors.primary} />
-                  <Text style={styles.planFeatureText}>{feature}</Text>
-                </View>
-              ))}
+            <View style={styles.planFeatureRow}>
+              <Ionicons name="checkmark-circle" size={14} color="#34d399" />
+              <Text style={styles.planFeatureText}>Suivi de stock et produits</Text>
             </View>
-          )}
+            <View style={styles.planFeatureRow}>
+              <Ionicons name="checkmark-circle" size={14} color="#34d399" />
+              <Text style={styles.planFeatureText}>Tableau de bord et statistiques</Text>
+            </View>
+          </View>
         </LinearGradient>
-      </TouchableOpacity>
-    );
-  };
+      </View>
 
-  const renderStep2 = () => (
-    <View>
-      <Card style={styles.planSectionCard}>
-        <View style={styles.planSectionHeader}>
-          <Ionicons name="pricetags-outline" size={24} color={colors.primary} />
-          <View style={{ marginLeft: 12, flex: 1 }}>
-            <Text style={styles.planSectionTitle}>Plan d'accompagnement</Text>
-            <Text style={styles.planSectionSubtitle}>Choisissez le plan adapté à vos besoins</Text>
+      <View style={styles.planCard}>
+        <LinearGradient
+          colors={['#8B5CF6', '#6D28D9']}
+          style={styles.planCardGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={styles.planHeader}>
+            <View style={styles.planIconWrap}>
+              <Ionicons name="diamond-outline" size={22} color="#fff" />
+            </View>
           </View>
-        </View>
-      </Card>
-
-      {loadingPlans ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Chargement des plans...</Text>
-        </View>
-      ) : plans.length === 0 ? (
-        <Card style={styles.emptyCard}>
-          <Ionicons name="alert-circle-outline" size={40} color={colors.textLight} />
-          <Text style={styles.emptyText}>Aucun plan disponible pour le moment</Text>
-          <Button title="Réessayer" onPress={fetchPlans} variant="ghost" />
-        </Card>
-      ) : (
-        plans.map(renderPlanCard)
-      )}
+          <Text style={styles.planName}>Premium</Text>
+          <View style={styles.planFeatures}>
+            <View style={styles.planFeatureRow}>
+              <Ionicons name="checkmark-circle" size={14} color="#34d399" />
+              <Text style={styles.planFeatureText}>Simulation Business Plan</Text>
+            </View>
+            <View style={styles.planFeatureRow}>
+              <Ionicons name="checkmark-circle" size={14} color="#34d399" />
+              <Text style={styles.planFeatureText}>Gestion d'équipe et paie</Text>
+            </View>
+            <View style={styles.planFeatureRow}>
+              <Ionicons name="checkmark-circle" size={14} color="#34d399" />
+              <Text style={styles.planFeatureText}>CRM Clients, Planning, Commissions</Text>
+            </View>
+            <View style={styles.planFeatureRow}>
+              <Ionicons name="checkmark-circle" size={14} color="#34d399" />
+              <Text style={styles.planFeatureText}>Multi-business</Text>
+            </View>
+          </View>
+        </LinearGradient>
+      </View>
 
       <Card style={styles.step2ButtonsCard}>
         <TouchableOpacity
-          style={[styles.validateBtn, !selectedPlanId && styles.validateBtnDisabled]}
+          style={styles.validateBtn}
           onPress={handleRegister}
-          disabled={!selectedPlanId || loading}
+          disabled={loading}
           activeOpacity={0.8}
         >
           <LinearGradient
-            colors={selectedPlanId ? [colors.primary, colors.primaryDark] : ['#555', '#444']}
+            colors={[colors.primary, colors.primaryDark]}
             style={styles.validateBtnGradient}
           >
             {loading ? (
               <ActivityIndicator color="#000" />
             ) : (
               <>
-                <Ionicons name="checkmark-circle" size={22} color={selectedPlanId ? '#000' : '#999'} />
-                <Text style={[styles.validateBtnText, !selectedPlanId && styles.validateBtnTextDisabled]}>
-                  Valider l'inscription
-                </Text>
+                <Ionicons name="checkmark-circle" size={22} color="#000" />
+                <Text style={styles.validateBtnText}>Créer mon compte</Text>
               </>
             )}
           </LinearGradient>

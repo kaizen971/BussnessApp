@@ -2,7 +2,7 @@
   "expo": {
     "name": "Entreprendre Avec Succès",
     "slug": "frontend",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,8 +16,12 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.kaizen971.EntreprendreAvecSuccesEAS",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "L'application a besoin d'accéder à vos photos pour ajouter un logo à votre business et mettre à jour votre photo de profil.",
+        "NSCameraUsageDescription": "L'application a besoin d'accéder à la caméra pour prendre une photo de logo pour votre business.",
+        "NSPhotoLibraryAddUsageDescription": "L'application a besoin de cette permission pour sauvegarder des photos."
+      },
+      "buildNumber": "10"
     },
     "android": {
       "versionCode": 40,
@@ -31,6 +35,10 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": [
+      "./plugins/fix-fmt-xcode26",
+      "react-native-iap"
+    ],
     "extra": {
       "eas": {
         "projectId": "a786ed37-4082-4bee-ad4e-f2e050d30f1c"

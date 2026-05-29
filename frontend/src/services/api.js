@@ -1,8 +1,9 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// URL du serveur AWS Lightsail (HTTPS)
-const API_BASE_URL = 'https://businessapp.installpostiz.com/bussnessapp';
+// URL du serveur — LOCAL pour tests (remettre l'URL AWS avant de builder pour prod)
+// const API_BASE_URL = 'https://businessapp.installpostiz.com/bussnessapp';
+const API_BASE_URL = 'http://192.168.1.104:3003/bussnessapp';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -115,6 +116,7 @@ export const authAPI = {
   refreshToken: () => refreshAuthToken(),
   getCurrentUser: () => api.get('/auth/me'),
   changePassword: (oldPassword, newPassword) => api.post('/auth/change-password', { oldPassword, newPassword }),
+  deleteAccount: (password) => api.post('/auth/delete-account', { password }),
   updateProfilePhoto: (imageUri) => {
     const formData = new FormData();
     formData.append('profilePhoto', {
@@ -266,6 +268,7 @@ export const exportAPI = {
 export const subscriptionAPI = {
   getMySubscription: () => api.get('/subscription/my'),
   getPlans: () => api.get('/subscription/plans'),
+  validateReceipt: (data) => api.post('/subscription/validate-receipt', data),
 };
 
 // Legal API (pas besoin d'authentification)

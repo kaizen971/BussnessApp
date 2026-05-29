@@ -108,53 +108,61 @@ export const ProjectsScreen = ({ navigation }) => {
   };
 
   const pickImage = async () => {
-    // Demander la permission d'accéder à la galerie
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission refusée', 'Nous avons besoin de votre permission pour accéder à vos photos');
-      return;
-    }
-
-    // Lancer le sélecteur d'images
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      try {
-        const base64Image = await convertImageToBase64(result.assets[0].uri);
-        setFormData({ ...formData, logo: base64Image });
-      } catch (error) {
-        Alert.alert('Erreur', 'Impossible de traiter l\'image');
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission refusée', 'Nous avons besoin de votre permission pour accéder à vos photos');
+        return;
       }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const base64Image = await convertImageToBase64(result.assets[0].uri);
+        setFormData(prev => ({ ...prev, logo: base64Image }));
+      }
+    } catch (error) {
+      console.error('pickImage error:', error);
+      Alert.alert('Erreur', 'Impossible de traiter l\'image. Veuillez réessayer.');
     }
   };
 
   const takePhoto = async () => {
-    // Demander la permission d'accéder à la caméra
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission refusée', 'Nous avons besoin de votre permission pour utiliser la caméra');
-      return;
-    }
-
-    // Lancer la caméra
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      try {
-        const base64Image = await convertImageToBase64(result.assets[0].uri);
-        setFormData({ ...formData, logo: base64Image });
-      } catch (error) {
-        Alert.alert('Erreur', 'Impossible de traiter l\'image');
+    try {
+      const cameraAvailable = await ImagePicker.getCameraPermissionsAsync();
+      if (cameraAvailable.status === 'undetermined') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission refusée', 'Nous avons besoin de votre permission pour utiliser la caméra');
+          return;
+        }
+      } else if (cameraAvailable.status !== 'granted') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission refusée', 'Nous avons besoin de votre permission pour utiliser la caméra');
+          return;
+        }
       }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const base64Image = await convertImageToBase64(result.assets[0].uri);
+        setFormData(prev => ({ ...prev, logo: base64Image }));
+      }
+    } catch (error) {
+      console.error('takePhoto error:', error);
+      Alert.alert('Erreur', 'Impossible d\'utiliser la caméra. Veuillez réessayer avec la galerie.');
     }
   };
 

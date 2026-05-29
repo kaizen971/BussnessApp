@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Image,
   AppState,
+  TextInput,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,7 +36,7 @@ import { colors, gradients } from '../utils/colors';
 const screenWidth = Dimensions.get('window').width;
 
 export const DashboardScreen = ({ navigation }) => {
-  const { user, logout, selectedProjectId, availableProjects, loadAvailableProjects, selectProject } = useAuth();
+  const { user, logout, deleteAccount, selectedProjectId, availableProjects, loadAvailableProjects, selectProject } = useAuth();
   const { format: formatPrice, currency, setProjectCurrency, availableCurrencies } = useCurrency();
   const { subscription, isPremium, canAccessScreen, refreshSubscription } = useSubscription();
   const [stats, setStats] = useState(null);
@@ -51,6 +52,10 @@ export const DashboardScreen = ({ navigation }) => {
   const [endDate, setEndDate] = useState(new Date()); // Aujourd'hui
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const modalSlideAnim = useRef(new Animated.Value(0)).current;
@@ -190,6 +195,29 @@ export const DashboardScreen = ({ navigation }) => {
         { text: 'Déconnexion', onPress: logout, style: 'destructive' },
       ]
     );
+  };
+
+  const handleDeleteAccountRequest = () => {
+    setSettingsModalVisible(false);
+    setTimeout(() => {
+      setDeletePassword('');
+      setDeleteModalVisible(true);
+    }, 300);
+  };
+
+  const handleDeleteAccountConfirm = async () => {
+    if (!deletePassword) {
+      Alert.alert('Erreur', 'Veuillez saisir votre mot de passe pour confirmer.');
+      return;
+    }
+    setDeleteLoading(true);
+    const result = await deleteAccount(deletePassword);
+    setDeleteLoading(false);
+    if (result.success) {
+      setDeleteModalVisible(false);
+    } else {
+      Alert.alert('Erreur', result.error);
+    }
   };
 
   const openStatsModal = () => {
@@ -423,10 +451,14 @@ export const DashboardScreen = ({ navigation }) => {
               </View>
             </View>
             <View style={styles.headerActions}>
-
               <TouchableOpacity onPress={() => navigation.navigate('Projects')} style={styles.projectButton}>
                 <View style={styles.projectIconContainer}>
                   <Ionicons name="briefcase-outline" size={20} color={colors.background} />
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setSettingsModalVisible(true)} style={styles.projectButton}>
+                <View style={styles.projectIconContainer}>
+                  <Ionicons name="settings-outline" size={20} color={colors.background} />
                 </View>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
@@ -1144,6 +1176,138 @@ export const DashboardScreen = ({ navigation }) => {
               </View>
             </ScrollView>
           </Animated.View>
+        </View>
+      </Modal>
+
+      {/* Modal Paramètres */}
+      <Modal
+        visible={settingsModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSettingsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setSettingsModalVisible(false)}
+          />
+          <View style={styles.currencyModalContainer}>
+            <View style={styles.currencyModalHeader}>
+              <Text style={styles.currencyModalTitle}>Paramètres</Text>
+              <TouchableOpacity onPress={() => setSettingsModalVisible(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.settingsOptionsContainer}>
+              <TouchableOpacity
+                style={styles.settingsOption}
+                onPress={() => {
+                  setSettingsModalVisible(false);
+                  navigation.navigate('Subscription');
+                }}
+              >
+                <View style={[styles.settingsOptionIcon, { backgroundColor: colors.primary + '15' }]}>
+                  <Ionicons name="diamond-outline" size={22} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.settingsOptionTitle}>Mon abonnement</Text>
+                  <Text style={styles.settingsOptionDesc}>Gérer votre plan</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.settingsOption}
+                onPress={() => {
+                  setSettingsModalVisible(false);
+                  handleLogout();
+                }}
+              >
+                <View style={[styles.settingsOptionIcon, { backgroundColor: colors.warning + '15' }]}>
+                  <Ionicons name="log-out-outline" size={22} color={colors.warning} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.settingsOptionTitle}>Déconnexion</Text>
+                  <Text style={styles.settingsOptionDesc}>Se déconnecter de l'application</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
+              </TouchableOpacity>
+
+              <View style={styles.settingsDivider} />
+
+              <TouchableOpacity
+                style={styles.settingsOption}
+                onPress={handleDeleteAccountRequest}
+              >
+                <View style={[styles.settingsOptionIcon, { backgroundColor: colors.error + '15' }]}>
+                  <Ionicons name="trash-outline" size={22} color={colors.error} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingsOptionTitle, { color: colors.error }]}>Supprimer mon compte</Text>
+                  <Text style={styles.settingsOptionDesc}>Suppression définitive de vos données</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.error} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Suppression de compte */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setDeleteModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => !deleteLoading && setDeleteModalVisible(false)}
+          />
+          <View style={styles.deleteModalContainer}>
+            <View style={styles.deleteModalIconWrap}>
+              <Ionicons name="warning" size={40} color={colors.error} />
+            </View>
+            <Text style={styles.deleteModalTitle}>Supprimer votre compte ?</Text>
+            <Text style={styles.deleteModalDesc}>
+              Cette action est irréversible. Toutes vos données, projets, ventes, dépenses et historiques seront définitivement supprimés.
+            </Text>
+
+            <Text style={styles.deleteModalLabel}>Saisissez votre mot de passe pour confirmer :</Text>
+            <TextInput
+              style={styles.deleteModalInput}
+              placeholder="Votre mot de passe"
+              placeholderTextColor={colors.textLight}
+              secureTextEntry
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              editable={!deleteLoading}
+            />
+
+            <TouchableOpacity
+              style={[styles.deleteConfirmBtn, deleteLoading && { opacity: 0.6 }]}
+              onPress={handleDeleteAccountConfirm}
+              disabled={deleteLoading}
+            >
+              {deleteLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.deleteConfirmBtnText}>Supprimer définitivement</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.deleteCancelBtn}
+              onPress={() => setDeleteModalVisible(false)}
+              disabled={deleteLoading}
+            >
+              <Text style={styles.deleteCancelBtnText}>Annuler</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
 
@@ -1909,5 +2073,112 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  settingsOptionsContainer: {
+    gap: 4,
+  },
+  settingsOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    gap: 14,
+  },
+  settingsOptionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsOptionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  settingsOptionDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  settingsDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 8,
+  },
+  deleteModalContainer: {
+    backgroundColor: colors.background,
+    borderRadius: 20,
+    margin: 20,
+    padding: 24,
+    alignItems: 'center',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  deleteModalIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.error + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  deleteModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  deleteModalDesc: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  deleteModalLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  deleteModalInput: {
+    width: '100%',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+    color: colors.text,
+    marginBottom: 20,
+  },
+  deleteConfirmBtn: {
+    width: '100%',
+    backgroundColor: colors.error,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  deleteConfirmBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  deleteCancelBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+  },
+  deleteCancelBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
 });

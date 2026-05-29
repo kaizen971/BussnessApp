@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx eas-cli:*)"
+      "Bash(npx eas-cli:*)",
+      "Bash(brew --version)",
+      "Bash(brew install *)",
+      "Bash(npx expo *)",
+      "Bash(expo --version)",
+      "Bash(yarn --version)",
+      "Bash(pod --version)",
+      "Bash(git config *)"
     ]
   }
 }
