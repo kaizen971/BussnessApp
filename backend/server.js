@@ -4421,7 +4421,7 @@ const expireSubscriptions = async () => {
 // Start server
 app.listen(PORT, async () => {
   const publicApiUrl = process.env.BACKEND_PUBLIC_URL || `http://localhost:${PORT}/BussnessApp`;
-  console.log("Version 1.0.1");
+  console.log("Version 1.0.2");
   console.log(`Server is running on port ${PORT}`);
   console.log(`API accessible at http://localhost:${PORT}/BussnessApp`);
   console.log(`Public URL: ${publicApiUrl}`);
