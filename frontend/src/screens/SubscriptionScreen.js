@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Animated, Dimensions, ActivityIndicator, RefreshControl, Platform,
+  Animated, Dimensions, ActivityIndicator, RefreshControl, Platform, Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { useIAP } from '../contexts/IAPContext';
 import { useAuth } from '../contexts/AuthContext';
+import { TERMS_OF_USE_URL, PRIVACY_POLICY_URL } from '../config/iap';
 import { colors } from '../utils/colors';
 
 const { width } = Dimensions.get('window');
@@ -247,6 +248,20 @@ export const SubscriptionScreen = ({ navigation }) => {
           </Text>
         </View>
 
+        <Text style={styles.legalNote}>
+          Abonnement renouvelé automatiquement sauf annulation au moins 24 h avant la fin de la période. Le paiement est débité sur votre compte Apple à la confirmation.
+        </Text>
+
+        <View style={styles.legalLinksRow}>
+          <TouchableOpacity onPress={() => Linking.openURL(TERMS_OF_USE_URL)}>
+            <Text style={styles.legalLinkText}>Conditions d'utilisation</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalSeparator}>•</Text>
+          <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
+            <Text style={styles.legalLinkText}>Politique de confidentialité</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={{ height: 40 }} />
       </Animated.View>
     </ScrollView>
@@ -313,4 +328,9 @@ const styles = StyleSheet.create({
 
   infoCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border },
   infoText: { fontSize: 12, color: colors.textLight, flex: 1, lineHeight: 18 },
+
+  legalNote: { fontSize: 11, color: colors.textLight, lineHeight: 16, textAlign: 'center', marginTop: 16, paddingHorizontal: 8 },
+  legalLinksRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' },
+  legalLinkText: { fontSize: 12, color: colors.primary, fontWeight: '600', textDecorationLine: 'underline' },
+  legalSeparator: { fontSize: 12, color: colors.textLight },
 });

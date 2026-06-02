@@ -4109,7 +4109,8 @@ app.get('/BussnessApp/subscription/my', authenticateToken, async (req, res) => {
       subscription.status = 'expired';
       subscription.updatedAt = new Date();
       await subscription.save();
-      await User.findByIdAndUpdate(subscription.adminId, { isActive: false });
+      // On NE désactive PAS le compte : l'utilisateur expiré doit pouvoir se reconnecter
+      // et voir le paywall pour renouveler (exigence App Review 2.1).
     }
 
     const planData = subscription.planId || {};
@@ -4361,11 +4362,12 @@ const expireSubscriptions = async () => {
         }
       }
 
-      // 2. Passer le statut à 'expired' et bloquer le compte
+      // 2. Passer le statut à 'expired' (sans désactiver le compte)
       subscription.status = 'expired';
       subscription.updatedAt = new Date();
       await subscription.save();
-      await User.findByIdAndUpdate(subscription.adminId, { isActive: false });
+      // On NE désactive PAS le compte : l'utilisateur doit pouvoir se reconnecter
+      // pour atterrir sur le paywall et renouveler son abonnement (exigence App Review 2.1).
 
       // 3. Envoyer un email de notification à l'utilisateur
       try {

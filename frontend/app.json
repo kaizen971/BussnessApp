@@ -21,7 +21,7 @@
         "NSCameraUsageDescription": "L'application a besoin d'accéder à la caméra pour prendre une photo de logo pour votre business.",
         "NSPhotoLibraryAddUsageDescription": "L'application a besoin de cette permission pour sauvegarder des photos."
       },
-      "buildNumber": "10"
+      "buildNumber": "17"
     },
     "android": {
       "versionCode": 40,

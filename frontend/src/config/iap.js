@@ -1,5 +1,11 @@
 import { Platform } from 'react-native';
 
+// Liens légaux requis par Apple pour les abonnements auto-renouvelables.
+// EULA standard d'Apple. Remplace par ton EULA perso si tu en utilises un.
+export const TERMS_OF_USE_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+// Mets ici l'URL réelle de ta politique de confidentialité.
+export const PRIVACY_POLICY_URL = 'https://businessapp.installpostiz.com/privacy';
+
 export const IAP_PRODUCT_IDS = Platform.select({
   ios: [
     'com.kaizen971.eas.basic.yearly',

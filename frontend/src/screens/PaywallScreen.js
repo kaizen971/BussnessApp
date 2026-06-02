@@ -1,11 +1,12 @@
 import React, { useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated, ScrollView,
-  ActivityIndicator, Platform,
+  ActivityIndicator, Platform, Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useIAP } from '../contexts/IAPContext';
+import { TERMS_OF_USE_URL, PRIVACY_POLICY_URL } from '../config/iap';
 import { colors } from '../utils/colors';
 
 const PREMIUM_FEATURES = [
@@ -158,6 +159,16 @@ export const PaywallScreen = ({ navigation, route }) => {
                 ? 'Paiement via votre compte Apple. Abonnement renouvelable automatiquement. Annulable à tout moment dans les réglages.'
                 : 'Paiement via Google Play. Abonnement renouvelable automatiquement.'}
             </Text>
+
+            <View style={styles.legalLinksRow}>
+              <TouchableOpacity onPress={() => Linking.openURL(TERMS_OF_USE_URL)}>
+                <Text style={styles.legalLinkText}>Conditions d'utilisation</Text>
+              </TouchableOpacity>
+              <Text style={styles.legalSeparator}>•</Text>
+              <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
+                <Text style={styles.legalLinkText}>Politique de confidentialité</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </Animated.View>
       </ScrollView>
@@ -207,4 +218,8 @@ const styles = StyleSheet.create({
   backButton: { paddingVertical: 12, paddingHorizontal: 24 },
   backButtonText: { fontSize: 14, fontWeight: '600', color: colors.textLight },
   ctaHint: { fontSize: 11, color: colors.textLight, marginTop: 8, textAlign: 'center', lineHeight: 16, paddingHorizontal: 20 },
+
+  legalLinksRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12, flexWrap: 'wrap' },
+  legalLinkText: { fontSize: 12, color: colors.primary, fontWeight: '600', textDecorationLine: 'underline' },
+  legalSeparator: { fontSize: 12, color: colors.textLight },
 });

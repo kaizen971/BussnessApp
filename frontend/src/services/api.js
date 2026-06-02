@@ -1,9 +1,8 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// URL du serveur — LOCAL pour tests (remettre l'URL AWS avant de builder pour prod)
-// const API_BASE_URL = 'https://businessapp.installpostiz.com/bussnessapp';
-const API_BASE_URL = 'http://192.168.1.104:3003/bussnessapp';
+// URL du serveur AWS Lightsail (HTTPS)
+const API_BASE_URL = 'https://businessapp.installpostiz.com/bussnessapp';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
