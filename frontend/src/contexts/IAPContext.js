@@ -29,46 +29,86 @@ export const IAPProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
   const [ownedSubscriptions, setOwnedSubscriptions] = useState([]);
+  // ===== DIAGNOSTIC TEMPORAIRE (à retirer après résolution IAP) =====
+  const [diagnostics, setDiagnostics] = useState({
+    iapAvailable,
+    platform: Platform.OS,
+    requestedSkus: IAP_SUBSCRIPTION_IDS || [],
+    initOk: null,        // true/false : initConnection a réussi
+    productsCount: 0,    // nb d'offres remontées par le store
+    returnedIds: [],     // IDs réellement renvoyés par StoreKit
+    lastError: null,     // message d'erreur exact
+    lastErrorCode: null, // code d'erreur (E_...) si dispo
+    steps: [],           // journal horodaté des étapes
+  });
+
+  const logStep = useCallback((label, extra = {}) => {
+    const line = `${new Date().toLocaleTimeString()} • ${label}`;
+    console.log('[IAP-DIAG]', label, extra);
+    setDiagnostics(prev => ({ ...prev, ...extra, steps: [...prev.steps, line].slice(-20) }));
+  }, []);
+  // ================================================================
   const purchaseUpdateSubscription = useRef(null);
   const purchaseErrorSubscription = useRef(null);
 
   const initialize = useCallback(async () => {
     if (!iapAvailable) {
       console.warn('IAP: running in Expo Go – skipping StoreKit init');
+      logStep('Expo Go détecté → IAP désactivé (build natif requis)', { initOk: false });
       setLoading(false);
       return;
     }
     try {
+      logStep('initConnection…');
       const result = await RNIap.initConnection();
       setConnected(!!result);
-
-      if (Platform.OS === 'android') {
-        await RNIap.flushFailedPurchasesCachedAsPendingAndroid();
-      }
+      logStep(`initConnection OK (connected=${!!result})`, { initOk: !!result });
 
       await loadProducts();
       await restorePurchases();
     } catch (error) {
       console.warn('IAP init error:', error.message);
       setConnected(false);
+      logStep(`ERREUR initConnection: ${error.message}`, {
+        initOk: false, lastError: error.message, lastErrorCode: error.code || null,
+      });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [logStep]);
 
   const loadProducts = useCallback(async () => {
     if (!iapAvailable) return;
     try {
-      const subs = await RNIap.getSubscriptions({ skus: IAP_SUBSCRIPTION_IDS });
-      const enriched = subs.map(product => ({
-        ...product,
-        displayInfo: PLAN_DISPLAY_INFO[product.productId] || {},
-      }));
+      logStep(`fetchProducts… (${(IAP_SUBSCRIPTION_IDS || []).length} SKU demandés)`);
+      // react-native-iap v15 : fetchProducts remplace getSubscriptions
+      const subs = await RNIap.fetchProducts({ skus: IAP_SUBSCRIPTION_IDS, type: 'subs' });
+      const list = Array.isArray(subs) ? subs : [];
+      const enriched = list.map(product => {
+        // v15 renomme les champs : id (ex-productId), displayPrice (ex-localizedPrice)
+        const productId = product.id ?? product.productId;
+        return {
+          ...product,
+          productId,
+          localizedPrice: product.displayPrice ?? product.localizedPrice,
+          displayInfo: PLAN_DISPLAY_INFO[productId] || {},
+        };
+      });
       setProducts(enriched);
+      const ids = enriched.map(p => p.productId);
+      logStep(
+        enriched.length === 0
+          ? 'fetchProducts → 0 offre (config App Store Connect / accord payant ?)'
+          : `fetchProducts → ${enriched.length} offre(s)`,
+        { productsCount: enriched.length, returnedIds: ids, lastError: enriched.length === 0 ? 'Tableau vide (aucun produit achetable trouvé)' : null },
+      );
     } catch (error) {
       console.warn('Error loading IAP products:', error.message);
+      logStep(`ERREUR fetchProducts: ${error.message}`, {
+        lastError: error.message, lastErrorCode: error.code || null,
+      });
     }
-  }, []);
+  }, [logStep]);
 
   const restorePurchases = useCallback(async () => {
     if (!iapAvailable) return [];
@@ -90,9 +130,13 @@ export const IAPProvider = ({ children }) => {
     if (purchasing) return;
     setPurchasing(true);
     try {
-      await RNIap.requestSubscription({
-        sku: productId,
-        ...(Platform.OS === 'ios' && { andDangerouslyFinishTransactionAutomaticallyIOS: false }),
+      // react-native-iap v15 : requestPurchase remplace requestSubscription
+      await RNIap.requestPurchase({
+        type: 'subs',
+        request: {
+          ios: { sku: productId, andDangerouslyFinishTransactionAutomatically: false },
+          android: { skus: [productId] },
+        },
       });
     } catch (error) {
       if (error.code !== 'E_USER_CANCELLED') {
@@ -114,7 +158,7 @@ export const IAPProvider = ({ children }) => {
         for (const purchase of purchases) {
           try {
             await subscriptionAPI.validateReceipt({
-              receipt: purchase.transactionReceipt,
+              receipt: purchase.purchaseToken,
               productId: purchase.productId,
               platform: Platform.OS,
             });
@@ -138,7 +182,8 @@ export const IAPProvider = ({ children }) => {
 
     if (iapAvailable) {
       purchaseUpdateSubscription.current = RNIap.purchaseUpdatedListener(async (purchase) => {
-        const receipt = purchase.transactionReceipt;
+        // v15 : token unifié (JWS iOS / token Android) au lieu de transactionReceipt
+        const receipt = purchase.purchaseToken;
         if (receipt) {
           try {
             await subscriptionAPI.validateReceipt({
@@ -185,6 +230,7 @@ export const IAPProvider = ({ children }) => {
     handleRestorePurchases,
     loadProducts,
     iapAvailable,
+    diagnostics,
   };
 
   return <IAPContext.Provider value={value}>{children}</IAPContext.Provider>;

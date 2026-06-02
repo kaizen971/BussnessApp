@@ -35,9 +35,113 @@ function getSubscriptionPeriod(product) {
   return '';
 }
 
+// ===== PANNEAU DIAGNOSTIC IAP (TEMPORAIRE) =====
+// À supprimer une fois le problème d'affichage des offres résolu.
+function DiagRow({ label, value, ok }) {
+  const color = ok === true ? '#34d399' : ok === false ? '#f87171' : '#fbbf24';
+  return (
+    <View style={diagStyles.row}>
+      <Text style={diagStyles.rowLabel}>{label}</Text>
+      <View style={[diagStyles.rowValueWrap, { borderColor: color }]}>
+        <Text style={[diagStyles.rowValue, { color }]}>{String(value)}</Text>
+      </View>
+    </View>
+  );
+}
+
+function IAPDiagnosticPanel({ iapAvailable, connected, products, diagnostics }) {
+  const d = diagnostics || {};
+  const count = products?.length ?? 0;
+
+  // Verdict synthétique
+  let verdict = '⏳ En cours…';
+  let verdictColor = '#fbbf24';
+  if (!iapAvailable) {
+    verdict = '❌ Expo Go : IAP désactivé → build natif requis';
+    verdictColor = '#f87171';
+  } else if (d.initOk === false) {
+    verdict = '❌ StoreKit non connecté (initConnection a échoué)';
+    verdictColor = '#f87171';
+  } else if (count > 0) {
+    verdict = `✅ ${count} offre(s) chargée(s)`;
+    verdictColor = '#34d399';
+  } else if (d.initOk === true) {
+    verdict = '⚠️ Connecté mais 0 offre → config App Store Connect / accord payant';
+    verdictColor = '#fbbf24';
+  }
+
+  return (
+    <View style={diagStyles.card}>
+      <View style={diagStyles.header}>
+        <Ionicons name="bug-outline" size={18} color="#fff" />
+        <Text style={diagStyles.title}>Diagnostic IAP (temporaire)</Text>
+      </View>
+
+      <View style={[diagStyles.verdict, { backgroundColor: verdictColor + '22', borderColor: verdictColor }]}>
+        <Text style={[diagStyles.verdictText, { color: verdictColor }]}>{verdict}</Text>
+      </View>
+
+      <DiagRow label="iapAvailable (build natif ?)" value={iapAvailable} ok={iapAvailable === true} />
+      <DiagRow label="Plateforme" value={d.platform || '?'} ok={null} />
+      <DiagRow label="initConnection OK ?" value={d.initOk === null ? '…' : d.initOk} ok={d.initOk} />
+      <DiagRow label="connected (state)" value={connected} ok={connected === true} />
+      <DiagRow label="SKU demandés" value={(d.requestedSkus || []).length} ok={(d.requestedSkus || []).length > 0} />
+      <DiagRow label="Offres remontées" value={count} ok={count > 0} />
+
+      {(d.requestedSkus || []).length > 0 && (
+        <View style={diagStyles.block}>
+          <Text style={diagStyles.blockTitle}>SKU demandés :</Text>
+          {d.requestedSkus.map((s) => {
+            const found = (d.returnedIds || []).includes(s);
+            return (
+              <Text key={s} style={[diagStyles.mono, { color: found ? '#34d399' : '#f87171' }]}>
+                {found ? '✓' : '✗'} {s}
+              </Text>
+            );
+          })}
+        </View>
+      )}
+
+      {d.lastError ? (
+        <View style={diagStyles.block}>
+          <Text style={diagStyles.blockTitle}>Dernière erreur :</Text>
+          <Text style={[diagStyles.mono, { color: '#f87171' }]}>
+            {d.lastErrorCode ? `[${d.lastErrorCode}] ` : ''}{d.lastError}
+          </Text>
+        </View>
+      ) : null}
+
+      {(d.steps || []).length > 0 && (
+        <View style={diagStyles.block}>
+          <Text style={diagStyles.blockTitle}>Journal :</Text>
+          {d.steps.map((s, i) => (
+            <Text key={i} style={diagStyles.mono}>{s}</Text>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const diagStyles = StyleSheet.create({
+  card: { backgroundColor: '#1f2937', borderRadius: 14, padding: 14, marginBottom: 20, borderWidth: 1, borderColor: '#374151' },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  title: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  verdict: { borderRadius: 8, borderWidth: 1, paddingVertical: 8, paddingHorizontal: 10, marginBottom: 12 },
+  verdictText: { fontSize: 13, fontWeight: '700' },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 5 },
+  rowLabel: { color: '#cbd5e1', fontSize: 12, flex: 1 },
+  rowValueWrap: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, minWidth: 44, alignItems: 'center' },
+  rowValue: { fontSize: 12, fontWeight: '700' },
+  block: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#374151' },
+  blockTitle: { color: '#94a3b8', fontSize: 11, fontWeight: '700', marginBottom: 4, textTransform: 'uppercase' },
+  mono: { color: '#e2e8f0', fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', lineHeight: 17 },
+});
+// ===== FIN PANNEAU DIAGNOSTIC IAP =====
+
 export const SubscriptionScreen = ({ navigation }) => {
   const { subscription, loading: subLoading, isPremium, refreshSubscription } = useSubscription();
-  const { products, loading: iapLoading, purchasing, handlePurchase, handleRestorePurchases, connected } = useIAP();
+  const { products, loading: iapLoading, purchasing, handlePurchase, handleRestorePurchases, connected, iapAvailable, diagnostics } = useIAP();
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -77,6 +181,15 @@ export const SubscriptionScreen = ({ navigation }) => {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
     >
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+        {/* ===== PANNEAU DIAGNOSTIC IAP (TEMPORAIRE — à retirer après résolution) ===== */}
+        <IAPDiagnosticPanel
+          iapAvailable={iapAvailable}
+          connected={connected}
+          products={products}
+          diagnostics={diagnostics}
+        />
+        {/* ====================================================================== */}
+
         {/* Current plan card */}
         <LinearGradient colors={tierCfg.gradient} style={styles.currentPlanCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
           <View style={styles.currentPlanHeader}>
