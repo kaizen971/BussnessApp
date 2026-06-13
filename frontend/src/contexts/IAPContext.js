@@ -7,11 +7,16 @@ import { useSubscription } from './SubscriptionContext';
 let RNIap = null;
 let iapAvailable = false;
 
-try {
-  RNIap = require('react-native-iap');
-  iapAvailable = true;
-} catch (e) {
-  console.warn('react-native-iap not available (Expo Go?). IAP disabled.');
+// L'In-App Purchase n'est activé que sur iOS (Apple StoreKit).
+// Sur Android, les abonnements passent par Stripe (cf. écrans *.android.js),
+// donc on n'initialise pas react-native-iap / Google Play Billing.
+if (Platform.OS === 'ios') {
+  try {
+    RNIap = require('react-native-iap');
+    iapAvailable = true;
+  } catch (e) {
+    console.warn('react-native-iap not available (Expo Go?). IAP disabled.');
+  }
 }
 
 const IAPContext = createContext();
