@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { Platform, Alert } from 'react-native';
+import { Platform, Alert, Modal, View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { IAP_SUBSCRIPTION_IDS, PLAN_DISPLAY_INFO } from '../config/iap';
 import { subscriptionAPI } from '../services/api';
+import { useSubscription } from './SubscriptionContext';
 
 let RNIap = null;
 let iapAvailable = false;
@@ -28,59 +29,40 @@ export const IAPProvider = ({ children }) => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
+  const [validating, setValidating] = useState(false);
   const [ownedSubscriptions, setOwnedSubscriptions] = useState([]);
-  // ===== DIAGNOSTIC TEMPORAIRE (à retirer après résolution IAP) =====
-  const [diagnostics, setDiagnostics] = useState({
-    iapAvailable,
-    platform: Platform.OS,
-    requestedSkus: IAP_SUBSCRIPTION_IDS || [],
-    initOk: null,        // true/false : initConnection a réussi
-    productsCount: 0,    // nb d'offres remontées par le store
-    returnedIds: [],     // IDs réellement renvoyés par StoreKit
-    lastError: null,     // message d'erreur exact
-    lastErrorCode: null, // code d'erreur (E_...) si dispo
-    steps: [],           // journal horodaté des étapes
-  });
 
-  const logStep = useCallback((label, extra = {}) => {
-    const line = `${new Date().toLocaleTimeString()} • ${label}`;
-    console.log('[IAP-DIAG]', label, extra);
-    setDiagnostics(prev => ({ ...prev, ...extra, steps: [...prev.steps, line].slice(-20) }));
-  }, []);
-  // ================================================================
+  // Permet d'actualiser le SubscriptionContext juste après un achat validé.
+  // IAPProvider est imbriqué DANS SubscriptionProvider (cf. App.js), donc le hook est dispo.
+  const { refreshSubscription } = useSubscription();
+  const refreshSubscriptionRef = useRef(refreshSubscription);
+  useEffect(() => { refreshSubscriptionRef.current = refreshSubscription; }, [refreshSubscription]);
   const purchaseUpdateSubscription = useRef(null);
   const purchaseErrorSubscription = useRef(null);
 
   const initialize = useCallback(async () => {
     if (!iapAvailable) {
       console.warn('IAP: running in Expo Go – skipping StoreKit init');
-      logStep('Expo Go détecté → IAP désactivé (build natif requis)', { initOk: false });
       setLoading(false);
       return;
     }
     try {
-      logStep('initConnection…');
       const result = await RNIap.initConnection();
       setConnected(!!result);
-      logStep(`initConnection OK (connected=${!!result})`, { initOk: !!result });
 
       await loadProducts();
       await restorePurchases();
     } catch (error) {
       console.warn('IAP init error:', error.message);
       setConnected(false);
-      logStep(`ERREUR initConnection: ${error.message}`, {
-        initOk: false, lastError: error.message, lastErrorCode: error.code || null,
-      });
     } finally {
       setLoading(false);
     }
-  }, [logStep]);
+  }, []);
 
   const loadProducts = useCallback(async () => {
     if (!iapAvailable) return;
     try {
-      logStep(`fetchProducts… (${(IAP_SUBSCRIPTION_IDS || []).length} SKU demandés)`);
       // react-native-iap v15 : fetchProducts remplace getSubscriptions
       const subs = await RNIap.fetchProducts({ skus: IAP_SUBSCRIPTION_IDS, type: 'subs' });
       const list = Array.isArray(subs) ? subs : [];
@@ -95,20 +77,10 @@ export const IAPProvider = ({ children }) => {
         };
       });
       setProducts(enriched);
-      const ids = enriched.map(p => p.productId);
-      logStep(
-        enriched.length === 0
-          ? 'fetchProducts → 0 offre (config App Store Connect / accord payant ?)'
-          : `fetchProducts → ${enriched.length} offre(s)`,
-        { productsCount: enriched.length, returnedIds: ids, lastError: enriched.length === 0 ? 'Tableau vide (aucun produit achetable trouvé)' : null },
-      );
     } catch (error) {
       console.warn('Error loading IAP products:', error.message);
-      logStep(`ERREUR fetchProducts: ${error.message}`, {
-        lastError: error.message, lastErrorCode: error.code || null,
-      });
     }
-  }, [logStep]);
+  }, []);
 
   const restorePurchases = useCallback(async () => {
     if (!iapAvailable) return [];
@@ -166,6 +138,7 @@ export const IAPProvider = ({ children }) => {
             console.warn('Receipt validation error:', err.message);
           }
         }
+        try { await refreshSubscriptionRef.current?.(); } catch (e) { console.warn('refreshSubscription:', e?.message); }
         Alert.alert('Achats restaurés', 'Vos achats ont été restaurés avec succès.');
       } else {
         Alert.alert('Aucun achat', 'Aucun achat précédent trouvé.');
@@ -185,6 +158,7 @@ export const IAPProvider = ({ children }) => {
         // v15 : token unifié (JWS iOS / token Android) au lieu de transactionReceipt
         const receipt = purchase.purchaseToken;
         if (receipt) {
+          setValidating(true);
           try {
             await subscriptionAPI.validateReceipt({
               receipt,
@@ -193,6 +167,8 @@ export const IAPProvider = ({ children }) => {
             });
             await RNIap.finishTransaction({ purchase, isConsumable: false });
             setOwnedSubscriptions(prev => [...prev, purchase]);
+            // Actualise l'abonnement pour qu'il s'affiche immédiatement (sans redémarrer l'app).
+            try { await refreshSubscriptionRef.current?.(); } catch (e) { console.warn('refreshSubscription:', e?.message); }
             Alert.alert(
               'Achat réussi',
               'Votre abonnement a été activé avec succès. Merci !',
@@ -200,6 +176,8 @@ export const IAPProvider = ({ children }) => {
           } catch (error) {
             console.error('Receipt validation error:', error);
             Alert.alert('Erreur', 'L\'achat a été effectué mais la validation a échoué. Veuillez restaurer vos achats.');
+          } finally {
+            setValidating(false);
           }
         }
         setPurchasing(false);
@@ -230,8 +208,30 @@ export const IAPProvider = ({ children }) => {
     handleRestorePurchases,
     loadProducts,
     iapAvailable,
-    diagnostics,
   };
 
-  return <IAPContext.Provider value={value}>{children}</IAPContext.Provider>;
+  return (
+    <IAPContext.Provider value={value}>
+      {children}
+      {/* Feedback plein écran pendant l'achat / la validation du reçu */}
+      <Modal visible={purchasing || validating} transparent animationType="fade" statusBarTranslucent>
+        <View style={overlayStyles.backdrop}>
+          <View style={overlayStyles.card}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={overlayStyles.text}>
+              {validating ? 'Validation de votre abonnement…' : 'Achat en cours…'}
+            </Text>
+            <Text style={overlayStyles.subtext}>Merci de patienter, ne fermez pas l'application.</Text>
+          </View>
+        </View>
+      </Modal>
+    </IAPContext.Provider>
+  );
 };
+
+const overlayStyles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+  card: { backgroundColor: '#1f2937', borderRadius: 16, paddingVertical: 28, paddingHorizontal: 32, alignItems: 'center', maxWidth: 300 },
+  text: { color: '#fff', fontSize: 16, fontWeight: '700', marginTop: 16, textAlign: 'center' },
+  subtext: { color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 8, textAlign: 'center' },
+});

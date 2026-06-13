@@ -38,5 +38,8 @@
     "react-native-screens": "~4.11.1",
     "react-native-svg": "15.11.2"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "sharp": "^0.34.5"
+  }
 }

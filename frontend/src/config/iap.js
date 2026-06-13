@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 // EULA standard d'Apple. Remplace par ton EULA perso si tu en utilises un.
 export const TERMS_OF_USE_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 // Mets ici l'URL réelle de ta politique de confidentialité.
-export const PRIVACY_POLICY_URL = 'https://businessapp.installpostiz.com/privacy';
+export const PRIVACY_POLICY_URL = 'https://kaizen971.github.io/deleteAccountPage/privacy-policy.html';
 
 export const IAP_PRODUCT_IDS = Platform.select({
   ios: [

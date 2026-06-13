@@ -42,8 +42,13 @@ export const AuthProvider = ({ children }) => {
           activeToken = refreshed.token;
           userData = refreshed.user;
         } catch (refreshError) {
+          const status = refreshError.response?.status;
           console.log('Stored session refresh failed:', refreshError.response?.data || refreshError.message);
-          if (refreshError.response) {
+          // Ne déconnecter QUE si le token est réellement invalide/expiré (401/403).
+          // Sur erreur réseau ou serveur (5xx, timeout), on conserve la session locale
+          // et on continue avec le token stocké — évite une reconnexion forcée intempestive
+          // (ex. juste après un achat qui a mis l'app en arrière-plan).
+          if (status === 401 || status === 403) {
             await Promise.all([
               AsyncStorage.removeItem('userToken'),
               AsyncStorage.removeItem('userData'),
@@ -52,6 +57,7 @@ export const AuthProvider = ({ children }) => {
             clearCachedToken();
             return;
           }
+          // Sinon : on garde activeToken = storedToken et userData = storedUser (déjà initialisés).
         }
 
         setCachedToken(activeToken);
