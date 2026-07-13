@@ -127,6 +127,7 @@ const SubscriptionSchema = new mongoose.Schema({
   paymentMethod: { type: String, enum: ['card', 'cash', 'donation', 'apple_iap', 'google_play'], required: true },
   iapProductId: String,
   iapReceipt: String,
+  iapOriginalTransactionId: String, // Identifiant Apple stable (suivi des renouvellements IAP)
   stripePaymentLinkUrl: String,
   stripeSessionId: String,
   stripeCustomerId: String,

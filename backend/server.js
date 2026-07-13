@@ -11,6 +11,7 @@ const { S3Client, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const multer = require('multer');
 const multerS3 = require('multer-s3');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = 3003;
@@ -1401,7 +1402,6 @@ app.get('/BussnessApp/products', authenticateToken, async (req, res) => {
   try {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
-    console.log(filter)
     const products = await Product.find(filter).sort({ name: 1 }).lean();
 
     // Batch query: une seule requête pour tous les stocks liés
@@ -1458,16 +1458,30 @@ app.post('/BussnessApp/products', authenticateToken, checkRole('admin', 'manager
 app.put('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), upload.single('productImage'), async (req, res) => {
   try {
     const updateData = { ...req.body, updatedAt: Date.now() };
+    const oldProduct = await Product.findById(req.params.id);
+    if (!oldProduct) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
     if (req.file) {
       // Supprimer l'ancienne image S3
-      const oldProduct = await Product.findById(req.params.id);
-      await deleteS3Image(oldProduct?.image);
+      await deleteS3Image(oldProduct.image);
       updateData.image = req.file.location;
     }
     const product = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true });
-    if (!product) {
-      return res.status(404).json({ error: 'Product not found' });
+
+    // Propager le renommage au stock lié et consolider le rattachement via productId,
+    // pour que la modification d'un produit ne casse jamais le lien produit ↔ stock
+    // (le matching de secours par `name` devient sans risque une fois le productId posé).
+    if (updateData.name && updateData.name !== oldProduct.name) {
+      await Stock.updateMany(
+        {
+          projectId: product.projectId,
+          $or: [{ productId: product._id }, { name: oldProduct.name }],
+        },
+        { $set: { name: updateData.name, productId: product._id, updatedAt: Date.now() } }
+      );
     }
+
     res.json(product);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -1508,8 +1522,6 @@ app.get('/BussnessApp/sales', authenticateToken, async (req, res) => {
 app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
   try {
     const { customerId, productId, quantity, unitPrice, discount, projectId } = req.body;
-    
-    console.log(req.body)
 
     // Validation des champs requis
     if (!productId || !quantity || unitPrice === undefined || unitPrice === null || unitPrice === '') {
@@ -1582,8 +1594,6 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
         ...(product ? [{ name: product.name }] : [])
       ]
     });
-
-    console.log(stockItem);
 
     if (stockItem) {
       const previousQuantity = stockItem.quantity;
@@ -2552,6 +2562,17 @@ app.get('/BussnessApp/schedules/user/:userId', authenticateToken, async (req, re
 });
 
 // Créer un nouveau planning (simple ou récurrent)
+// Calcule la durée d'un shift en heures. Gère les shifts de nuit :
+// si l'heure de fin est antérieure à l'heure de début, le shift se termine le lendemain.
+function computeShiftDuration(startTime, endTime) {
+  const start = new Date(`2000-01-01T${startTime}`);
+  let end = new Date(`2000-01-01T${endTime}`);
+  if (end < start) {
+    end = new Date(end.getTime() + 24 * 60 * 60 * 1000); // shift de nuit (passe minuit)
+  }
+  return (end - start) / (1000 * 60 * 60);
+}
+
 app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const { userId, date, startTime, endTime, notes, projectId, isRecurring, recurringDays, endDate } = req.body;
@@ -2560,20 +2581,17 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
       return res.status(400).json({ error: 'Tous les champs requis doivent être remplis' });
     }
 
-    // Calculer la durée
-    const start = new Date(`2000-01-01 ${startTime}`);
-    const end = new Date(`2000-01-01 ${endTime}`);
-    const duration = (end - start) / (1000 * 60 * 60); // Durée en heures
+    // Calculer la durée (gère les shifts de nuit qui passent minuit)
+    const duration = computeShiftDuration(startTime, endTime);
 
     if (duration <= 0) {
-      return res.status(400).json({ error: 'L\'heure de fin doit être après l\'heure de début' });
+      return res.status(400).json({ error: 'L\'heure de fin doit être différente de l\'heure de début' });
     }
 
     // Si c'est un planning récurrent
     if (isRecurring && recurringDays && recurringDays.length > 0) {
       const startDate = new Date(date);
       const finalEndDate = endDate ? new Date(endDate) : new Date(startDate.getTime() + 90 * 24 * 60 * 60 * 1000); // 90 jours par défaut
-      const createdSchedules = [];
 
       // Construire tous les documents en mémoire, puis insertMany en une seule requête
       const scheduleDocs = [];
@@ -2607,7 +2625,7 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
       res.status(201).json({
         data: populatedSchedules,
         count: inserted.length,
-        message: `${createdSchedules.length} planning(s) créé(s) avec succès`
+        message: `${inserted.length} planning(s) créé(s) avec succès`
       });
     } else {
       // Planning simple (une seule date)
@@ -2654,25 +2672,30 @@ app.put('/BussnessApp/schedules/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Non autorisé' });
     }
 
-    // Calculer la nouvelle durée si les heures changent
-    if (startTime && endTime) {
-      const start = new Date(`2000-01-01 ${startTime}`);
-      const end = new Date(`2000-01-01 ${endTime}`);
-      const duration = (end - start) / (1000 * 60 * 60);
+    // Un salarié ne peut modifier QUE le dailySalary de son propre shift.
+    // Les heures, la date et le statut (qui déclenche la paie) restent réservés aux admin/manager/responsable,
+    // pour qu'un employé ne puisse pas s'auto-attribuer un shift "completed" avec le salaire de son choix.
+    if (isAdmin) {
+      // Calculer la nouvelle durée si les heures changent (gère les shifts de nuit)
+      if (startTime && endTime) {
+        const duration = computeShiftDuration(startTime, endTime);
 
-      if (duration <= 0) {
-        return res.status(400).json({ error: 'L\'heure de fin doit être après l\'heure de début' });
+        if (duration <= 0) {
+          return res.status(400).json({ error: 'L\'heure de fin doit être différente de l\'heure de début' });
+        }
+
+        schedule.duration = duration;
       }
 
-      schedule.duration = duration;
+      if (date) schedule.date = new Date(date);
+      if (startTime) schedule.startTime = startTime;
+      if (endTime) schedule.endTime = endTime;
+      if (status) schedule.status = status;
+      if (notes !== undefined) schedule.notes = notes;
     }
 
-    if (date) schedule.date = new Date(date);
-    if (startTime) schedule.startTime = startTime;
-    if (endTime) schedule.endTime = endTime;
-    if (status) schedule.status = status;
-    if (notes !== undefined) schedule.notes = notes;
-    // Permettre de définir dailySalary (null pour revenir au calcul par défaut)
+    // dailySalary (null = retour au calcul par défaut) : modifiable par un admin
+    // ou par le salarié sur son propre shift.
     if (dailySalary !== undefined) schedule.dailySalary = dailySalary;
     schedule.updatedAt = Date.now();
 
@@ -4166,6 +4189,80 @@ app.get('/BussnessApp/subscription/plans', async (req, res) => {
 });
 
 // ============= IAP Receipt Validation =============
+// ===== Vérification du reçu IAP Apple (StoreKit 2 / JWS) =====
+// Le client (react-native-iap v15) envoie `purchaseToken`, qui sur iOS est le JWS
+// signé par Apple. On le vérifie de façon cryptographique et hors-ligne :
+//   1) la chaîne de certificats x5c du header doit remonter à l'Apple Root CA - G3 (épinglé),
+//   2) la signature ES256 doit être valide,
+//   3) le bundleId / productId / expiration du payload sont contrôlés.
+// L'empreinte du root CA est une info PUBLIQUE (pas un secret) ; elle est fournie par env
+// pour ne pas coder en dur une valeur potentiellement erronée.
+const APPLE_ROOT_CA_G3_SHA256 = (process.env.APPLE_ROOT_CA_G3_SHA256 || '').toLowerCase().replace(/[^a-f0-9]/g, '');
+const APPLE_BUNDLE_ID = process.env.APPLE_BUNDLE_ID || '';
+
+function b64urlToBuffer(s) {
+  return Buffer.from(String(s).replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+}
+function certSha256(cert) {
+  return cert.fingerprint256.toLowerCase().replace(/[^a-f0-9]/g, '');
+}
+
+// Renvoie le payload décodé et VÉRIFIÉ, ou lève une erreur (fail-closed).
+function verifyAppleSignedTransaction(jws, expectedProductId) {
+  if (!APPLE_ROOT_CA_G3_SHA256) {
+    const err = new Error('IAP_NOT_CONFIGURED');
+    err.code = 'IAP_NOT_CONFIGURED';
+    throw err;
+  }
+  const parts = String(jws || '').split('.');
+  if (parts.length !== 3) throw new Error('INVALID_JWS_FORMAT');
+  const [headerB64, payloadB64, signatureB64] = parts;
+
+  const header = JSON.parse(b64urlToBuffer(headerB64).toString('utf8'));
+  if (header.alg !== 'ES256') throw new Error('UNEXPECTED_ALG');
+  if (!Array.isArray(header.x5c) || header.x5c.length < 2) throw new Error('MISSING_CERT_CHAIN');
+
+  // x5c = [leaf, intermediate, root] en base64 DER
+  const certs = header.x5c.map((b64) => new crypto.X509Certificate(Buffer.from(b64, 'base64')));
+  const leaf = certs[0];
+  const root = certs[certs.length - 1];
+
+  // 1) Le root doit être l'Apple Root CA - G3 épinglé
+  if (certSha256(root) !== APPLE_ROOT_CA_G3_SHA256) throw new Error('ROOT_CA_MISMATCH');
+  // 2) Chaîne de confiance : chaque cert est signé par le suivant, le root est auto-signé
+  for (let i = 0; i < certs.length - 1; i++) {
+    if (!certs[i].verify(certs[i + 1].publicKey)) throw new Error('CERT_CHAIN_INVALID');
+  }
+  if (!root.verify(root.publicKey)) throw new Error('ROOT_NOT_SELF_SIGNED');
+  // Validité temporelle des certificats
+  const nowMs = Date.now();
+  for (const c of certs) {
+    if (nowMs < Date.parse(c.validFrom) || nowMs > Date.parse(c.validTo)) throw new Error('CERT_EXPIRED');
+  }
+
+  // 3) Signature JWS ES256 (r||s brut => ieee-p1363)
+  const ok = crypto.verify(
+    'sha256',
+    Buffer.from(`${headerB64}.${payloadB64}`),
+    { key: leaf.publicKey, dsaEncoding: 'ieee-p1363' },
+    b64urlToBuffer(signatureB64)
+  );
+  if (!ok) throw new Error('SIGNATURE_INVALID');
+
+  // 4) Contenu
+  const payload = JSON.parse(b64urlToBuffer(payloadB64).toString('utf8'));
+  if (APPLE_BUNDLE_ID && payload.bundleId && payload.bundleId !== APPLE_BUNDLE_ID) {
+    throw new Error('BUNDLE_ID_MISMATCH');
+  }
+  if (expectedProductId && payload.productId && payload.productId !== expectedProductId) {
+    throw new Error('PRODUCT_ID_MISMATCH');
+  }
+  if (payload.expiresDate && payload.expiresDate < Date.now()) {
+    throw new Error('SUBSCRIPTION_EXPIRED');
+  }
+  return payload;
+}
+
 app.post('/BussnessApp/subscription/validate-receipt', authenticateToken, async (req, res) => {
   try {
     const { receipt, productId, platform } = req.body;
@@ -4173,8 +4270,29 @@ app.post('/BussnessApp/subscription/validate-receipt', authenticateToken, async 
       return res.status(400).json({ error: 'Receipt and productId are required' });
     }
 
+    // Ce flux est réservé à l'IAP iOS. Android passe par l'activation manuelle.
+    if (platform && platform !== 'ios') {
+      return res.status(400).json({ error: 'Validation IAP réservée à iOS' });
+    }
+
+    // Vérification cryptographique du reçu auprès d'Apple AVANT toute activation.
+    let verified;
+    try {
+      verified = verifyAppleSignedTransaction(receipt, productId);
+    } catch (verr) {
+      if (verr.code === 'IAP_NOT_CONFIGURED') {
+        console.error('[IAP] Vérification impossible : APPLE_ROOT_CA_G3_SHA256 non configuré. Reçu rejeté (fail-closed).');
+        return res.status(503).json({ error: 'Validation des achats indisponible (configuration serveur manquante)' });
+      }
+      console.warn(`[IAP] Reçu rejeté pour user ${req.user.id} / ${productId}: ${verr.message}`);
+      return res.status(400).json({ error: 'Reçu invalide', reason: verr.message });
+    }
+
     const Subscription = mongoose.model('Subscription');
     const userId = req.user.id;
+
+    // On se base sur le productId VÉRIFIÉ par Apple, pas sur la valeur brute du client.
+    const verifiedProductId = verified.productId || productId;
 
     // Determine plan tier from product ID
     let tier = 'basic';
@@ -4182,23 +4300,25 @@ app.post('/BussnessApp/subscription/validate-receipt', authenticateToken, async 
     let maxProjects = 1;
     let durationMonths = 12;
 
-    if (productId.includes('standard')) {
+    if (verifiedProductId.includes('standard')) {
       tier = 'standard';
       planName = 'EAS Standard';
       maxProjects = 3;
-    } else if (productId.includes('premium')) {
+    } else if (verifiedProductId.includes('premium')) {
       tier = 'premium';
       planName = 'EAS Premium';
       maxProjects = 100;
     }
 
-    if (productId.includes('monthly')) {
+    if (verifiedProductId.includes('monthly')) {
       durationMonths = 1;
     }
 
     const now = new Date();
-    const endDate = new Date(now);
-    endDate.setMonth(endDate.getMonth() + durationMonths);
+    // Date d'expiration : on privilégie celle signée par Apple, sinon on calcule.
+    const endDate = verified.expiresDate
+      ? new Date(verified.expiresDate)
+      : (() => { const d = new Date(now); d.setMonth(d.getMonth() + durationMonths); return d; })();
 
     // Deactivate old subscriptions
     await Subscription.updateMany(
@@ -4217,8 +4337,9 @@ app.post('/BussnessApp/subscription/validate-receipt', authenticateToken, async 
       startDate: now,
       endDate: endDate,
       maxProjects: maxProjects,
-      paymentMethod: platform === 'ios' ? 'apple_iap' : 'google_play',
-      iapProductId: productId,
+      paymentMethod: 'apple_iap',
+      iapProductId: verifiedProductId,
+      iapOriginalTransactionId: verified.originalTransactionId || verified.transactionId,
       iapReceipt: receipt.substring(0, 500),
       createdAt: now,
       updatedAt: now,
