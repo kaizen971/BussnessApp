@@ -8,7 +8,12 @@
       "Bash(expo --version)",
       "Bash(yarn --version)",
       "Bash(pod --version)",
-      "Bash(git config *)"
+      "Bash(git config *)",
+      "Bash(node scripts/validate_palette.js \"#E8C15A,#E4646E,#6FA8DC,#9B8AE6\" --mode dark --surface \"#1A1A1A\")",
+      "Bash(node scripts/validate_palette.js \"#C98500,#E66767,#3987E5,#9085E9\" --mode dark --surface \"#1A1A1A\")",
+      "Bash(node scripts/validate_palette.js \"#C98500,#3987E5,#E66767,#9085E9\" --mode dark --surface \"#1A1A1A\")",
+      "Bash(node scripts/validate_palette.js \"#C98500,#3987E5,#E66767,#199E70\" --mode dark --surface \"#1A1A1A\")",
+      "Bash(node scripts/validate_palette.js \"#C98500,#E66767\" --mode dark --surface \"#1A1A1A\")"
     ]
   }
 }

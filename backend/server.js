@@ -2374,6 +2374,550 @@ app.put('/BussnessApp/customers/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ============================================================
+// IMPORT CSV (produits, stock, ventes, clients, dépenses)
+// ============================================================
+
+// Parseur CSV (type RFC 4180) : champs entre guillemets, séparateur ; ou ,
+// auto-détecté sur la ligne d'en-têtes, fins de ligne \r\n ou \n, BOM Excel.
+const parseCsv = (text) => {
+  const content = text.replace(/^\uFEFF/, '');
+  const headerLine = content.split(/\r?\n/, 1)[0] || '';
+  const delimiter = (headerLine.match(/;/g) || []).length >= (headerLine.match(/,/g) || []).length ? ';' : ',';
+
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (content[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        field += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === delimiter) {
+      row.push(field);
+      field = '';
+    } else if (char === '\n' || char === '\r') {
+      if (char === '\r' && content[i + 1] === '\n') i++;
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else {
+      field += char;
+    }
+  }
+  if (field !== '' || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  // Conserver l'index de ligne d'origine (les lignes vides comptent dans le fichier)
+  return rows
+    .map((cells, index) => ({ cells, line: index + 1 }))
+    .filter(r => r.cells.some(cell => cell.trim() !== ''));
+};
+
+// Normalise un en-tête : minuscules, sans accents, espaces/tirets → underscore
+const normalizeCsvHeader = (header) =>
+  header.trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s-]+/g, '_');
+
+// Nombre au format français (12,50) ou anglais (12.50)
+const parseCsvNumber = (value) => {
+  if (value === undefined || value === null || String(value).trim() === '') return null;
+  const num = parseFloat(String(value).trim().replace(/\s/g, '').replace(',', '.'));
+  return isNaN(num) ? null : num;
+};
+
+// Date au format JJ/MM/AAAA (heure HH:MM optionnelle) ou AAAA-MM-JJ.
+// Retourne null si vide, undefined si invalide.
+const parseCsvDate = (value) => {
+  if (!value || String(value).trim() === '') return null;
+  const trimmed = String(value).trim();
+  const frMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
+  if (frMatch) {
+    const [, day, month, year, hours = '12', minutes = '0'] = frMatch;
+    const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes));
+    return isNaN(date.getTime()) ? undefined : date;
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+    const date = new Date(trimmed);
+    return isNaN(date.getTime()) ? undefined : date;
+  }
+  return undefined;
+};
+
+// Alias d'en-têtes acceptés (français / anglais) → champ canonique
+const CSV_COLUMN_ALIASES = {
+  products: {
+    nom: 'name', name: 'name', produit: 'name',
+    prix_vente: 'unitPrice', prix_de_vente: 'unitPrice', unitprice: 'unitPrice', prix: 'unitPrice',
+    prix_revient: 'costPrice', prix_de_revient: 'costPrice', cout: 'costPrice', costprice: 'costPrice',
+    categorie: 'category', category: 'category',
+    description: 'description',
+    stock_initial: 'initialStock', stock: 'initialStock',
+    stock_minimum: 'minQuantity', seuil_alerte: 'minQuantity', minquantity: 'minQuantity',
+  },
+  stock: {
+    nom: 'name', name: 'name', produit: 'name', article: 'name',
+    quantite: 'quantity', quantity: 'quantity', qte: 'quantity',
+    prix_unitaire: 'unitPrice', unitprice: 'unitPrice', prix: 'unitPrice',
+    quantite_min: 'minQuantity', stock_minimum: 'minQuantity', seuil_alerte: 'minQuantity', minquantity: 'minQuantity',
+    sku: 'sku', code_sku: 'sku',
+    emplacement: 'location', location: 'location',
+  },
+  sales: {
+    produit: 'productName', product: 'productName', nom: 'productName',
+    quantite: 'quantity', quantity: 'quantity', qte: 'quantity',
+    prix_unitaire: 'unitPrice', unitprice: 'unitPrice', prix: 'unitPrice',
+    remise: 'discount', discount: 'discount',
+    date: 'date',
+    client: 'customerName', customer: 'customerName',
+    description: 'description',
+  },
+  customers: {
+    nom: 'name', name: 'name', client: 'name',
+    email: 'email', mail: 'email',
+    telephone: 'phone', phone: 'phone', tel: 'phone',
+    remise: 'discount', discount: 'discount',
+    notes: 'notes', note: 'notes',
+  },
+  expenses: {
+    montant: 'amount', amount: 'amount',
+    categorie: 'category', category: 'category', type: 'category',
+    description: 'description',
+    date: 'date',
+  },
+};
+
+const CSV_REQUIRED_COLUMNS = {
+  products: { required: ['name', 'unitPrice', 'costPrice'], help: 'nom;prix_vente;prix_revient;categorie;description;stock_initial;stock_minimum' },
+  stock: { required: ['name', 'quantity'], help: 'produit;quantite;prix_unitaire;quantite_min;sku;emplacement' },
+  sales: { required: ['productName'], help: 'produit;quantite;prix_unitaire;remise;date;client;description' },
+  customers: { required: ['name'], help: 'nom;email;telephone;remise;notes' },
+  expenses: { required: ['amount', 'category'], help: 'montant;categorie;description;date' },
+};
+
+// Transforme les lignes CSV en objets { champCanonique: valeur, _line: n° de ligne }
+const mapCsvRows = (rows, type) => {
+  const aliases = CSV_COLUMN_ALIASES[type];
+  const headers = rows[0].cells.map(h => aliases[normalizeCsvHeader(h)] || null);
+  const mappedKeys = headers.filter(Boolean);
+
+  const missing = CSV_REQUIRED_COLUMNS[type].required.filter(key => !mappedKeys.includes(key));
+  if (missing.length > 0) {
+    const error = new Error(
+      `Colonnes obligatoires manquantes dans l'en-tête. Colonnes attendues : ${CSV_REQUIRED_COLUMNS[type].help}`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return rows.slice(1).map(({ cells, line }) => {
+    const record = { _line: line };
+    headers.forEach((key, i) => {
+      if (key && cells[i] !== undefined) record[key] = cells[i].trim();
+    });
+    return record;
+  });
+};
+
+const csvNameKey = (name) => name.trim().toLowerCase();
+
+const createStockEntryMovement = async ({ projectId, stock, quantity, previousQuantity, userId, reason }) => {
+  await new StockMovement({
+    projectId,
+    stockId: stock._id,
+    productId: stock.productId,
+    type: 'in',
+    quantity,
+    previousQuantity,
+    newQuantity: stock.quantity,
+    unitPrice: stock.unitPrice,
+    reason: reason || 'Import CSV',
+    userId,
+  }).save();
+};
+
+const importProductsCsv = async (records, { projectId, userId }) => {
+  const errors = [];
+  let inserted = 0;
+
+  const [existingProducts, existingCategories] = await Promise.all([
+    Product.find({ projectId }).select('name').lean(),
+    Category.find({ projectId }).select('name').lean(),
+  ]);
+  const productNames = new Set(existingProducts.map(p => csvNameKey(p.name)));
+  const categoryNames = new Set(existingCategories.map(c => csvNameKey(c.name)));
+
+  for (const record of records) {
+    const name = (record.name || '').trim();
+    if (!name) { errors.push({ line: record._line, message: 'Le nom du produit est requis' }); continue; }
+    if (productNames.has(csvNameKey(name))) { errors.push({ line: record._line, message: `Le produit "${name}" existe déjà` }); continue; }
+
+    const unitPrice = parseCsvNumber(record.unitPrice);
+    const costPrice = parseCsvNumber(record.costPrice);
+    if (unitPrice === null || unitPrice < 0) { errors.push({ line: record._line, message: 'prix_vente invalide (nombre positif attendu, ex: 25.00)' }); continue; }
+    if (costPrice === null || costPrice < 0) { errors.push({ line: record._line, message: 'prix_revient invalide (nombre positif attendu, ex: 10.50)' }); continue; }
+
+    let initialStock = null;
+    if (record.initialStock !== undefined && record.initialStock !== '') {
+      initialStock = parseCsvNumber(record.initialStock);
+      if (initialStock === null || initialStock < 0) { errors.push({ line: record._line, message: 'stock_initial invalide (nombre positif attendu)' }); continue; }
+    }
+    let minQuantity = 0;
+    if (record.minQuantity !== undefined && record.minQuantity !== '') {
+      minQuantity = parseCsvNumber(record.minQuantity);
+      if (minQuantity === null || minQuantity < 0) { errors.push({ line: record._line, message: 'stock_minimum invalide (nombre positif attendu)' }); continue; }
+    }
+
+    const category = (record.category || '').trim();
+    const product = new Product({
+      projectId,
+      name,
+      unitPrice,
+      costPrice,
+      category: category || undefined,
+      description: (record.description || '').trim() || undefined,
+    });
+    await product.save();
+    productNames.add(csvNameKey(name));
+
+    // Créer la catégorie si elle n'existe pas encore
+    if (category && !categoryNames.has(csvNameKey(category))) {
+      await new Category({ projectId, name: category }).save();
+      categoryNames.add(csvNameKey(category));
+    }
+
+    // Créer le stock lié si stock_initial est renseigné
+    if (initialStock !== null) {
+      const stock = new Stock({
+        projectId,
+        productId: product._id,
+        name,
+        quantity: initialStock,
+        unitPrice,
+        minQuantity,
+      });
+      await stock.save();
+      await createStockEntryMovement({ projectId, stock, quantity: initialStock, previousQuantity: 0, userId, reason: 'Import CSV (stock initial)' });
+    }
+
+    inserted++;
+  }
+
+  return { inserted, errors };
+};
+
+const importStockCsv = async (records, { projectId, userId }) => {
+  const errors = [];
+  let inserted = 0;
+  let updated = 0;
+
+  const [products, stockItems] = await Promise.all([
+    Product.find({ projectId }).select('name unitPrice').lean(),
+    Stock.find({ projectId }),
+  ]);
+  const productsByName = new Map(products.map(p => [csvNameKey(p.name), p]));
+  const stockByName = new Map(stockItems.map(s => [csvNameKey(s.name), s]));
+
+  for (const record of records) {
+    const name = (record.name || '').trim();
+    if (!name) { errors.push({ line: record._line, message: "Le nom de l'article est requis" }); continue; }
+
+    const quantity = parseCsvNumber(record.quantity);
+    if (quantity === null || quantity < 0) { errors.push({ line: record._line, message: 'quantite invalide (nombre positif attendu)' }); continue; }
+
+    const product = productsByName.get(csvNameKey(name));
+    let unitPrice = parseCsvNumber(record.unitPrice);
+    if (unitPrice === null) unitPrice = product ? product.unitPrice : null;
+    if (unitPrice === null || unitPrice < 0) {
+      errors.push({ line: record._line, message: `prix_unitaire requis : aucun produit "${name}" trouvé pour reprendre son prix` });
+      continue;
+    }
+
+    let minQuantity = null;
+    if (record.minQuantity !== undefined && record.minQuantity !== '') {
+      minQuantity = parseCsvNumber(record.minQuantity);
+      if (minQuantity === null || minQuantity < 0) { errors.push({ line: record._line, message: 'quantite_min invalide (nombre positif attendu)' }); continue; }
+    }
+
+    const existing = stockByName.get(csvNameKey(name));
+    if (existing) {
+      // Article déjà en stock : la quantité importée est ajoutée (entrée de stock)
+      const previousQuantity = existing.quantity;
+      existing.quantity = previousQuantity + quantity;
+      existing.unitPrice = unitPrice;
+      if (minQuantity !== null) existing.minQuantity = minQuantity;
+      if (record.sku) existing.sku = record.sku;
+      if (record.location) existing.location = record.location;
+      if (!existing.productId && product) existing.productId = product._id;
+      existing.updatedAt = Date.now();
+      await existing.save();
+      if (quantity > 0) {
+        await createStockEntryMovement({ projectId, stock: existing, quantity, previousQuantity, userId });
+      }
+      updated++;
+    } else {
+      const stock = new Stock({
+        projectId,
+        productId: product ? product._id : undefined,
+        name,
+        quantity,
+        unitPrice,
+        minQuantity: minQuantity !== null ? minQuantity : 0,
+        sku: record.sku || undefined,
+        location: record.location || undefined,
+      });
+      await stock.save();
+      stockByName.set(csvNameKey(name), stock);
+      if (quantity > 0) {
+        await createStockEntryMovement({ projectId, stock, quantity, previousQuantity: 0, userId });
+      }
+      inserted++;
+    }
+  }
+
+  return { inserted, updated, errors };
+};
+
+const importSalesCsv = async (records, { projectId, userId, options }) => {
+  const errors = [];
+  let inserted = 0;
+  const updateStock = options.updateStock === true;
+
+  const [products, customers] = await Promise.all([
+    Product.find({ projectId }).select('name unitPrice').lean(),
+    Customer.find({ projectId }),
+  ]);
+  const productsByName = new Map(products.map(p => [csvNameKey(p.name), p]));
+  const customersByName = new Map(customers.map(c => [csvNameKey(c.name), c]));
+
+  for (const record of records) {
+    const productName = (record.productName || '').trim();
+    if (!productName) { errors.push({ line: record._line, message: 'Le nom du produit est requis' }); continue; }
+
+    const product = productsByName.get(csvNameKey(productName));
+    if (!product) { errors.push({ line: record._line, message: `Produit "${productName}" introuvable — importez ou créez d'abord vos produits` }); continue; }
+
+    const quantity = record.quantity !== undefined && record.quantity !== '' ? parseCsvNumber(record.quantity) : 1;
+    if (quantity === null || quantity <= 0) { errors.push({ line: record._line, message: 'quantite invalide (nombre supérieur à 0 attendu)' }); continue; }
+
+    const unitPrice = record.unitPrice !== undefined && record.unitPrice !== '' ? parseCsvNumber(record.unitPrice) : product.unitPrice;
+    if (unitPrice === null || unitPrice < 0) { errors.push({ line: record._line, message: 'prix_unitaire invalide (nombre positif attendu)' }); continue; }
+
+    const discount = record.discount !== undefined && record.discount !== '' ? parseCsvNumber(record.discount) : 0;
+    if (discount === null || discount < 0) { errors.push({ line: record._line, message: 'remise invalide (nombre positif attendu)' }); continue; }
+
+    const date = parseCsvDate(record.date);
+    if (date === undefined) { errors.push({ line: record._line, message: 'date invalide (formats acceptés : JJ/MM/AAAA, JJ/MM/AAAA HH:MM ou AAAA-MM-JJ)' }); continue; }
+
+    // Client optionnel : réutilisé s'il existe, créé sinon
+    let customer = null;
+    const customerName = (record.customerName || '').trim();
+    if (customerName) {
+      customer = customersByName.get(csvNameKey(customerName));
+      if (!customer) {
+        customer = new Customer({ projectId, name: customerName });
+        await customer.save();
+        customersByName.set(csvNameKey(customerName), customer);
+      }
+    }
+
+    const amount = (quantity * unitPrice) - discount;
+    const sale = new Sale({
+      projectId,
+      productId: product._id,
+      customerId: customer ? customer._id : undefined,
+      quantity,
+      unitPrice,
+      discount,
+      description: (record.description || '').trim() || 'Import CSV',
+      amount,
+      date: date || new Date(),
+      employeeId: userId,
+    });
+    await sale.save();
+
+    // Mise à jour fidélité client (même logique que POST /sales)
+    if (customer) {
+      customer.totalPurchases += amount;
+      customer.loyaltyPoints += Math.floor(amount / 10);
+      if (!customer.lastPurchaseDate || sale.date > customer.lastPurchaseDate) {
+        customer.lastPurchaseDate = sale.date;
+      }
+      if (customer.loyaltyPoints >= 1000) { customer.loyaltyLevel = 'platinum'; customer.discount = 15; }
+      else if (customer.loyaltyPoints >= 500) { customer.loyaltyLevel = 'gold'; customer.discount = 10; }
+      else if (customer.loyaltyPoints >= 200) { customer.loyaltyLevel = 'silver'; customer.discount = 5; }
+      else if (customer.loyaltyPoints >= 50) { customer.loyaltyLevel = 'bronze'; customer.discount = 2; }
+      customer.history.push({
+        date: sale.date,
+        amount,
+        description: sale.description,
+        saleId: sale._id,
+      });
+      await customer.save();
+    }
+
+    // Déduction du stock uniquement si demandé (inutile pour un historique déjà écoulé)
+    if (updateStock) {
+      const stockItem = await Stock.findOne({
+        projectId,
+        $or: [{ productId: product._id }, { name: product.name }],
+      });
+      if (stockItem) {
+        const previousQuantity = stockItem.quantity;
+        stockItem.quantity = Math.max(0, previousQuantity - quantity);
+        stockItem.updatedAt = Date.now();
+        await stockItem.save();
+        await new StockMovement({
+          projectId,
+          stockId: stockItem._id,
+          productId: product._id,
+          type: 'sale',
+          quantity: -quantity,
+          previousQuantity,
+          newQuantity: stockItem.quantity,
+          unitPrice,
+          reason: 'Vente (import CSV)',
+          saleId: sale._id,
+          userId,
+        }).save();
+      }
+    }
+
+    inserted++;
+  }
+
+  return { inserted, errors };
+};
+
+const importCustomersCsv = async (records, { projectId }) => {
+  const errors = [];
+  let inserted = 0;
+
+  const existing = await Customer.find({ projectId }).select('name').lean();
+  const customerNames = new Set(existing.map(c => csvNameKey(c.name)));
+
+  for (const record of records) {
+    const name = (record.name || '').trim();
+    if (!name) { errors.push({ line: record._line, message: 'Le nom du client est requis' }); continue; }
+    if (customerNames.has(csvNameKey(name))) { errors.push({ line: record._line, message: `Le client "${name}" existe déjà` }); continue; }
+
+    let discount = 0;
+    if (record.discount !== undefined && record.discount !== '') {
+      discount = parseCsvNumber(record.discount);
+      if (discount === null || discount < 0 || discount > 100) { errors.push({ line: record._line, message: 'remise invalide (pourcentage entre 0 et 100 attendu)' }); continue; }
+    }
+
+    await new Customer({
+      projectId,
+      name,
+      email: (record.email || '').trim() || undefined,
+      phone: (record.phone || '').trim() || undefined,
+      discount,
+      notes: (record.notes || '').trim() || undefined,
+    }).save();
+    customerNames.add(csvNameKey(name));
+    inserted++;
+  }
+
+  return { inserted, errors };
+};
+
+const CSV_EXPENSE_CATEGORIES = {
+  achat: 'purchase', achats: 'purchase', purchase: 'purchase',
+  variable: 'variable', variables: 'variable',
+  fixe: 'fixed', fixes: 'fixed', fixed: 'fixed',
+};
+
+const importExpensesCsv = async (records, { projectId }) => {
+  const errors = [];
+  let inserted = 0;
+
+  for (const record of records) {
+    const amount = parseCsvNumber(record.amount);
+    if (amount === null || amount <= 0) { errors.push({ line: record._line, message: 'montant invalide (nombre supérieur à 0 attendu)' }); continue; }
+
+    const category = CSV_EXPENSE_CATEGORIES[normalizeCsvHeader(record.category || '')];
+    if (!category) { errors.push({ line: record._line, message: `categorie invalide "${record.category || ''}" (valeurs acceptées : achat, variable, fixe)` }); continue; }
+
+    const date = parseCsvDate(record.date);
+    if (date === undefined) { errors.push({ line: record._line, message: 'date invalide (formats acceptés : JJ/MM/AAAA ou AAAA-MM-JJ)' }); continue; }
+
+    await new Expense({
+      projectId,
+      amount,
+      category,
+      description: (record.description || '').trim() || undefined,
+      date: date || new Date(),
+    }).save();
+    inserted++;
+  }
+
+  return { inserted, errors };
+};
+
+const CSV_IMPORTERS = {
+  products: importProductsCsv,
+  stock: importStockCsv,
+  sales: importSalesCsv,
+  customers: importCustomersCsv,
+  expenses: importExpensesCsv,
+};
+
+const CSV_IMPORT_MAX_ROWS = 2000;
+
+app.post('/BussnessApp/import-csv', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+  try {
+    const { projectId, type, csv, options = {} } = req.body;
+
+    if (!projectId) {
+      return res.status(400).json({ error: 'projectId est requis' });
+    }
+    const importer = CSV_IMPORTERS[type];
+    if (!importer) {
+      return res.status(400).json({ error: `Type d'import invalide. Types acceptés : ${Object.keys(CSV_IMPORTERS).join(', ')}` });
+    }
+    if (!csv || typeof csv !== 'string' || csv.trim() === '') {
+      return res.status(400).json({ error: 'Le fichier CSV est vide' });
+    }
+
+    const rows = parseCsv(csv);
+    if (rows.length < 2) {
+      return res.status(400).json({ error: "Le fichier doit contenir une ligne d'en-têtes et au moins une ligne de données" });
+    }
+    if (rows.length - 1 > CSV_IMPORT_MAX_ROWS) {
+      return res.status(400).json({ error: `Maximum ${CSV_IMPORT_MAX_ROWS} lignes par import (${rows.length - 1} reçues). Découpez votre fichier.` });
+    }
+
+    const records = mapCsvRows(rows, type);
+    const result = await importer(records, { projectId, userId: req.user.id, options });
+
+    console.log(`Import CSV ${type} (projet ${projectId}) : ${result.inserted} créé(s), ${result.updated || 0} mis à jour, ${result.errors.length} erreur(s)`);
+
+    res.json({
+      data: {
+        type,
+        total: records.length,
+        inserted: result.inserted,
+        updated: result.updated || 0,
+        errors: result.errors,
+      },
+    });
+  } catch (error) {
+    console.error('Error importing CSV:', error);
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
 // Users Routes
 app.get('/BussnessApp/users', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
@@ -4183,6 +4727,167 @@ app.get('/BussnessApp/subscription/plans', async (req, res) => {
     }));
 
     res.json(plansWithTier);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= CHECKOUT STRIPE SELF-SERVICE (Web App) =============
+// L'utilisateur connecté choisit un plan depuis la webapp et paie directement
+// via Stripe Checkout. L'activation est faite par le webhook existant
+// POST /BussnessApp/backoffice/stripe/webhook (checkout.session.completed),
+// qui matche via metadata.adminId / stripeSessionId.
+
+const WEBAPP_PUBLIC_URL = (process.env.WEBAPP_PUBLIC_URL || 'http://localhost:5174/app').replace(/\/$/, '');
+
+app.post('/BussnessApp/subscription/checkout', authenticateToken, async (req, res) => {
+  try {
+    const { planId } = req.body;
+    if (!planId) {
+      return res.status(400).json({ error: 'planId requis' });
+    }
+
+    const SubscriptionPlan = mongoose.model('SubscriptionPlan');
+    const Subscription = mongoose.model('Subscription');
+    const plan = await SubscriptionPlan.findById(planId);
+    if (!plan || !plan.isActive) {
+      return res.status(404).json({ error: 'Plan introuvable ou inactif' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur introuvable' });
+    }
+
+    const computeEndDate = (duration, durationType) => {
+      const endDate = new Date();
+      if (durationType === 'lifetime') endDate.setFullYear(endDate.getFullYear() + 100);
+      else if (durationType === 'days') endDate.setDate(endDate.getDate() + duration);
+      else if (durationType === 'months') endDate.setMonth(endDate.getMonth() + duration);
+      else if (durationType === 'years') endDate.setFullYear(endDate.getFullYear() + duration);
+      return endDate;
+    };
+
+    // Plan gratuit : activation immédiate, pas de Stripe
+    if (plan.price === 0) {
+      const existing = await Subscription.findOne({
+        adminId: user._id,
+        status: 'active',
+      }).sort({ createdAt: -1 });
+      if (existing && new Date(existing.endDate) > new Date()) {
+        return res.status(400).json({ error: 'Vous avez déjà un abonnement actif' });
+      }
+
+      const subscription = new Subscription({
+        adminId: user._id,
+        planId: plan._id,
+        planName: plan.name,
+        plan: 'custom',
+        status: 'active',
+        startDate: new Date(),
+        endDate: computeEndDate(plan.duration, plan.durationType),
+        amount: 0,
+        duration: plan.duration,
+        durationType: plan.durationType,
+        maxProjects: plan.maxProjects,
+        paymentMethod: 'donation',
+      });
+      await subscription.save();
+      user.isActive = true;
+      await user.save();
+
+      return res.json({ activated: true });
+    }
+
+    if (!stripeForExpiry) {
+      return res.status(503).json({ error: 'Paiement par carte indisponible (Stripe non configuré)' });
+    }
+
+    // Annule les anciennes tentatives en attente pour éviter que le webhook
+    // (fallback { adminId, status: 'pending_payment' }) matche un vieux document.
+    await Subscription.updateMany(
+      { adminId: user._id, status: 'pending_payment' },
+      { $set: { status: 'cancelled', updatedAt: new Date() } }
+    );
+
+    const subscription = new Subscription({
+      adminId: user._id,
+      planId: plan._id,
+      planName: plan.name,
+      plan: plan.durationType === 'lifetime' ? 'lifetime' : (plan.duration >= 12 && plan.durationType === 'months') ? 'yearly' : 'custom',
+      status: 'pending_payment',
+      startDate: null,
+      endDate: null,
+      amount: plan.price,
+      currency: plan.currency,
+      duration: plan.duration,
+      durationType: plan.durationType,
+      maxProjects: plan.maxProjects,
+      paymentMethod: 'card',
+      createdBy: user._id,
+    });
+    await subscription.save();
+
+    const isRecurring = plan.isRecurring && plan.durationType !== 'lifetime';
+    let recurringInterval = 'month';
+    if (plan.durationType === 'years') recurringInterval = 'year';
+    else if (plan.durationType === 'months' && plan.duration >= 12) recurringInterval = 'year';
+
+    const session = await stripeForExpiry.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: (plan.currency || 'EUR').toLowerCase(),
+          product_data: {
+            name: `BussnessApp - ${plan.name}`,
+            description: `${plan.name} pour ${user.fullName} (max ${plan.maxProjects} business)`,
+          },
+          unit_amount: Math.round(plan.price * 100),
+          ...(isRecurring ? { recurring: { interval: recurringInterval } } : {}),
+        },
+        quantity: 1,
+      }],
+      mode: isRecurring ? 'subscription' : 'payment',
+      success_url: `${WEBAPP_PUBLIC_URL}/abonnement/succes?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${WEBAPP_PUBLIC_URL}/abonnement?canceled=1`,
+      customer_email: user.email,
+      metadata: {
+        adminId: user._id.toString(),
+        subscriptionId: subscription._id.toString(),
+        source: 'webapp',
+      },
+    });
+
+    subscription.stripeSessionId = session.id;
+    subscription.stripePaymentLinkUrl = session.url;
+    await subscription.save();
+
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error('Erreur création checkout:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Polling après retour de Stripe : la webapp attend que le webhook active l'abonnement.
+app.get('/BussnessApp/subscription/checkout-status', authenticateToken, async (req, res) => {
+  try {
+    const { session_id } = req.query;
+    if (!session_id) {
+      return res.status(400).json({ error: 'session_id requis' });
+    }
+
+    const Subscription = mongoose.model('Subscription');
+    const subscription = await Subscription.findOne({
+      stripeSessionId: session_id,
+      adminId: req.user.id,
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ error: 'Session introuvable' });
+    }
+
+    res.json({ status: subscription.status });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
