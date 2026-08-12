@@ -4216,10 +4216,10 @@ react-native-edge-to-edge@1.6.0:
     hoist-non-react-statics "^3.3.0"
     invariant "^2.2.4"
 
-react-native-iap@^15.3.1:
-  version "15.3.1"
-  resolved "https://registry.npmjs.org/react-native-iap/-/react-native-iap-15.3.1.tgz"
-  integrity sha512-aWBYy76lIuu5q3KnriEfNZ9sx1aKfIXV5ZWcYfh0zH2wPqLEuyCR7b2mzL0ylbwVMUpCseUYrgn4rEwSF0zFYA==
+react-native-iap@^15.3.6:
+  version "15.3.6"
+  resolved "https://registry.npmjs.org/react-native-iap/-/react-native-iap-15.3.6.tgz"
+  integrity sha512-TpOF8XENd7sP00Tcw8ro/6+r0otHWBLh8ODiDnpf872XCOlgHjtDDr1tv8fJ5ERBrCFYrlwahb+c8GaIpDNYfw==
 
 react-native-is-edge-to-edge@^1.1.6, react-native-is-edge-to-edge@^1.1.7:
   version "1.2.1"
@@ -4231,7 +4231,7 @@ react-native-is-edge-to-edge@1.1.7:
   resolved "https://registry.npmjs.org/react-native-is-edge-to-edge/-/react-native-is-edge-to-edge-1.1.7.tgz"
   integrity sha512-EH6i7E8epJGIcu7KpfXYXiV2JFIYITtq+rVS8uEb+92naMRBdxhTuS8Wn2Q7j9sqyO0B+Xbaaf9VdipIAmGW4w==
 
-react-native-nitro-modules@^0.35.0, react-native-nitro-modules@0.35.9:
+react-native-nitro-modules@^0.35.0, react-native-nitro-modules@^0.35.9:
   version "0.35.9"
   resolved "https://registry.npmjs.org/react-native-nitro-modules/-/react-native-nitro-modules-0.35.9.tgz"
   integrity sha512-yCO6eJ85SPPUo4a4an7H5oj6wPCSIT72fbjr5WZ/20n6zswaJ2gNNpnWtg2We0AZwkAOjSqkOJ0Vjc05p6kGiA==

@@ -12,6 +12,10 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://businessapp.installpostiz.com/bussnessapp",
+        "EXPO_PUBLIC_APP_ENV": "production"
       }
     },
     "production": {
@@ -21,7 +25,11 @@
       "ios": {
         "autoIncrement": true
       },
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://businessapp.installpostiz.com/bussnessapp",
+        "EXPO_PUBLIC_APP_ENV": "production"
+      }
     }
   },
   "submit": {

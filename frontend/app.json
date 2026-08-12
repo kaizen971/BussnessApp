@@ -24,7 +24,7 @@
       "buildNumber": "22"
     },
     "android": {
-      "versionCode": 40,
+      "versionCode": 45,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -37,6 +37,7 @@
     },
     "plugins": [
       "./plugins/fix-fmt-xcode26",
+      "./plugins/fix-kotlin-metadata",
       "react-native-iap"
     ],
     "extra": {

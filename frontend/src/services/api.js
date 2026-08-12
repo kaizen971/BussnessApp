@@ -1,8 +1,11 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// URL du serveur AWS Lightsail (HTTPS)
-const API_BASE_URL = 'https://businessapp.installpostiz.com/bussnessapp';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://businessapp.installpostiz.com/bussnessapp';
+console.log('API_BASE_URL', API_BASE_URL);
+if (__DEV__) {
+  console.log(`[API] Env: ${process.env.EXPO_PUBLIC_APP_ENV || 'unknown'} → ${API_BASE_URL}`);
+}
 
 const api = axios.create({
   baseURL: API_BASE_URL,
