@@ -12,10 +12,11 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { AppHeader } from '../components/AppHeader';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
 import { useAuth } from '../contexts/AuthContext';
@@ -23,6 +24,8 @@ import { useCurrency } from '../contexts/CurrencyContext';
 import api from '../services/api';
 
 export const PlanningScreen = ({ navigation }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user, selectedProjectId } = useAuth();
   const { format: formatPrice, currency } = useCurrency();
   const [schedules, setSchedules] = useState([]);
@@ -566,41 +569,17 @@ export const PlanningScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={[colors.surface, colors.background]}
-        style={styles.header}
-      >
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>📅 Planning</Text>
-            <Text style={styles.subtitle}>
-              {isCashier ? 'Mon planning' : 'Gestion des horaires'}
-            </Text>
-          </View>
-          {isAdmin && (
-            <TouchableOpacity
-              style={styles.addButtonWrapper}
-              onPress={() => {
-                resetForm();
-                setModalVisible(true);
-              }}
-            >
-              <LinearGradient
-                colors={[colors.primary, colors.primaryDark]}
-                style={styles.addButton}
-              >
-                <Ionicons name="add" size={28} color="#000" />
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
-        </View>
-      </LinearGradient>
+      <AppHeader
+        title="Planning"
+        subtitle={isCashier ? 'Mon planning' : 'Gestion des horaires'}
+        onBack={() => navigation.goBack()}
+        rightIcon={isAdmin ? 'add' : undefined}
+        rightLabel="Ajouter un planning"
+        onRightPress={isAdmin ? () => {
+          resetForm();
+          setModalVisible(true);
+        } : undefined}
+      />
 
       <LinearGradient
         colors={[colors.surface + '80', colors.background]}
@@ -1187,7 +1166,7 @@ export const PlanningScreen = ({ navigation }) => {
                     {selectedSchedule.dailySalary !== null && selectedSchedule.dailySalary !== undefined ? (
                       <View style={styles.salaryComparisonRow}>
                         <Text style={styles.salaryComparisonLabel}>Salaire journalier fixé:</Text>
-                        <Text style={[styles.salaryComparisonValue, { color: colors.accent, fontWeight: 'bold' }]}>
+                        <Text style={[styles.salaryComparisonValue, { color: colors.accent, fontWeight: '700' }]}>
                           {formatPrice(selectedSchedule.dailySalary)}
                         </Text>
                       </View>
@@ -1202,7 +1181,7 @@ export const PlanningScreen = ({ navigation }) => {
                     {editDailySalary.trim() !== '' && (
                       <View style={[styles.salaryComparisonRow, { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }]}>
                         <Text style={styles.salaryComparisonLabel}>Nouveau salaire:</Text>
-                        <Text style={[styles.salaryComparisonValue, { color: colors.success, fontWeight: 'bold' }]}>
+                        <Text style={[styles.salaryComparisonValue, { color: colors.success, fontWeight: '700' }]}>
                           {formatPrice(parseFloat(editDailySalary) || 0)}
                         </Text>
                       </View>
@@ -1375,7 +1354,7 @@ export const PlanningScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -1408,7 +1387,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 2,
   },
@@ -1440,7 +1419,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginTop: 6,
   },
@@ -1479,7 +1458,7 @@ const styles = StyleSheet.create({
   },
   weekLabelText: {
     fontSize: 15,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     textAlign: 'center',
   },
@@ -1504,7 +1483,7 @@ const styles = StyleSheet.create({
   },
   dayName: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     textTransform: 'capitalize',
     marginBottom: 4,
@@ -1529,7 +1508,7 @@ const styles = StyleSheet.create({
   },
   todayBadgeText: {
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   daySchedules: {
@@ -1638,7 +1617,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -1696,7 +1675,7 @@ const styles = StyleSheet.create({
   },
   recurringToggleTitle: {
     fontSize: 15,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -1756,7 +1735,7 @@ const styles = StyleSheet.create({
   },
   dayChipText: {
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   dayChipTextSelected: {
@@ -1829,7 +1808,7 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#000',
   },
   // Styles pour le bouton de salaire
@@ -1860,7 +1839,7 @@ const styles = StyleSheet.create({
   },
   salaryButtonTitle: {
     fontSize: 17,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#fff',
   },
   salaryButtonSubtitle: {
@@ -1874,7 +1853,7 @@ const styles = StyleSheet.create({
   },
   salarySectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 12,
   },
@@ -1894,7 +1873,7 @@ const styles = StyleSheet.create({
   },
   salaryStatValue: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   salaryStatLabel: {
@@ -1931,7 +1910,7 @@ const styles = StyleSheet.create({
   },
   totalSalaryValue: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -1961,7 +1940,7 @@ const styles = StyleSheet.create({
   },
   hoursDetailValue: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   commissionsDetail: {
@@ -1986,7 +1965,7 @@ const styles = StyleSheet.create({
   },
   commissionDetailValue: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   weeklyStatCard: {
@@ -2009,7 +1988,7 @@ const styles = StyleSheet.create({
   },
   weeklyStatSalary: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.accent,
   },
   weeklyStatDetails: {
@@ -2085,7 +2064,7 @@ const styles = StyleSheet.create({
   },
   editSalaryLabel: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 6,
   },
@@ -2105,7 +2084,7 @@ const styles = StyleSheet.create({
   },
   salaryComparisonTitle: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 12,
   },

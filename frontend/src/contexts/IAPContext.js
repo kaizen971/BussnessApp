@@ -3,6 +3,7 @@ import { Platform, Alert, Modal, View, Text, ActivityIndicator, StyleSheet } fro
 import { IAP_SUBSCRIPTION_IDS, PLAN_DISPLAY_INFO } from '../config/iap';
 import { subscriptionAPI } from '../services/api';
 import { useSubscription } from './SubscriptionContext';
+import { useTheme, useThemedStyles } from './ThemeContext';
 
 let RNIap = null;
 let iapAvailable = false;
@@ -30,6 +31,8 @@ export const useIAP = () => {
 };
 
 export const IAPProvider = ({ children }) => {
+  const { colors } = useTheme();
+  const overlayStyles = useThemedStyles(createOverlayStyles);
   const [connected, setConnected] = useState(false);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -222,7 +225,7 @@ export const IAPProvider = ({ children }) => {
       <Modal visible={purchasing || validating} transparent animationType="fade" statusBarTranslucent>
         <View style={overlayStyles.backdrop}>
           <View style={overlayStyles.card}>
-            <ActivityIndicator size="large" color="#fff" />
+            <ActivityIndicator size="large" color={colors.primary} />
             <Text style={overlayStyles.text}>
               {validating ? 'Validation de votre abonnement…' : 'Achat en cours…'}
             </Text>
@@ -234,9 +237,9 @@ export const IAPProvider = ({ children }) => {
   );
 };
 
-const overlayStyles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
-  card: { backgroundColor: '#1f2937', borderRadius: 16, paddingVertical: 28, paddingHorizontal: 32, alignItems: 'center', maxWidth: 300 },
-  text: { color: '#fff', fontSize: 16, fontWeight: '700', marginTop: 16, textAlign: 'center' },
-  subtext: { color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 8, textAlign: 'center' },
+const createOverlayStyles = (colors) => ({
+  backdrop: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', alignItems: 'center' },
+  card: { backgroundColor: colors.surface, borderRadius: 16, paddingVertical: 28, paddingHorizontal: 32, alignItems: 'center', maxWidth: 300, borderWidth: 1, borderColor: colors.border },
+  text: { color: colors.text, fontSize: 16, fontWeight: '700', marginTop: 16, textAlign: 'center' },
+  subtext: { color: colors.textLight, fontSize: 13, marginTop: 8, textAlign: 'center' },
 });

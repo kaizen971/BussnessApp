@@ -5,7 +5,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscription } from '../contexts/SubscriptionContext';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
@@ -19,6 +19,8 @@ const PREMIUM_FEATURES = [
 ];
 
 export const PaywallScreen = ({ navigation, route }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { featureName } = route.params || {};
   const { plans } = useSubscription();
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -122,7 +124,7 @@ export const PaywallScreen = ({ navigation, route }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: { flex: 1, backgroundColor: colors.background },
   scrollContent: { padding: 20, paddingTop: 40 },
 

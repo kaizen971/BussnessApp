@@ -15,9 +15,12 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
 import { customersAPI } from '../services/api';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { EmptyState, FloatingActionButton, SearchField } from '../components/AppPrimitives';
 
 export const CustomersScreen = () => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const { format: formatPrice } = useCurrency();
   const [customers, setCustomers] = useState([]);
@@ -151,20 +154,7 @@ export const CustomersScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.searchContainer}>
-        <View style={styles.searchInputWrapper}>
-          <Ionicons name="search-outline" size={20} color={colors.textSecondary} />
-          <Input
-            placeholder="Rechercher un client..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            style={styles.searchInput}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
-          )}
-        </View>
+        <SearchField value={searchQuery} onChangeText={setSearchQuery} placeholder="Rechercher un client…" />
         {searchQuery.length > 0 && (
           <Text style={styles.searchResultText}>
             {filteredCustomers.length} client{filteredCustomers.length !== 1 ? 's' : ''} trouvé{filteredCustomers.length !== 1 ? 's' : ''}
@@ -178,21 +168,15 @@ export const CustomersScreen = () => {
         keyExtractor={(item) => item._id}
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="people-outline" size={64} color={colors.textLight} />
-            <Text style={styles.emptyText}>Aucun client enregistré</Text>
-          </View>
+          <EmptyState
+            icon="people-outline"
+            title={searchQuery ? 'Aucun résultat' : 'Aucun client'}
+            description={searchQuery ? 'Modifiez votre recherche.' : 'Ajoutez votre premier client pour commencer le suivi.'}
+          />
         }
       />
 
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => openCustomerModal()}
-        >
-          <Ionicons name="add" size={28} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      <FloatingActionButton icon="person-add-outline" label="Ajouter un client" onPress={() => openCustomerModal()} bottom={80} />
 
       <Modal
         visible={modalVisible}
@@ -249,7 +233,7 @@ export const CustomersScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -258,17 +242,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   searchInputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.background,
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
     paddingHorizontal: 12,
     gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   searchInput: {
     flex: 1,
@@ -284,7 +270,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     padding: 16,
-    paddingBottom: 80,
+    paddingBottom: 110,
   },
   customerItem: {
     marginBottom: 12,
@@ -293,9 +279,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   customerIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 8,
     backgroundColor: colors.primary + '20',
     alignItems: 'center',
     justifyContent: 'center',
@@ -305,8 +291,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   customerName: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -333,7 +319,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   statLabel: {
@@ -352,13 +338,13 @@ const styles = StyleSheet.create({
   },
   fabContainer: {
     position: 'absolute',
-    bottom: 24,
-    right: 24,
+    bottom: 80,
+    right: 16,
   },
   fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 54,
+    height: 54,
+    borderRadius: 12,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -375,8 +361,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     padding: 24,
     paddingBottom: 40,
   },
@@ -388,7 +374,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
 });

@@ -12,12 +12,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { simulationAPI } from '../services/api';
 
 const STORAGE_KEY = '@simulation_last_business_plan';
 
 export const SimulationScreen = () => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [formData, setFormData] = useState({
     productName: '',
     unitPrice: '',
@@ -540,7 +542,7 @@ export const SimulationScreen = () => {
                       borderRadius: 6,
                       marginTop: 4,
                     }]}>
-                      <Text style={[styles.projectionLabel, { fontWeight: 'bold' }]}>Cumul</Text>
+                      <Text style={[styles.projectionLabel, { fontWeight: '700' }]}>Cumul</Text>
                       <Text style={[styles.projectionValue, {
                         color: Number(projection.cumulativeProfit || 0) >= 0 ? colors.success : colors.error,
                         fontSize: 16,
@@ -559,7 +561,7 @@ export const SimulationScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -583,7 +585,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -622,7 +624,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 16,
     marginTop: 16,
@@ -657,7 +659,7 @@ const styles = StyleSheet.create({
   },
   resultsTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginLeft: 12,
   },
@@ -693,7 +695,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     marginLeft: 12,
   },
   infoBox: {
@@ -720,7 +722,7 @@ const styles = StyleSheet.create({
   },
   projectionMonth: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
     marginBottom: 12,
     paddingBottom: 8,

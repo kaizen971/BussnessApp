@@ -1,8 +1,11 @@
 import React, { useRef } from 'react';
 import { View, StyleSheet, TouchableOpacity, Animated } from 'react-native';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { radius, spacing } from '../utils/designSystem';
 
 export const Card = ({ children, style, onPress, elevated = true }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -42,16 +45,19 @@ export const Card = ({ children, style, onPress, elevated = true }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: radius.md,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: 'hidden',
   },
   elevated: {
-    // Shadows removed for cleaner design
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
 });

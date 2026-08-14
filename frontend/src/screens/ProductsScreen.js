@@ -13,18 +13,22 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import * as ImagePicker from 'expo-image-picker';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
+import { EmptyState, SearchField } from '../components/AppPrimitives';
+import { AppHeader } from '../components/AppHeader';
 import api, { productsAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 
 
 export const ProductsScreen = ({ navigation }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user, setSelectedProjectId } = useAuth();
   const { format: formatPrice } = useCurrency();
   const [products, setProducts] = useState([]);
@@ -295,7 +299,7 @@ export const ProductsScreen = ({ navigation }) => {
           {hasStock && (
             <View style={styles.priceRow}>
               <Text style={styles.priceLabel}>En stock:</Text>
-              <Text style={[styles.priceValue, { color: stockColor, fontWeight: 'bold' }]}>
+              <Text style={[styles.priceValue, { color: stockColor, fontWeight: '700' }]}>
                 {stockQuantity} unité(s)
               </Text>
             </View>
@@ -307,56 +311,22 @@ export const ProductsScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={[colors.surface, colors.background]}
-        style={styles.header}
-      >
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>Produits & Services</Text>
-            <Text style={styles.subtitle}>
-              {filteredProducts?.length || 0}{searchQuery ? `/${products?.length || 0}` : ''} produit(s)
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={styles.addButtonWrapper}
-            onPress={() => {
-              resetForm();
-              setModalVisible(true);
-            }}
-          >
-            <LinearGradient
-              colors={[colors.primary, colors.primaryDark]}
-              style={styles.addButton}
-            >
-              <Ionicons name="add" size={28} color="#000" />
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={18} color={colors.textSecondary} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Rechercher un produit..."
-            placeholderTextColor={colors.textSecondary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-            clearButtonMode="while-editing"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchClear}>
-              <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </LinearGradient>
+      <AppHeader
+        title="Produits & Services"
+        subtitle={`${filteredProducts?.length || 0}${searchQuery ? `/${products?.length || 0}` : ''} produit(s)`}
+        rightIcon="add"
+        rightLabel="Ajouter un produit"
+        onRightPress={() => {
+          resetForm();
+          setModalVisible(true);
+        }}
+      />
+      <SearchField
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        placeholder="Rechercher un produit..."
+        style={styles.searchContainer}
+      />
 
       <FlatList
         data={filteredProducts}
@@ -366,19 +336,15 @@ export const ProductsScreen = ({ navigation }) => {
         refreshing={loading}
         onRefresh={loadProducts}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons
-              name={searchQuery ? 'search-outline' : 'cube-outline'}
-              size={80}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.emptyText}>
-              {searchQuery ? 'Aucun résultat trouvé' : 'Aucun produit enregistré'}
-            </Text>
-            <Text style={styles.emptySubtext}>
-              {searchQuery ? `Aucun produit ne correspond à "${searchQuery}"` : 'Appuyez sur + pour ajouter un produit'}
-            </Text>
-          </View>
+          <EmptyState
+            icon={searchQuery ? 'search-outline' : 'cube-outline'}
+            title={searchQuery ? 'Aucun résultat trouvé' : 'Aucun produit enregistré'}
+            description={
+              searchQuery
+                ? `Aucun produit ne correspond à "${searchQuery}"`
+                : 'Ajoutez votre premier produit pour commencer.'
+            }
+          />
         }
       />
 
@@ -597,17 +563,18 @@ export const ProductsScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
   header: {
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    paddingTop: 54,
+    paddingBottom: 14,
+    paddingHorizontal: 16,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border + '50',
+    borderBottomColor: colors.border,
   },
   headerContent: {
     flexDirection: 'row',
@@ -624,26 +591,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.primary + '30',
   },
+  headerSide: {
+    width: 44,
+    height: 44,
+  },
   titleContainer: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   title: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 2,
   },
   subtitle: {
     fontSize: 13,
-    color: colors.textSecondary,
+    color: colors.textLight,
   },
   addButtonWrapper: {
   },
   addButton: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -651,11 +622,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderRadius: 12,
-    marginTop: 12,
+    borderRadius: 8,
+    margin: 16,
+    marginBottom: 0,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: colors.border + '80',
+    borderColor: colors.border,
     height: 44,
   },
   searchIcon: {
@@ -670,7 +642,8 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   list: {
-    padding: 20,
+    padding: 16,
+    paddingBottom: 100,
   },
   productCard: {
     marginBottom: 15,
@@ -701,7 +674,7 @@ const styles = StyleSheet.create({
   },
   productName: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 5,
   },
@@ -740,7 +713,7 @@ const styles = StyleSheet.create({
   },
   stockBadgeText: {
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   warningBadge: {
     flexDirection: 'row',
@@ -840,7 +813,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -883,7 +856,7 @@ const styles = StyleSheet.create({
   },
   marginValue: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   modalActions: {
@@ -920,7 +893,7 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#000',
   },
   categoryContainer: {
@@ -985,7 +958,7 @@ const styles = StyleSheet.create({
   },
   smallModalTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 16,
     textAlign: 'center',
@@ -1017,7 +990,7 @@ const styles = StyleSheet.create({
   },
   smallButtonTextSave: {
     color: '#000',
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   imagePickerContainer: {
     marginBottom: 16,

@@ -10,14 +10,18 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { colors } from '../utils/colors';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { AppHeader } from '../components/AppHeader';
+import { EmptyState } from '../components/AppPrimitives';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
 export const CategoriesScreen = ({ navigation }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -138,40 +142,18 @@ export const CategoriesScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={[colors.surface, colors.background]}
-        style={styles.header}
-      >
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>Catégories</Text>
-            <Text style={styles.subtitle}>{categories.length} catégorie(s)</Text>
-          </View>
-          {isAdmin && (
-            <TouchableOpacity
-              style={styles.addButtonWrapper}
-              onPress={() => {
-                setCategoryName('');
-                setEditingCategory(null);
-                setModalVisible(true);
-              }}
-            >
-              <LinearGradient
-                colors={[colors.primary, colors.primaryDark]}
-                style={styles.addButton}
-              >
-                <Ionicons name="add" size={28} color="#000" />
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
-        </View>
-      </LinearGradient>
+      <AppHeader
+        title="Catégories"
+        subtitle={`${categories.length} catégorie(s)`}
+        onBack={() => navigation.goBack()}
+        rightIcon={isAdmin ? 'add' : undefined}
+        rightLabel="Ajouter une catégorie"
+        onRightPress={isAdmin ? () => {
+          setCategoryName('');
+          setEditingCategory(null);
+          setModalVisible(true);
+        } : undefined}
+      />
 
       <FlatList
         data={categories}
@@ -181,11 +163,11 @@ export const CategoriesScreen = ({ navigation }) => {
         refreshing={loading}
         onRefresh={loadCategories}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="grid-outline" size={80} color={colors.textSecondary} />
-            <Text style={styles.emptyText}>Aucune catégorie</Text>
-            <Text style={styles.emptySubtext}>Appuyez sur + pour créer une catégorie</Text>
-          </View>
+          <EmptyState
+            icon="grid-outline"
+            title="Aucune catégorie"
+            description="Créez une catégorie pour organiser votre catalogue."
+          />
         }
       />
 
@@ -298,7 +280,7 @@ export const CategoriesScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -331,7 +313,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 2,
   },
@@ -372,7 +354,7 @@ const styles = StyleSheet.create({
   },
   categoryName: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -443,7 +425,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -527,7 +509,7 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#000',
   },
 });

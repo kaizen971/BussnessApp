@@ -17,18 +17,23 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
+import { EmptyState, FloatingActionButton, SearchField, SegmentedControl } from '../components/AppPrimitives';
+import { MonthNavigator } from '../components/MonthNavigator';
 import { salesAPI, productsAPI, customersAPI, usersAPI } from '../services/api';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { getMonthBounds, MONTH_HISTORY_LIMIT, shiftMonth, startOfMonth } from '../utils/monthPeriod';
 
 const { width } = Dimensions.get('window');
 
 export const SalesScreen = () => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const { format: formatPrice } = useCurrency();
   const [sales, setSales] = useState([]);
@@ -56,7 +61,8 @@ export const SalesScreen = () => {
   const [salesPage, setSalesPage] = useState(1);
   const [salesHasMore, setSalesHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [salesTotalAmount, setSalesTotalAmount] = useState(0);
+  const [periodMode, setPeriodMode] = useState('month');
+  const [selectedMonth, setSelectedMonth] = useState(startOfMonth());
 
   // Nouveaux états pour la recherche et l'affichage
   const [customerSearch, setCustomerSearch] = useState('');
@@ -65,35 +71,30 @@ export const SalesScreen = () => {
   const [productViewMode, setProductViewMode] = useState('list');
 
   useEffect(() => {
-    // Log pour déboguer le projectId
-    console.log('SalesScreen - User data:', {
-      userId: user?._id,
-      username: user?.username,
-      projectId: user?.projectId,
-      hasProjectId: !!user?.projectId,
-      userObject: user
-    });
     loadData();
-    // Configuration audio pour iOS
+  }, [periodMode, selectedMonth, user?.projectId]);
 
-  }, []);
+  const getPeriodFilters = () => (
+    periodMode === 'month' ? getMonthBounds(selectedMonth) : {}
+  );
 
   const loadData = async () => {
     try {
       const [salesRes, productsRes, customersRes, usersRes] = await Promise.all([
-        salesAPI.getAll(user?.projectId, 1, 50),
+        salesAPI.getAll(user?.projectId, getPeriodFilters()),
         productsAPI.getAll(user?.projectId),
         customersAPI.getAll(user?.projectId),
         usersAPI.getAll(user?.projectId),
       ]);
-      const salesData = salesRes.data?.data || [];
+      const receivedSales = salesRes.data?.data || [];
+      const bounds = getMonthBounds(selectedMonth);
+      const salesData = periodMode === 'month'
+        ? receivedSales.filter((sale) => sale.date >= bounds.startDate && sale.date < bounds.endDate)
+        : receivedSales;
       const pagination = salesRes.data?.pagination;
       setSales(salesData);
       setSalesPage(1);
       setSalesHasMore(pagination?.hasMore ?? false);
-      setSalesTotalAmount(
-        salesData.reduce((sum, s) => sum + (s.amount || 0), 0)
-      );
       setProducts(productsRes?.data?.data || []);
       setCustomers(customersRes?.data?.data || []);
       setSellers(usersRes?.data || []);
@@ -110,7 +111,7 @@ export const SalesScreen = () => {
     setLoadingMore(true);
     try {
       const nextPage = salesPage + 1;
-      const res = await salesAPI.getAll(user?.projectId, nextPage, 50);
+      const res = await salesAPI.getAll(user?.projectId, getPeriodFilters());
       const newSales = res.data?.data || [];
       const pagination = res.data?.pagination;
       setSales(prev => [...prev, ...newSales]);
@@ -121,7 +122,7 @@ export const SalesScreen = () => {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, salesHasMore, salesPage, user?.projectId]);
+  }, [loadingMore, salesHasMore, salesPage, user?.projectId, periodMode, selectedMonth]);
 
   // Fonction pour jouer un son
   const playSound = async (soundType) => {
@@ -683,10 +684,7 @@ export const SalesScreen = () => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={[colors.surface, colors.background]}
-        style={styles.header}
-      >
+      <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.titleSection}>
             <Text style={styles.headerTitle}>
@@ -700,22 +698,41 @@ export const SalesScreen = () => {
           </View>
         </View>
 
+        {isAdmin && (
+          <View style={styles.periodControls}>
+            <SegmentedControl
+              value={periodMode}
+              onChange={setPeriodMode}
+              options={[
+                { value: 'month', label: 'Ce mois', icon: 'calendar-outline' },
+                { value: 'all', label: 'Depuis le début', icon: 'infinite-outline' },
+              ]}
+            />
+            {periodMode === 'month' && (
+              <MonthNavigator
+                value={selectedMonth}
+                onChange={setSelectedMonth}
+                minimumDate={shiftMonth(new Date(), -MONTH_HISTORY_LIMIT)}
+              />
+            )}
+          </View>
+        )}
+
         {/* Afficher le total uniquement pour les admins */}
         {isAdmin && (
-          <LinearGradient
-            colors={[colors.primary + '25', colors.primary + '10']}
-            style={styles.totalCard}
-          >
+          <View style={styles.totalCard}>
             <View style={styles.totalCardContent}>
               <Ionicons name="wallet" size={32} color={colors.primary} />
               <View style={styles.totalTextContainer}>
-                <Text style={styles.totalLabel}>Total des ventes</Text>
+                <Text style={styles.totalLabel}>
+                  {periodMode === 'month' ? 'Ventes du mois' : 'Ventes depuis le début'}
+                </Text>
                 <Text style={styles.totalAmount}>{formatPrice(totalSales)}</Text>
               </View>
             </View>
-          </LinearGradient>
+          </View>
         )}
-      </LinearGradient>
+      </View>
 
       {/* Interface pour les admins : liste des ventes */}
       {isAdmin ? (
@@ -733,10 +750,11 @@ export const SalesScreen = () => {
             </View>
           ) : null}
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="cart-outline" size={64} color={colors.textLight} />
-              <Text style={styles.emptyText}>Aucune vente enregistrée</Text>
-            </View>
+            <EmptyState
+              icon="cart-outline"
+              title="Aucune vente enregistrée"
+              description="Créez une vente pour démarrer le suivi de votre activité."
+            />
           }
         />
       ) : (
@@ -790,20 +808,11 @@ export const SalesScreen = () => {
       )}
 
 
-      {/* Bouton FAB (toujours accessible) */}
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fabWrapper}
-          onPress={() => setModalVisible(true)}
-        >
-          <LinearGradient
-            colors={[colors.primary, colors.primaryDark]}
-            style={styles.fab}
-          >
-            <Ionicons name="add" size={32} color="#000" />
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+      <FloatingActionButton
+        label="Créer une vente"
+        onPress={() => setModalVisible(true)}
+        bottom={80}
+      />
 
       <Modal
         visible={modalVisible}
@@ -896,21 +905,12 @@ export const SalesScreen = () => {
               ) : (
                 /* Champ de recherche et liste d'autocomplete */
                 <View style={styles.autocompleteContainer}>
-                  <View style={styles.searchContainer}>
-                    <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
-                    <TextInput
-                      style={styles.searchInput}
-                      placeholder="Rechercher un client (nom, téléphone)..."
-                      placeholderTextColor={colors.textLight}
-                      value={customerSearch}
-                      onChangeText={setCustomerSearch}
-                    />
-                    {customerSearch.length > 0 && (
-                      <TouchableOpacity onPress={() => setCustomerSearch('')}>
-                        <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
-                      </TouchableOpacity>
-                    )}
-                  </View>
+                  <SearchField
+                    value={customerSearch}
+                    onChangeText={setCustomerSearch}
+                    placeholder="Rechercher un client..."
+                    style={styles.searchContainer}
+                  />
 
                   {/* Liste des résultats d'autocomplete */}
                   {customerSearch.length > 0 && (
@@ -980,21 +980,12 @@ export const SalesScreen = () => {
                   ) : (
                     /* Champ de recherche vendeur */
                     <View style={styles.autocompleteContainer}>
-                      <View style={styles.searchContainer}>
-                        <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
-                        <TextInput
-                          style={styles.searchInput}
-                          placeholder="Rechercher un vendeur..."
-                          placeholderTextColor={colors.textLight}
-                          value={sellerSearch}
-                          onChangeText={setSellerSearch}
-                        />
-                        {sellerSearch.length > 0 && (
-                          <TouchableOpacity onPress={() => setSellerSearch('')}>
-                            <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
-                          </TouchableOpacity>
-                        )}
-                      </View>
+                      <SearchField
+                        value={sellerSearch}
+                        onChangeText={setSellerSearch}
+                        placeholder="Rechercher un vendeur..."
+                        style={styles.searchContainer}
+                      />
 
                       {/* Liste des vendeurs */}
                       {sellerSearch.length > 0 && (
@@ -1059,21 +1050,12 @@ export const SalesScreen = () => {
               </View>
 
               {/* Champ de recherche pour les produits */}
-              <View style={styles.searchContainer}>
-                <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Rechercher un produit..."
-                  placeholderTextColor={colors.textLight}
-                  value={productSearch}
-                  onChangeText={setProductSearch}
-                />
-                {productSearch.length > 0 && (
-                  <TouchableOpacity onPress={() => setProductSearch('')}>
-                    <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                )}
-              </View>
+              <SearchField
+                value={productSearch}
+                onChangeText={setProductSearch}
+                placeholder="Rechercher un produit..."
+                style={styles.searchContainer}
+              />
 
               {productSearch && (
                 <Text style={styles.searchResultText}>
@@ -1431,63 +1413,64 @@ export const SalesScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
   header: {
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    paddingTop: 54,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border + '50',
+    borderBottomColor: colors.border,
   },
   headerContent: {
     marginBottom: 16,
   },
+  periodControls: {
+    gap: 8,
+    marginBottom: 12,
+  },
   titleSection: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
+    fontSize: 13,
+    color: colors.textLight,
   },
   totalCard: {
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 8,
+    padding: 14,
     borderWidth: 1,
-    borderColor: colors.primary + '30',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
   },
   totalCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
   },
   totalTextContainer: {
     flex: 1,
   },
   totalLabel: {
-    fontSize: 13,
-    color: colors.textSecondary,
+    fontSize: 12,
+    color: colors.textLight,
     marginBottom: 6,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   totalAmount: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontSize: 24,
+    fontWeight: '700',
     color: colors.primary,
   },
   centerContainer: {
@@ -1521,7 +1504,7 @@ const styles = StyleSheet.create({
   },
   welcomeTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 12,
     textAlign: 'center',
@@ -1554,7 +1537,7 @@ const styles = StyleSheet.create({
   },
   mainSaleButtonText: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#000',
   },
   quickStatsContainer: {
@@ -1576,7 +1559,7 @@ const styles = StyleSheet.create({
   },
   quickStatValue: {
     fontSize: 36,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
     marginTop: 12,
     marginBottom: 8,
@@ -1590,7 +1573,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     padding: 16,
-    paddingBottom: 80,
+    paddingBottom: 110,
   },
   saleItem: {
     marginBottom: 12,
@@ -1625,7 +1608,7 @@ const styles = StyleSheet.create({
   },
   saleAmount: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
     marginBottom: 4,
   },
@@ -1728,7 +1711,7 @@ const styles = StyleSheet.create({
   // Modal édition vente
   editModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   editModalBackdrop: {
@@ -1738,8 +1721,8 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
   },
   editModalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     paddingBottom: 30,
   },
   editModalHeader: {
@@ -1752,7 +1735,7 @@ const styles = StyleSheet.create({
   },
   editModalTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     flex: 1,
     marginLeft: 10,
@@ -1871,7 +1854,7 @@ const styles = StyleSheet.create({
   },
   editSaveBtnText: {
     fontSize: 15,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#fff',
   },
   emptyContainer: {
@@ -1886,8 +1869,8 @@ const styles = StyleSheet.create({
   },
   fabContainer: {
     position: 'absolute',
-    bottom: 24,
-    right: 24,
+    bottom: 80,
+    right: 16,
   },
   fabWrapper: {
     shadowColor: '#000',
@@ -1897,9 +1880,9 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   fab: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 54,
+    height: 54,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1949,7 +1932,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -2091,7 +2074,7 @@ const styles = StyleSheet.create({
   },
   productListPrice: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   productListBadge: {
@@ -2137,7 +2120,7 @@ const styles = StyleSheet.create({
   },
   amountPreviewValue: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   validateButtonWrapper: {
@@ -2181,7 +2164,7 @@ const styles = StyleSheet.create({
   },
   validateOverlayTotal: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   validateOverlayButtonWrapper: {
@@ -2211,7 +2194,7 @@ const styles = StyleSheet.create({
   },
   validateButtonText: {
     fontSize: 17,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#000',
   },
   clearButton: {
@@ -2270,7 +2253,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -2339,7 +2322,7 @@ const styles = StyleSheet.create({
   },
   productPrice: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   productBadge: {
@@ -2362,7 +2345,7 @@ const styles = StyleSheet.create({
   productBadgeText: {
     color: '#000',
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   cartItem: {
     backgroundColor: colors.background,
@@ -2414,7 +2397,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     textAlign: 'center',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     paddingHorizontal: 8,
     marginHorizontal: 8,
@@ -2458,7 +2441,7 @@ const styles = StyleSheet.create({
   },
   selectedClientName: {
     fontSize: 15,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 2,
   },
@@ -2553,7 +2536,7 @@ const styles = StyleSheet.create({
   },
   cartTotalValue: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   loadingContainer: {

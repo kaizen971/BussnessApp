@@ -1505,8 +1505,13 @@ app.delete('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'm
 // Sales Routes
 app.get('/BussnessApp/sales', authenticateToken, async (req, res) => {
   try {
-    const { projectId } = req.query;
+    const { projectId, startDate, endDate } = req.query;
     const filter = projectId ? { projectId } : {};
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) filter.date.$lt = new Date(endDate);
+    }
     const sales = await Sale.find(filter)
       .populate('productId', 'name unitPrice image')
       .populate('customerId', 'name phone email')
@@ -1853,8 +1858,13 @@ app.post('/BussnessApp/sales/:id/refund', authenticateToken, checkRole('admin', 
 // Expenses Routes
 app.get('/BussnessApp/expenses', authenticateToken, async (req, res) => {
   try {
-    const { projectId } = req.query;
+    const { projectId, startDate, endDate } = req.query;
     const filter = projectId ? { projectId } : {};
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) filter.date.$lt = new Date(endDate);
+    }
     const expenses = await Expense.find(filter).sort({ date: -1 });
     res.json(expenses);
   } catch (error) {
@@ -3644,14 +3654,16 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, asyn
     }
 
     const { projectId } = req.params;
-    const { month, year } = req.query;
+    const { month, year, scope } = req.query;
 
     // Période : mois demandé ou mois en cours
     const now = new Date();
     const m = month ? parseInt(month) : now.getMonth() + 1;
     const y = year ? parseInt(year) : now.getFullYear();
+    const isAllTime = scope === 'all';
     const periodStart = new Date(y, m - 1, 1);
-    const periodEnd = new Date(y, m, 0, 23, 59, 59);
+    const periodEnd = new Date(y, m, 1);
+    const dateFilter = isAllTime ? {} : { date: { $gte: periodStart, $lt: periodEnd } };
 
     // Tous les utilisateurs actifs du projet
     const employees = await User.find({
@@ -3667,12 +3679,12 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, asyn
         userId: { $in: employeeIds },
         projectId,
         status: 'completed',
-        date: { $gte: periodStart, $lte: periodEnd }
+        ...dateFilter
       }).lean(),
       Commission.find({
         userId: { $in: employeeIds },
         projectId,
-        date: { $gte: periodStart, $lte: periodEnd }
+        ...dateFilter
       }).lean()
     ]);
 
@@ -3734,7 +3746,9 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, asyn
       period: {
         month: m,
         year: y,
-        label: periodStart.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+        label: isAllTime
+          ? 'Depuis le début'
+          : periodStart.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
       },
       employees: results,
       totals
@@ -3847,15 +3861,12 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
   try {
     const { projectId } = req.params;
 
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
     const [sales, expenses, stock, schedules, commissions, employees] = await Promise.all([
-      Sale.find({ projectId, date: { $gte: sixMonthsAgo } }).populate('productId', 'name').lean(),
-      Expense.find({ projectId, date: { $gte: sixMonthsAgo } }).lean(),
+      Sale.find({ projectId }).populate('productId', 'name').lean(),
+      Expense.find({ projectId }).lean(),
       Stock.find({ projectId }).lean(),
-      Schedule.find({ projectId, status: 'completed', date: { $gte: sixMonthsAgo } }).lean(),
-      Commission.find({ projectId, date: { $gte: sixMonthsAgo } }).lean(),
+      Schedule.find({ projectId, status: 'completed' }).lean(),
+      Commission.find({ projectId }).lean(),
       User.find({
         $or: [{ projectId }, { projectIds: projectId }],
         isActive: true
@@ -3883,11 +3894,11 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
 
     const netProfit = totalSales - totalExpenses - totalSalaries - totalCommissions;
 
-    // Calculer les données mensuelles pour les 6 derniers mois
+    // Calculer les données mensuelles pour les 12 derniers mois
     const now = new Date();
     const monthlyData = [];
 
-    for (let i = 5; i >= 0; i--) {
+    for (let i = 11; i >= 0; i--) {
       const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const nextMonthDate = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
 
@@ -3925,11 +3936,13 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
       const monthlyCommissionsTotal = monthCommissions.reduce((sum, c) => sum + c.amount, 0);
 
       monthlyData.push({
+        key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
         month: monthDate.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' }),
         sales: monthlySalesTotal,
         expenses: monthlyExpensesTotal,
         salaries: monthlySalariesTotal,
         commissions: monthlyCommissionsTotal,
+        charges: monthlyExpensesTotal + monthlySalariesTotal + monthlyCommissionsTotal,
         profit: monthlySalesTotal - monthlyExpensesTotal - monthlySalariesTotal - monthlyCommissionsTotal
       });
     }

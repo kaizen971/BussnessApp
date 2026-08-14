@@ -20,7 +20,7 @@ import { subscriptionAPI } from '../services/api';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
-import { colors, gradients } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
@@ -73,6 +73,8 @@ function getDurationLabel(plan) {
 }
 
 export const RegisterScreen = ({ navigation }) => {
+  const { colors, gradients } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     username: '',
@@ -303,7 +305,7 @@ export const RegisterScreen = ({ navigation }) => {
         )}
 
         <LinearGradient
-          colors={isSelected ? gradient : ['#2D2D2D', '#1A1A1A']}
+          colors={isSelected ? gradient : [colors.surfaceLight, colors.surface]}
           style={styles.planCardGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
@@ -460,7 +462,7 @@ export const RegisterScreen = ({ navigation }) => {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <LinearGradient colors={gradients.primary} style={styles.gradient}>
+      <View style={styles.background}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
@@ -471,8 +473,8 @@ export const RegisterScreen = ({ navigation }) => {
               <View style={styles.iconContainer}>
                 <Ionicons
                   name={step === 1 ? 'person-add-outline' : 'pricetags-outline'}
-                  size={50}
-                  color="#fff"
+                  size={24}
+                  color={colors.primary}
                 />
               </View>
               <Text style={styles.title}>{stepTitles[step].title}</Text>
@@ -487,7 +489,7 @@ export const RegisterScreen = ({ navigation }) => {
             {step === 3 && renderStep3()}
           </Animated.View>
         </ScrollView>
-      </LinearGradient>
+      </View>
       <Modal visible={cguModalVisible} animationType="slide" transparent>
         <View style={styles.cguModalOverlay}>
           <View style={styles.cguModalContent}>
@@ -558,42 +560,43 @@ export const RegisterScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
   },
-  gradient: {
+  background: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 24,
+    paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 40,
   },
   header: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 24,
   },
   iconContainer: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: colors.primary + '18',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontWeight: '700',
+    color: colors.text,
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 14,
+    color: colors.textLight,
     marginBottom: 16,
   },
 
@@ -601,7 +604,7 @@ const styles = StyleSheet.create({
   stepIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     marginTop: 8,
   },
   stepRow: {
@@ -612,33 +615,33 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: colors.surfaceLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepDotActive: {
-    backgroundColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: colors.primary + '55',
   },
   stepDotCurrent: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.primary,
     transform: [{ scale: 1.1 }],
   },
   stepDotText: {
     fontSize: 12,
     fontWeight: '700',
-    color: 'rgba(255,255,255,0.6)',
+    color: colors.textLight,
   },
   stepDotTextActive: {
-    color: colors.primary,
+    color: colors.onPrimary,
   },
   stepLine: {
     width: 40,
     height: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: colors.border,
     marginHorizontal: 4,
   },
   stepLineActive: {
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: colors.primary,
   },
 
   // Cards
@@ -930,13 +933,13 @@ const styles = StyleSheet.create({
   // CGU Modal
   cguModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   cguModalContent: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     flex: 1,
     maxHeight: '88%',
     borderTopWidth: 2,

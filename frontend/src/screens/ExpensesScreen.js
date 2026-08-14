@@ -17,10 +17,15 @@ import { useCurrency } from '../contexts/CurrencyContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
+import { EmptyState, FloatingActionButton, SegmentedControl } from '../components/AppPrimitives';
+import { MonthNavigator } from '../components/MonthNavigator';
 import { expensesAPI, teamPayrollAPI } from '../services/api';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { getMonthBounds, MONTH_HISTORY_LIMIT, shiftMonth, startOfMonth } from '../utils/monthPeriod';
 
 export const ExpensesScreen = () => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const { format: formatPrice } = useCurrency();
   const [expenses, setExpenses] = useState([]);
@@ -30,6 +35,8 @@ export const ExpensesScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [recurringModalVisible, setRecurringModalVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'recurring' ou 'payroll'
+  const [periodMode, setPeriodMode] = useState('month');
+  const [selectedMonth, setSelectedMonth] = useState(startOfMonth());
   const [editingExpense, setEditingExpense] = useState(null);
   const [formData, setFormData] = useState({
     amount: '',
@@ -42,15 +49,23 @@ export const ExpensesScreen = () => {
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   useEffect(() => {
-    loadExpenses();
     loadRecurringExpenses();
-    if (isAdmin) loadPayroll();
   }, []);
+
+  useEffect(() => {
+    loadExpenses();
+    if (isAdmin) loadPayroll();
+  }, [periodMode, selectedMonth, user?.projectId]);
 
   const loadExpenses = async () => {
     try {
-      const response = await expensesAPI.getAll(user?.projectId);
-      setExpenses(response.data);
+      const filters = periodMode === 'month' ? getMonthBounds(selectedMonth) : {};
+      const response = await expensesAPI.getAll(user?.projectId, filters);
+      const receivedExpenses = response.data || [];
+      setExpenses(periodMode === 'month'
+        ? receivedExpenses.filter((expense) => expense.date >= filters.startDate && expense.date < filters.endDate)
+        : receivedExpenses
+      );
     } catch (error) {
       console.error('Error loading expenses:', error);
       Alert.alert('Erreur', 'Impossible de charger les dépenses');
@@ -70,11 +85,11 @@ export const ExpensesScreen = () => {
 
   const loadPayroll = async () => {
     try {
-      const now = new Date();
       const response = await teamPayrollAPI.getPayroll(
         user?.projectId,
-        now.getMonth() + 1,
-        now.getFullYear()
+        selectedMonth.getMonth() + 1,
+        selectedMonth.getFullYear(),
+        periodMode === 'all' ? 'all' : undefined
       );
       setPayrollData(response.data);
     } catch (error) {
@@ -350,8 +365,27 @@ export const ExpensesScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <View style={styles.periodControls}>
+          <SegmentedControl
+            value={periodMode}
+            onChange={setPeriodMode}
+            options={[
+              { value: 'month', label: 'Ce mois', icon: 'calendar-outline' },
+              { value: 'all', label: 'Depuis le début', icon: 'infinite-outline' },
+            ]}
+          />
+          {periodMode === 'month' && (
+            <MonthNavigator
+              value={selectedMonth}
+              onChange={setSelectedMonth}
+              minimumDate={shiftMonth(new Date(), -MONTH_HISTORY_LIMIT)}
+            />
+          )}
+        </View>
         <Card style={styles.totalCard}>
-          <Text style={styles.totalLabel}>Total des charges</Text>
+          <Text style={styles.totalLabel}>
+            {periodMode === 'month' ? 'Charges du mois' : 'Charges depuis le début'}
+          </Text>
           <Text style={styles.totalAmount}>{formatPrice(totalCharges)}</Text>
           <View style={styles.totalBreakdown}>
             <Text style={styles.totalBreakdownItem}>
@@ -366,47 +400,16 @@ export const ExpensesScreen = () => {
         </Card>
       </View>
 
-      {/* Onglets */}
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'all' && styles.activeTab]}
-          onPress={() => setActiveTab('all')}
-        >
-          <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>
-            Dépenses
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'recurring' && styles.activeTab]}
-          onPress={() => setActiveTab('recurring')}
-        >
-          <Ionicons
-            name="repeat"
-            size={16}
-            color={activeTab === 'recurring' ? colors.primary : colors.textSecondary}
-            style={{ marginRight: 4 }}
-          />
-          <Text style={[styles.tabText, activeTab === 'recurring' && styles.activeTabText]}>
-            Récurrentes
-          </Text>
-        </TouchableOpacity>
-        {isAdmin && (
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'payroll' && styles.activeTab]}
-            onPress={() => setActiveTab('payroll')}
-          >
-            <Ionicons
-              name="people"
-              size={16}
-              color={activeTab === 'payroll' ? colors.warning : colors.textSecondary}
-              style={{ marginRight: 4 }}
-            />
-            <Text style={[styles.tabText, activeTab === 'payroll' && styles.activeTabText]}>
-              Salaires
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      <SegmentedControl
+        value={activeTab}
+        onChange={setActiveTab}
+        style={styles.tabsContainer}
+        options={[
+          { value: 'all', label: 'Dépenses', icon: 'receipt-outline' },
+          { value: 'recurring', label: 'Récurrentes', icon: 'repeat-outline' },
+          ...(isAdmin ? [{ value: 'payroll', label: 'Salaires', icon: 'people-outline' }] : []),
+        ]}
+      />
 
       {activeTab === 'all' ? (
         <FlatList
@@ -415,10 +418,11 @@ export const ExpensesScreen = () => {
           keyExtractor={(item) => item._id}
           contentContainerStyle={styles.listContainer}
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="wallet-outline" size={64} color={colors.textLight} />
-              <Text style={styles.emptyText}>Aucune dépense enregistrée</Text>
-            </View>
+            <EmptyState
+              icon="wallet-outline"
+              title="Aucune dépense enregistrée"
+              description="Ajoutez une dépense pour suivre précisément vos charges."
+            />
           }
         />
       ) : activeTab === 'recurring' ? (
@@ -437,11 +441,11 @@ export const ExpensesScreen = () => {
             ) : null
           }
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="repeat" size={64} color={colors.textLight} />
-              <Text style={styles.emptyText}>Aucune dépense récurrente</Text>
-              <Text style={styles.emptySubtext}>Les dépenses récurrentes sont générées automatiquement chaque mois</Text>
-            </View>
+            <EmptyState
+              icon="repeat-outline"
+              title="Aucune dépense récurrente"
+              description="Les dépenses récurrentes seront générées automatiquement chaque mois."
+            />
           }
         />
       ) : (
@@ -474,23 +478,19 @@ export const ExpensesScreen = () => {
             ) : null
           }
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="people-outline" size={64} color={colors.textLight} />
-              <Text style={styles.emptyText}>Aucun salaire ce mois</Text>
-              <Text style={styles.emptySubtext}>Les salaires sont calculés à partir du planning complété</Text>
-            </View>
+            <EmptyState
+              icon="people-outline"
+              title="Aucun salaire ce mois"
+              description="Les salaires sont calculés à partir du planning complété."
+            />
           }
         />
       )}
 
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => setModalVisible(true)}
-        >
-          <Ionicons name="add" size={28} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      <FloatingActionButton
+        label="Ajouter une dépense"
+        onPress={() => setModalVisible(true)}
+      />
 
       <Modal
         visible={modalVisible}
@@ -596,13 +596,17 @@ export const ExpensesScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
   header: {
     padding: 16,
+  },
+  periodControls: {
+    gap: 8,
+    marginBottom: 12,
   },
   totalCard: {
     alignItems: 'center',
@@ -615,7 +619,7 @@ const styles = StyleSheet.create({
   },
   totalAmount: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.error,
     marginBottom: 4,
   },
@@ -653,7 +657,7 @@ const styles = StyleSheet.create({
   },
   expenseAmount: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.error,
   },
   categoryBadge: {
@@ -709,8 +713,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     padding: 24,
     paddingBottom: 40,
   },
@@ -722,7 +726,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   pickerContainer: {

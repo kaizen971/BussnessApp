@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useIAP } from '../contexts/IAPContext';
 import { TERMS_OF_USE_URL, PRIVACY_POLICY_URL } from '../config/iap';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 
 const PREMIUM_FEATURES = [
   { icon: 'analytics-outline', label: 'Simulation Business Plan', desc: 'Simulez et planifiez votre activité' },
@@ -34,6 +34,8 @@ function getSubscriptionPeriod(product) {
 }
 
 export const PaywallScreen = ({ navigation, route }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { featureName } = route.params || {};
   const { products, purchasing, handlePurchase, handleRestorePurchases } = useIAP();
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -176,7 +178,7 @@ export const PaywallScreen = ({ navigation, route }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: { flex: 1, backgroundColor: colors.background },
   scrollContent: { padding: 20, paddingTop: 40 },
 

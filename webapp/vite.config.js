@@ -16,11 +16,11 @@ export default defineConfig({
   },
   server: {
     port: 5174,
+    allowedHosts: ['.ngrok-free.app', '.ngrok-free.dev', '.ngrok.io', '.ngrok.app'],
     proxy: {
       '/BussnessApp': {
-        target: 'https://businessapp.installpostiz.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/BussnessApp/, '/bussnessapp')
+        target: 'http://localhost:3003',
+        changeOrigin: true
       }
     }
   }

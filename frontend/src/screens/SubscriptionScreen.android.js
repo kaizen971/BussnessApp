@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { useAuth } from '../contexts/AuthContext';
-import { colors, gradients } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
@@ -25,6 +25,8 @@ function getDurationLabel(plan) {
 }
 
 export const SubscriptionScreen = ({ navigation }) => {
+  const { colors, gradients } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { subscription, plans, loading, isPremium, refreshSubscription } = useSubscription();
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
@@ -211,7 +213,7 @@ export const SubscriptionScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 20 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },

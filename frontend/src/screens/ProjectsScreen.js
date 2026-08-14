@@ -11,7 +11,7 @@ import {
   TextInput,
   Image,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
@@ -20,10 +20,13 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { projectsAPI } from '../services/api';
-import { colors, gradients } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { AppHeader } from '../components/AppHeader';
 import { CURRENCIES } from '../utils/currency';
 
 export const ProjectsScreen = ({ navigation }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user, isAdmin, isManager, selectedProjectId, selectProject, loadAvailableProjects, availableProjects } = useAuth();
   const { setProjectCurrency } = useCurrency();
   const [projects, setProjects] = useState([]);
@@ -71,7 +74,7 @@ export const ProjectsScreen = ({ navigation }) => {
       setProjectCurrency(selectedProject.currency || 'XOF');
     }
     
-    navigation.navigate('Dashboard');
+    navigation.navigate('Main', { screen: 'Dashboard' });
   };
 
   const openAddModal = () => {
@@ -264,17 +267,14 @@ export const ProjectsScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={gradients.gold} style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={colors.background} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Mes Projets</Text>
-        {(isAdmin) && (
-          <TouchableOpacity onPress={openAddModal} style={styles.addButton}>
-            <Ionicons name="add" size={24} color={colors.background} />
-          </TouchableOpacity>
-        )}
-      </LinearGradient>
+      <AppHeader
+        title="Mes business"
+        subtitle={`${projects.length} business`}
+        onBack={() => navigation.goBack()}
+        rightIcon={isAdmin ? 'add' : undefined}
+        rightLabel="Ajouter un business"
+        onRightPress={isAdmin ? openAddModal : undefined}
+      />
 
       <ScrollView
         style={styles.scrollView}
@@ -478,7 +478,7 @@ export const ProjectsScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -501,7 +501,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.background,
     flex: 1,
     textAlign: 'center',
@@ -562,7 +562,7 @@ const styles = StyleSheet.create({
   },
   projectName: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -644,8 +644,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: colors.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     maxHeight: '90%',
     paddingBottom: 40,
   },
@@ -659,7 +659,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   modalScroll: {

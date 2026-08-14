@@ -1,41 +1,195 @@
-export const colors = {
-  // Thème noir et doré
-  primary: '#D4AF37',        // Or
-  primaryDark: '#B8941E',    // Or foncé
-  primaryLight: '#FFD700',   // Or clair
+const sharedSemanticColors = {
+  success: '#22C55E',
+  warning: '#F59E0B',
+  error: '#F05252',
+  danger: '#F05252',
+  info: '#38BDF8',
+  overlay: 'rgba(4, 5, 7, 0.82)',
+}
 
-  secondary: '#1A1A1A',      // Noir profond
-  secondaryDark: '#0A0A0A',  // Noir très foncé
-  secondaryLight: '#2D2D2D', // Gris anthracite
+export const themes = {
+  studio: {
+    id: 'studio',
+    name: 'Studio clair',
+    description: 'Sobre, lumineux et professionnel',
+    preview: ['#F4F6F8', '#2563EB'],
+    isDark: false,
+    colors: {
+      ...sharedSemanticColors,
+      primary: '#2563EB',
+      primaryDark: '#1D4ED8',
+      primaryLight: '#60A5FA',
+      secondary: '#FFFFFF',
+      secondaryDark: '#E5E7EB',
+      secondaryLight: '#F4F6F8',
+      accent: '#0F766E',
+      accentDark: '#115E59',
+      accentLight: '#5EEAD4',
+      background: '#F4F6F8',
+      surface: '#FFFFFF',
+      surfaceLight: '#F8FAFC',
+      text: '#172033',
+      textSecondary: '#475569',
+      textLight: '#64748B',
+      border: '#DDE3EA',
+      borderLight: '#CBD5E1',
+      shadow: 'rgba(15, 23, 42, 0.12)',
+      overlay: 'rgba(15, 23, 42, 0.56)',
+      onPrimary: '#FFFFFF',
+    },
+    gradients: {
+      primary: ['#2563EB', '#60A5FA'],
+      secondary: ['#FFFFFF', '#F4F6F8'],
+      accent: ['#0F766E', '#5EEAD4'],
+      dark: ['#172033', '#334155'],
+      gold: ['#2563EB', '#60A5FA'],
+    },
+  },
+  obsidian: {
+    id: 'obsidian',
+    name: 'Or noir',
+    description: 'Élégant et chaleureux',
+    preview: ['#0D0D0D', '#D4AF37'],
+    colors: {
+      ...sharedSemanticColors,
+      primary: '#D4AF37',
+      primaryDark: '#B8941E',
+      primaryLight: '#FFD700',
+      secondary: '#17181C',
+      secondaryDark: '#08090B',
+      secondaryLight: '#22242A',
+      accent: '#DAA520',
+      accentDark: '#C5910A',
+      accentLight: '#FFE066',
+      background: '#0C0D10',
+      surface: '#17181C',
+      surfaceLight: '#22242A',
+      text: '#F7F7F8',
+      textSecondary: '#C6C8CE',
+      textLight: '#8C909A',
+      border: '#2C2E35',
+      borderLight: '#383B44',
+      shadow: 'rgba(212, 175, 55, 0.2)',
+      onPrimary: '#0A0A0A',
+    },
+    gradients: {
+      primary: ['#D4AF37', '#FFD700'],
+      secondary: ['#17181C', '#08090B'],
+      accent: ['#DAA520', '#D4AF37'],
+      dark: ['#0C0D10', '#17181C'],
+      gold: ['#B8941E', '#FFD700'],
+    },
+  },
+  ocean: {
+    id: 'ocean',
+    name: 'Océan',
+    description: 'Clair, précis et moderne',
+    preview: ['#071521', '#38BDF8'],
+    colors: {
+      ...sharedSemanticColors,
+      primary: '#38BDF8',
+      primaryDark: '#0284C7',
+      primaryLight: '#7DD3FC',
+      secondary: '#151A1E',
+      secondaryDark: '#080B0D',
+      secondaryLight: '#20272C',
+      accent: '#0EA5E9',
+      accentDark: '#0369A1',
+      accentLight: '#BAE6FD',
+      background: '#0A0D0F',
+      surface: '#151A1E',
+      surfaceLight: '#20272C',
+      text: '#F0F9FF',
+      textSecondary: '#C4CDD3',
+      textLight: '#8998A2',
+      border: '#2A3339',
+      borderLight: '#38444C',
+      shadow: 'rgba(56, 189, 248, 0.2)',
+      onPrimary: '#041018',
+    },
+    gradients: {
+      primary: ['#0284C7', '#7DD3FC'],
+      secondary: ['#151A1E', '#080B0D'],
+      accent: ['#0369A1', '#38BDF8'],
+      dark: ['#0A0D0F', '#151A1E'],
+      gold: ['#0284C7', '#7DD3FC'],
+    },
+  },
+  emerald: {
+    id: 'emerald',
+    name: 'Émeraude',
+    description: 'Calme et naturel',
+    preview: ['#071712', '#34D399'],
+    colors: {
+      ...sharedSemanticColors,
+      primary: '#34D399',
+      primaryDark: '#059669',
+      primaryLight: '#6EE7B7',
+      secondary: '#151B18',
+      secondaryDark: '#080C0A',
+      secondaryLight: '#212924',
+      accent: '#10B981',
+      accentDark: '#047857',
+      accentLight: '#A7F3D0',
+      background: '#0A0E0C',
+      surface: '#151B18',
+      surfaceLight: '#212924',
+      text: '#F0FDF8',
+      textSecondary: '#C4CEC9',
+      textLight: '#899A91',
+      border: '#2A3530',
+      borderLight: '#39463F',
+      shadow: 'rgba(52, 211, 153, 0.2)',
+      onPrimary: '#04110D',
+    },
+    gradients: {
+      primary: ['#059669', '#6EE7B7'],
+      secondary: ['#151B18', '#080C0A'],
+      accent: ['#047857', '#34D399'],
+      dark: ['#0A0E0C', '#151B18'],
+      gold: ['#059669', '#6EE7B7'],
+    },
+  },
+  prism: {
+    id: 'prism',
+    name: 'Prisme',
+    description: 'Créatif et contrasté',
+    preview: ['#17101F', '#C084FC'],
+    colors: {
+      ...sharedSemanticColors,
+      primary: '#C084FC',
+      primaryDark: '#9333EA',
+      primaryLight: '#D8B4FE',
+      secondary: '#1A171D',
+      secondaryDark: '#0C090E',
+      secondaryLight: '#27232B',
+      accent: '#A855F7',
+      accentDark: '#7E22CE',
+      accentLight: '#E9D5FF',
+      background: '#0E0B10',
+      surface: '#1A171D',
+      surfaceLight: '#27232B',
+      text: '#FAF7FC',
+      textSecondary: '#CDC6D1',
+      textLight: '#988E9E',
+      border: '#352F39',
+      borderLight: '#45404A',
+      shadow: 'rgba(192, 132, 252, 0.2)',
+      onPrimary: '#110B18',
+    },
+    gradients: {
+      primary: ['#9333EA', '#D8B4FE'],
+      secondary: ['#1A171D', '#0C090E'],
+      accent: ['#7E22CE', '#C084FC'],
+      dark: ['#0E0B10', '#1A171D'],
+      gold: ['#9333EA', '#D8B4FE'],
+    },
+  },
+}
 
-  accent: '#DAA520',         // Or goldenrod
-  accentDark: '#C5910A',     // Or plus foncé
-  accentLight: '#FFE066',    // Or pâle
+export const themeOptions = Object.values(themes)
+export const defaultTheme = themes.obsidian
 
-  success: '#D4AF37',
-  warning: '#DAA520',
-  error: '#DC3545',
-  info: '#D4AF37',
-
-  background: '#0D0D0D',     // Noir de fond
-  surface: '#1A1A1A',        // Surface noire
-  surfaceLight: '#2D2D2D',   // Surface gris foncé
-
-  text: '#F5F5F5',           // Texte blanc cassé pour la lisibilité
-  textSecondary: '#D4AF37',  // Texte secondaire doré
-  textLight: '#999999',      // Texte clair gris
-
-  border: '#3D3D3D',         // Bordure grise
-  borderLight: '#4D4D4D',    // Bordure grise claire
-
-  shadow: 'rgba(212, 175, 55, 0.2)',  // Ombre dorée
-  overlay: 'rgba(0, 0, 0, 0.8)',      // Overlay noir
-};
-
-export const gradients = {
-  primary: ['#D4AF37', '#FFD700'],      // Gradient doré
-  secondary: ['#1A1A1A', '#0A0A0A'],    // Gradient noir
-  accent: ['#DAA520', '#D4AF37'],       // Gradient or goldenrod
-  dark: ['#0D0D0D', '#1A1A1A'],         // Gradient noir profond
-  gold: ['#B8941E', '#FFD700'],         // Gradient or complet
-};
+// Compatibilité avec les modules qui ne sont pas encore rendus dans un ThemeProvider.
+export const colors = defaultTheme.colors
+export const gradients = defaultTheme.gradients

@@ -9,7 +9,7 @@ import { useSubscription } from '../contexts/SubscriptionContext';
 import { useIAP } from '../contexts/IAPContext';
 import { useAuth } from '../contexts/AuthContext';
 import { TERMS_OF_USE_URL, PRIVACY_POLICY_URL } from '../config/iap';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
@@ -36,6 +36,8 @@ function getSubscriptionPeriod(product) {
 }
 
 export const SubscriptionScreen = ({ navigation }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { subscription, loading: subLoading, isPremium, refreshSubscription } = useSubscription();
   const { products, loading: iapLoading, purchasing, handlePurchase, handleRestorePurchases, connected } = useIAP();
   const { user } = useAuth();
@@ -268,7 +270,7 @@ export const SubscriptionScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 20 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },

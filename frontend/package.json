@@ -39,6 +39,15 @@
     "react-native-svg": "15.11.2"
   },
   "private": true,
+  "expo": {
+    "autolinking": {
+      "android": {
+        "exclude": [
+          "react-native-iap"
+        ]
+      }
+    }
+  },
   "devDependencies": {
     "sharp": "^0.34.5"
   }
