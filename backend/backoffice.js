@@ -1165,7 +1165,7 @@ router.get('/plans/:id', authenticateSuperAdmin, async (req, res) => {
 
 router.post('/plans', authenticateSuperAdmin, async (req, res) => {
   try {
-    const { name, description, price, currency, duration, durationType, maxProjects, features, isRecurring, sortOrder } = req.body;
+    const { name, description, price, currency, duration, durationType, maxProjects, features, isRecurring, webappAccess, sortOrder } = req.body;
     if (!name || price == null || !duration || !durationType) {
       return res.status(400).json({ error: 'Champs obligatoires : name, price, duration, durationType' });
     }
@@ -1175,6 +1175,7 @@ router.post('/plans', authenticateSuperAdmin, async (req, res) => {
       maxProjects: maxProjects || 1,
       features: features || [],
       isRecurring: durationType !== 'lifetime' ? (isRecurring !== false) : false,
+      webappAccess: webappAccess === true,
       sortOrder: sortOrder || 0
     });
     await plan.save();
