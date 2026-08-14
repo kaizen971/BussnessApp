@@ -1,5 +1,4 @@
 require('dotenv').config();
-process.env.BACKOFFICE_ACCESS_KEY = 'BussApp@Secure2026!Portal';
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -4713,6 +4712,7 @@ app.get('/BussnessApp/subscription/my', authenticateToken, async (req, res) => {
       features: planData.features || [],
       isRecurring: planData.isRecurring || false,
       paymentMethod: subscription.paymentMethod,
+      webappAccess: planData.webappAccess || false,
     });
   } catch (error) {
     console.error('Error fetching subscription:', error);
@@ -4736,6 +4736,7 @@ app.get('/BussnessApp/subscription/plans', async (req, res) => {
       maxProjects: p.maxProjects,
       features: p.features,
       isRecurring: p.isRecurring,
+      webappAccess: p.webappAccess || false,
       tier: p.price === 0 ? 'free' : p.sortOrder <= 1 ? 'basic' : 'premium',
     }));
 

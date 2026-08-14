@@ -404,7 +404,14 @@ Quand un abonnement est suspendu ou annulé :
 | GET | `/payments` | Lister les paiements |
 | POST | `/admins` | Créer un admin + abonnement |
 | POST | `/admins/:id/resend-payment-link` | Renvoyer le lien de paiement |
+| POST | `/auth/forgot-password` | Envoyer un lien de réinitialisation au super-admin |
+| POST | `/auth/verify-reset-token` | Vérifier la validité d'un lien (sans clé d'accès) |
+| POST | `/auth/reset-password` | Définir le nouveau mot de passe (sans clé d'accès) |
 | POST | `/stripe/webhook` | Webhook Stripe |
+
+Le lien envoyé par email pointe vers `${BACKOFFICE_URL}/admin/reset-password?token=...` :
+seul le hash SHA-256 du token est stocké en base, il expire au bout d'1 heure et devient
+inutilisable après usage (max. 5 demandes par IP et par heure).
 
 ### Application mobile (préfixe `/BussnessApp`)
 
