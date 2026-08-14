@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
-  Leaf, Star, Gem, Calendar, Building2, CheckCircle2, Clock, RefreshCw, CreditCard,
+  Leaf, Star, Gem, Calendar, Building2, CheckCircle2, Clock, RefreshCw, CreditCard, AlertTriangle,
 } from 'lucide-react'
 import { useSubscription } from '../contexts/SubscriptionContext'
 import { subscriptionAPI } from '../services/api'
@@ -22,7 +22,7 @@ function getDurationLabel(plan) {
 }
 
 export default function SubscriptionPage() {
-  const { subscription, plans, loading, isPremium, refreshSubscription } = useSubscription()
+  const { subscription, plans, loading, isPremium, hasWebappAccess, refreshSubscription } = useSubscription()
   const [searchParams, setSearchParams] = useSearchParams()
   const [refreshing, setRefreshing] = useState(false)
   const [checkoutLoading, setCheckoutLoading] = useState(null)
@@ -82,6 +82,20 @@ export default function SubscriptionPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-8 max-w-[1100px] mx-auto">
+      {/* Alerte accès webapp */}
+      {!hasWebappAccess && (
+        <div className="rounded-xl p-4 bg-amber-500/10 border border-amber-500/30 flex items-start gap-3 animate-in">
+          <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-amber-300">Accès limité</p>
+            <p className="text-[13px] text-amber-200/80 mt-1 leading-relaxed">
+              Votre abonnement actuel ne donne pas accès à l'application web.
+              Souscrivez un plan éligible ci-dessous pour débloquer toutes les fonctionnalités en ligne.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Plan actuel */}
       <div className={`rounded-2xl p-6 bg-gradient-to-br ${tierCfg.gradient} animate-in`}>
         <div className="flex items-center gap-4 flex-wrap">
@@ -199,6 +213,12 @@ export default function SubscriptionPage() {
                       <Clock className="w-4 h-4 text-gold-500" />
                       {getDurationLabel(plan)} {plan.isRecurring ? '(renouvelable)' : ''}
                     </p>
+                    {plan.webappAccess && (
+                      <p className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-400/15 text-[11.5px] font-bold text-emerald-400 w-fit">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Accès Web App inclus
+                      </p>
+                    )}
                     {plan.features?.length > 0 && (
                       <div className="pt-3 mt-3 border-t border-night-700 space-y-2">
                         {plan.features.map((f, i) => (

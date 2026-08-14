@@ -59,6 +59,7 @@ export const SubscriptionProvider = ({ children }) => {
   }, [isAuthenticated, loadSubscription, loadPlans]);
 
   const isPremium = subscription?.hasSubscription === true && subscription?.status === 'active';
+  const hasWebappAccess = isPremium && subscription?.webappAccess === true;
 
   const canAccessScreen = (screenName) => {
     if (!isAdmin) return true;
@@ -71,6 +72,7 @@ export const SubscriptionProvider = ({ children }) => {
     plans,
     loading,
     isPremium,
+    hasWebappAccess,
     canAccessScreen,
     refreshSubscription: loadSubscription,
     premiumScreens: PREMIUM_SCREENS,
