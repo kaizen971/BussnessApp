@@ -128,6 +128,18 @@ const sendEmail = async (to, subject, html) => {
   }
 };
 
+const escapeHtml = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;');
+
+const isSubscriptionRequest = (type, message) => (
+  type === 'other'
+  && /^Demande (?:de changement d'abonnement|de passage au plan)/i.test(String(message || '').trim())
+);
+
 // Schemas
 const ProjectSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -1148,7 +1160,89 @@ app.post('/BussnessApp/feedback', authenticateToken, async (req, res) => {
       userId: req.user.id
     });
     await feedback.save();
-    res.status(201).json(feedback);
+
+    let emailNotification = null;
+
+    // Les boutons « Demander ce plan » de l'app Android utilisent cette route.
+    // La demande reste enregistrée même si SMTP est momentanément indisponible,
+    // mais le résultat réel des notifications est renvoyé et journalisé.
+    if (isSubscriptionRequest(feedback.type, feedback.message)) {
+      const SuperAdmin = mongoose.model('SuperAdmin');
+      const requester = await User.findById(req.user.id).select('email fullName username');
+      const superAdmins = await SuperAdmin.find({ isActive: true }).select('email');
+      const adminEmails = [...new Set(superAdmins.map(admin => admin.email).filter(Boolean))];
+
+      const requesterSubjectName = String(requester?.fullName || requester?.username || 'Utilisateur')
+        .replace(/[\r\n]+/g, ' ')
+        .slice(0, 120);
+      const requesterName = escapeHtml(requester?.fullName || requester?.username || 'Utilisateur');
+      const requesterEmail = escapeHtml(requester?.email || 'Non renseigné');
+      const requestMessage = escapeHtml(feedback.message);
+
+      const adminHtml = `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
+          <div style="background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+            <h2 style="color: #1a1a2e; margin-top: 0;">Nouvelle demande d'abonnement</h2>
+            <p style="color: #555;">Une demande a été envoyée depuis l'application Android.</p>
+            <div style="background: #f0f0ff; padding: 18px; border-radius: 8px; border-left: 4px solid #6C63FF;">
+              <p style="margin: 5px 0;"><strong>Utilisateur :</strong> ${requesterName}</p>
+              <p style="margin: 5px 0;"><strong>Email :</strong> ${requesterEmail}</p>
+              <p style="margin: 12px 0 5px;"><strong>Demande :</strong></p>
+              <p style="margin: 0; color: #444;">${requestMessage}</p>
+            </div>
+            <p style="color: #777; font-size: 13px; margin-top: 20px;">La demande est également disponible dans les retours de l'application.</p>
+          </div>
+        </div>
+      `;
+
+      const adminResults = await Promise.all(
+        adminEmails.map(email => sendEmail(
+          email,
+          `Nouvelle demande d'abonnement - ${requesterSubjectName}`,
+          adminHtml
+        ))
+      );
+
+      const requesterEmailSent = requester?.email
+        ? await sendEmail(
+          requester.email,
+          'Votre demande d\'abonnement a bien été reçue - BussnessApp',
+          `
+            <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
+              <div style="background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                <h2 style="color: #1a1a2e; margin-top: 0;">Demande reçue</h2>
+                <p style="color: #555;">Bonjour <strong>${requesterName}</strong>,</p>
+                <p style="color: #555;">Votre demande d'abonnement a bien été enregistrée :</p>
+                <div style="background: #f0f0ff; padding: 18px; border-radius: 8px; border-left: 4px solid #6C63FF; color: #444;">
+                  ${requestMessage}
+                </div>
+                <p style="color: #555; margin-top: 20px;">Un administrateur vous contactera sous 24 heures pour finaliser votre demande.</p>
+              </div>
+            </div>
+          `
+        )
+        : false;
+
+      emailNotification = {
+        requesterEmailSent,
+        adminEmailsSent: adminResults.filter(Boolean).length,
+        adminEmailsExpected: adminEmails.length,
+      };
+
+      if (!requesterEmailSent || adminResults.some(result => !result) || adminEmails.length === 0) {
+        console.warn('[subscription request] Demande enregistrée mais notification email incomplète', {
+          feedbackId: feedback._id.toString(),
+          requesterEmailSent,
+          adminEmailsSent: emailNotification.adminEmailsSent,
+          adminEmailsExpected: emailNotification.adminEmailsExpected,
+        });
+      }
+    }
+
+    res.status(201).json({
+      ...feedback.toObject(),
+      ...(emailNotification ? { emailNotification } : {}),
+    });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
