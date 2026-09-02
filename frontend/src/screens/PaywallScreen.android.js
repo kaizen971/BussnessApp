@@ -1,10 +1,13 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated, Dimensions, ScrollView,
+  Alert, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscription } from '../contexts/SubscriptionContext';
+import { useAuth } from '../contexts/AuthContext';
+import { feedbackAPI } from '../services/api';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 
 const { width } = Dimensions.get('window');
@@ -23,6 +26,8 @@ export const PaywallScreen = ({ navigation, route }) => {
   const styles = useThemedStyles(createStyles);
   const { featureName } = route.params || {};
   const { plans } = useSubscription();
+  const { user } = useAuth();
+  const [requesting, setRequesting] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
@@ -34,6 +39,26 @@ export const PaywallScreen = ({ navigation, route }) => {
   }, []);
 
   const premiumPlan = plans.find(p => p.tier === 'premium') || plans[plans.length - 1];
+
+  const handleRequestPremium = async () => {
+    setRequesting(true);
+    try {
+      const planLabel = premiumPlan ? premiumPlan.name : 'Premium';
+      await feedbackAPI.create({
+        type: 'other',
+        message: `Demande de passage au plan "${planLabel}"${featureName ? ` (souhaite accéder à la fonctionnalité "${featureName}")` : ''}.`,
+        projectId: user?.projectId,
+      });
+      Alert.alert(
+        'Demande envoyée !',
+        'Votre demande de passage au Premium a bien été transmise. Un administrateur vous contactera sous 24h.'
+      );
+    } catch (error) {
+      Alert.alert('Erreur', 'Impossible d\'envoyer la demande. Veuillez réessayer.');
+    } finally {
+      setRequesting(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -103,20 +128,35 @@ export const PaywallScreen = ({ navigation, route }) => {
             </LinearGradient>
           )}
 
-          {/* Contact CTA */}
+          {/* CTA */}
           <View style={styles.ctaSection}>
-            <TouchableOpacity style={styles.ctaButton} onPress={() => navigation.navigate('Subscription')}>
-              <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.ctaGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                <Ionicons name="diamond" size={20} color="#fff" />
-                <Text style={styles.ctaButtonText}>Voir mon abonnement</Text>
+            <TouchableOpacity
+              style={[styles.ctaButton, requesting && { opacity: 0.6 }]}
+              onPress={handleRequestPremium}
+              disabled={requesting}
+            >
+              <LinearGradient colors={['#8B5CF6', '#6D28D9']} style={styles.ctaGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                {requesting ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="paper-plane" size={20} color="#fff" />
+                    <Text style={styles.ctaButtonText}>Demander le Premium</Text>
+                  </>
+                )}
               </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Subscription')}>
+              <Ionicons name="list-outline" size={16} color={colors.primary} />
+              <Text style={styles.secondaryButtonText}>Voir tous les plans</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
               <Text style={styles.backButtonText}>Retour</Text>
             </TouchableOpacity>
 
-            <Text style={styles.ctaHint}>Contactez votre administrateur pour passer au Premium</Text>
+            <Text style={styles.ctaHint}>Un administrateur vous contactera sous 24h</Text>
           </View>
         </Animated.View>
       </ScrollView>
@@ -155,6 +195,8 @@ const createStyles = (colors) => ({
   ctaButton: { width: '100%', borderRadius: 16, overflow: 'hidden', marginBottom: 12 },
   ctaGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16 },
   ctaButtonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  secondaryButton: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 20, marginBottom: 4 },
+  secondaryButtonText: { fontSize: 14, fontWeight: '600', color: colors.primary },
   backButton: { paddingVertical: 12, paddingHorizontal: 24 },
   backButtonText: { fontSize: 14, fontWeight: '600', color: colors.textLight },
   ctaHint: { fontSize: 12, color: colors.textLight, marginTop: 8, textAlign: 'center' },

@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Animated, Dimensions, ActivityIndicator, RefreshControl, Linking,
+  Animated, Dimensions, ActivityIndicator, RefreshControl, Linking, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { useAuth } from '../contexts/AuthContext';
+import { feedbackAPI } from '../services/api';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 
 const { width } = Dimensions.get('window');
@@ -30,6 +31,7 @@ export const SubscriptionScreen = ({ navigation }) => {
   const { subscription, plans, loading, isPremium, refreshSubscription } = useSubscription();
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
+  const [requestingPlan, setRequestingPlan] = useState(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
@@ -44,6 +46,25 @@ export const SubscriptionScreen = ({ navigation }) => {
     setRefreshing(true);
     await refreshSubscription();
     setRefreshing(false);
+  };
+
+  const handleRequestPlanChange = async (plan) => {
+    setRequestingPlan(plan._id);
+    try {
+      await feedbackAPI.create({
+        type: 'other',
+        message: `Demande de changement d'abonnement vers le plan "${plan.name}" (${plan.price}€ / ${getDurationLabel(plan)}, ${plan.maxProjects} business max).`,
+        projectId: user?.projectId,
+      });
+      Alert.alert(
+        'Demande envoyée !',
+        `Votre demande pour le plan "${plan.name}" a bien été transmise. Un administrateur vous contactera sous 24h pour finaliser le changement.`
+      );
+    } catch (error) {
+      Alert.alert('Erreur', 'Impossible d\'envoyer la demande. Veuillez réessayer.');
+    } finally {
+      setRequestingPlan(null);
+    }
   };
 
   if (loading) {
@@ -191,6 +212,30 @@ export const SubscriptionScreen = ({ navigation }) => {
                         ))}
                       </View>
                     )}
+
+                    {!isCurrent && (
+                      <TouchableOpacity
+                        style={[styles.requestButton, requestingPlan === plan._id && styles.requestButtonDisabled]}
+                        onPress={() => handleRequestPlanChange(plan)}
+                        disabled={requestingPlan === plan._id}
+                        activeOpacity={0.8}
+                      >
+                        <LinearGradient
+                          colors={requestingPlan === plan._id ? ['#555', '#444'] : cfg.gradient}
+                          style={styles.requestButtonGradient}
+                          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                        >
+                          {requestingPlan === plan._id ? (
+                            <ActivityIndicator color="#fff" size="small" />
+                          ) : (
+                            <>
+                              <Ionicons name="paper-plane-outline" size={16} color="#fff" />
+                              <Text style={styles.requestButtonText}>Demander ce plan</Text>
+                            </>
+                          )}
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               );
@@ -200,10 +245,10 @@ export const SubscriptionScreen = ({ navigation }) => {
 
         {/* Contact info */}
         <View style={styles.contactCard}>
-          <Ionicons name="mail-outline" size={24} color={colors.primary} />
+          <Ionicons name="information-circle-outline" size={24} color={colors.primary} />
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.contactTitle}>Besoin de changer de plan ?</Text>
-            <Text style={styles.contactText}>Contactez votre administrateur pour modifier ou upgrader votre abonnement.</Text>
+            <Text style={styles.contactTitle}>Comment ça marche ?</Text>
+            <Text style={styles.contactText}>Appuyez sur "Demander ce plan" pour envoyer une demande. Un administrateur vous contactera sous 24h pour activer votre nouvel abonnement.</Text>
           </View>
         </View>
 
@@ -262,6 +307,11 @@ const createStyles = (colors) => ({
   planFeatures: { marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
   planFeatureRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   planFeatureText: { fontSize: 13, color: colors.textLight, flex: 1 },
+
+  requestButton: { marginTop: 14, borderRadius: 12, overflow: 'hidden' },
+  requestButtonDisabled: { opacity: 0.6 },
+  requestButtonGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 12 },
+  requestButtonText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
   contactCard: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border },
   contactTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
