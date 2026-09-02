@@ -10,17 +10,17 @@ import {
   Animated,
   Image,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
-import { colors, gradients } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 
 const logo = require('../assets/icon/dashboard.png');
 
 export const LoginScreen = ({ navigation }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -86,7 +86,7 @@ export const LoginScreen = ({ navigation }) => {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <LinearGradient colors={gradients.primary} style={styles.gradient}>
+      <View style={styles.background}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
@@ -103,8 +103,8 @@ export const LoginScreen = ({ navigation }) => {
             <View style={styles.iconContainer}>
               <Image source={logo} style={styles.logo} />
             </View>
-            <Text style={styles.title}>Entreprendre avec succès - EAS</Text>
-            <Text style={styles.subtitle}>Gérez votre business intelligemment</Text>
+            <Text style={styles.title}>EAS</Text>
+            <Text style={styles.subtitle}>Pilotez votre activité avec clarté</Text>
           </Animated.View>
 
           <Animated.View
@@ -115,6 +115,7 @@ export const LoginScreen = ({ navigation }) => {
           >
             <Card style={styles.loginCard}>
               <Text style={styles.loginTitle}>Connexion</Text>
+              <Text style={styles.loginSubtitle}>Accédez à votre espace professionnel</Text>
 
               <Input
                 label="Nom d'utilisateur ou Email"
@@ -136,6 +137,7 @@ export const LoginScreen = ({ navigation }) => {
 
               <Button
                 title="Se connecter"
+                icon="log-in-outline"
                 onPress={handleLogin}
                 loading={loading}
                 style={styles.loginButton}
@@ -143,6 +145,7 @@ export const LoginScreen = ({ navigation }) => {
 
               <Button
                 title="Créer un compte"
+                icon="person-add-outline"
                 onPress={() => navigation.navigate('Register')}
                 variant="outline"
                 style={styles.registerButton}
@@ -156,66 +159,66 @@ export const LoginScreen = ({ navigation }) => {
             </Text>
           </Animated.View>
         </ScrollView>
-      </LinearGradient>
+      </View>
     </KeyboardAvoidingView>
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
   },
-  gradient: {
+  background: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 40,
     justifyContent: 'center',
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 28,
   },
   iconContainer: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 68,
+    height: 68,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
-    shadowColor: '#fff',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   title: {
-    fontSize: 38,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 8,
-    letterSpacing: 1,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
+    fontSize: 28,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 6,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 17,
-    color: 'rgba(255, 255, 255, 0.95)',
-    fontWeight: '500',
+    fontSize: 14,
+    color: colors.textLight,
+    fontWeight: '400',
   },
   loginCard: {
     marginBottom: 24,
+    padding: 20,
   },
   loginTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '700',
     color: colors.text,
+  },
+  loginSubtitle: {
+    fontSize: 13,
+    color: colors.textLight,
+    marginTop: 4,
     marginBottom: 24,
-    textAlign: 'center',
   },
   loginButton: {
     marginTop: 8,
@@ -228,13 +231,13 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: colors.textLight,
     textAlign: 'center',
   },
   logo: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 58,
+    height: 58,
+    borderRadius: 10,
     overflow: 'hidden',
   },
 });

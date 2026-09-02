@@ -15,11 +15,14 @@ import { useCurrency } from '../contexts/CurrencyContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
+import { EmptyState, FloatingActionButton } from '../components/AppPrimitives';
 import { stockAPI } from '../services/api';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import api from '../services/api';
 
 export const StockScreen = () => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const { format: formatPrice } = useCurrency();
   const [stock, setStock] = useState([]);
@@ -305,21 +308,18 @@ export const StockScreen = () => {
         keyExtractor={(item) => item._id}
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="cube-outline" size={64} color={colors.textLight} />
-            <Text style={styles.emptyText}>Aucun article en stock</Text>
-          </View>
+          <EmptyState
+            icon="cube-outline"
+            title="Aucun article en stock"
+            description="Ajoutez un article pour commencer à suivre vos quantités."
+          />
         }
       />
 
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => openStockModal()}
-        >
-          <Ionicons name="add" size={28} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      <FloatingActionButton
+        label="Ajouter un article au stock"
+        onPress={() => openStockModal()}
+      />
 
       <Modal
         visible={modalVisible}
@@ -544,10 +544,11 @@ export const StockScreen = () => {
                 </View>
               )}
               ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="time-outline" size={48} color={colors.textLight} />
-                  <Text style={styles.emptyText}>Aucun mouvement enregistré</Text>
-                </View>
+                <EmptyState
+                  icon="time-outline"
+                  title="Aucun mouvement enregistré"
+                  compact
+                />
               }
             />
           </View>
@@ -594,11 +595,12 @@ export const StockScreen = () => {
                 </TouchableOpacity>
               )}
               ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="cube-outline" size={48} color={colors.textLight} />
-                  <Text style={styles.emptyText}>Aucun produit disponible</Text>
-                  <Text style={styles.emptySubtext}>Créez d'abord des produits dans la section Produits</Text>
-                </View>
+                <EmptyState
+                  icon="cube-outline"
+                  title="Aucun produit disponible"
+                  description="Créez d'abord un produit dans la section Produits."
+                  compact
+                />
               }
             />
           </View>
@@ -608,7 +610,7 @@ export const StockScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -627,7 +629,7 @@ const styles = StyleSheet.create({
   },
   totalAmount: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.info,
     marginBottom: 4,
   },
@@ -669,7 +671,7 @@ const styles = StyleSheet.create({
   },
   stockName: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     flex: 1,
   },
@@ -757,7 +759,7 @@ const styles = StyleSheet.create({
   },
   selectedItemName: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -808,7 +810,7 @@ const styles = StyleSheet.create({
   },
   quantityChange: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   quantityDetails: {
     fontSize: 11,
@@ -858,8 +860,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     padding: 24,
     paddingBottom: 40,
   },
@@ -871,7 +873,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   productSelectorContainer: {

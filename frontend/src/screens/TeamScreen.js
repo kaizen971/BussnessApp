@@ -12,10 +12,12 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { AppHeader } from '../components/AppHeader';
+import { EmptyState } from '../components/AppPrimitives';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -26,6 +28,8 @@ import { getQuickSelectValues } from '../utils/currency';
 import { usersAPI } from '../services/api';
 
 export const TeamScreen = ({ navigation }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const { format: formatPrice, currency } = useCurrency();
   const [users, setUsers] = useState([]);
@@ -568,37 +572,17 @@ export const TeamScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={[colors.surface, colors.background]}
-        style={styles.header}
-      >
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>Gestion d'équipe</Text>
-            <Text style={styles.subtitle}>{users?.length || 0} membre(s)</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.addButtonWrapper}
-            onPress={() => {
-              resetForm();
-              setModalVisible(true);
-            }}
-          >
-            <LinearGradient
-              colors={[colors.primary, colors.primaryDark]}
-              style={styles.addButton}
-            >
-              <Ionicons name="person-add" size={28} color="#000" />
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
+      <AppHeader
+        title="Équipe"
+        subtitle={`${users?.length || 0} membre(s)`}
+        onBack={() => navigation.goBack()}
+        rightIcon="person-add-outline"
+        rightLabel="Ajouter un membre"
+        onRightPress={() => {
+          resetForm();
+          setModalVisible(true);
+        }}
+      />
 
       <LinearGradient
         colors={[colors.surface + '80', colors.background]}
@@ -674,11 +658,11 @@ export const TeamScreen = ({ navigation }) => {
         refreshing={loading}
         onRefresh={loadUsers}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="people-outline" size={80} color={colors.textSecondary} />
-            <Text style={styles.emptyText}>Aucun collaborateur</Text>
-            <Text style={styles.emptySubtext}>Appuyez sur + pour ajouter un membre</Text>
-          </View>
+          <EmptyState
+            icon="people-outline"
+            title="Aucun collaborateur"
+            description="Ajoutez un membre pour constituer votre équipe."
+          />
         }
       />
 
@@ -1675,7 +1659,7 @@ export const TeamScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -1708,7 +1692,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 2,
   },
@@ -1741,7 +1725,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginTop: 6,
   },
@@ -1819,7 +1803,7 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   userUsername: {
@@ -1963,7 +1947,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -2048,13 +2032,13 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#000',
   },
   // Styles du modal de changement de rôle
   roleModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -2077,7 +2061,7 @@ const styles = StyleSheet.create({
   },
   roleModalTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginTop: 12,
   },
@@ -2105,7 +2089,7 @@ const styles = StyleSheet.create({
   },
   roleOptionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -2162,7 +2146,7 @@ const styles = StyleSheet.create({
   },
   payrollBannerAmount: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.accent,
   },
   payrollMonthSelector: {
@@ -2213,11 +2197,11 @@ const styles = StyleSheet.create({
   },
   payrollTotalValue: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   payrollTotalSmallValue: {
     fontSize: 17,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   payrollSectionTitle: {
     fontSize: 15,
@@ -2269,7 +2253,7 @@ const styles = StyleSheet.create({
   },
   payrollEmployeeTotal: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.accent,
     marginLeft: 8,
   },
@@ -2322,13 +2306,13 @@ const styles = StyleSheet.create({
   },
   commissionValue: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   // Styles pour le modal de commission amélioré
   commissionModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   commissionModalBackdrop: {
@@ -2382,7 +2366,7 @@ const styles = StyleSheet.create({
   },
   commissionModalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -2426,7 +2410,7 @@ const styles = StyleSheet.create({
   },
   currentStatValue: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   // Sélection rapide
@@ -2435,7 +2419,7 @@ const styles = StyleSheet.create({
   },
   quickSelectTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 12,
   },
@@ -2471,7 +2455,7 @@ const styles = StyleSheet.create({
   },
   quickSelectButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   quickSelectButtonTextSmall: {
@@ -2495,7 +2479,7 @@ const styles = StyleSheet.create({
   },
   customInputTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 12,
   },
@@ -2513,12 +2497,12 @@ const styles = StyleSheet.create({
   commissionInput: {
     flex: 1,
     fontSize: 40,
-    fontWeight: 'bold',
+    fontWeight: '700',
     textAlign: 'center',
   },
   commissionPercentSymbol: {
     fontSize: 40,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.success,
   },
   commissionHint: {
@@ -2557,7 +2541,7 @@ const styles = StyleSheet.create({
   },
   exampleTitle: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.info,
   },
   exampleRow: {
@@ -2622,7 +2606,7 @@ const styles = StyleSheet.create({
   },
   commissionSaveButtonText: {
     fontSize: 15,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#fff',
   },
   // Styles pour la section photo

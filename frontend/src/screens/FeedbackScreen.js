@@ -13,10 +13,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
+import { EmptyState, FloatingActionButton } from '../components/AppPrimitives';
 import { feedbackAPI } from '../services/api';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 
 export const FeedbackScreen = () => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const [feedbacks, setFeedbacks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -171,24 +174,18 @@ export const FeedbackScreen = () => {
         keyExtractor={(item) => item._id}
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="chatbubbles-outline" size={64} color={colors.textLight} />
-            <Text style={styles.emptyText}>Aucun feedback</Text>
-            <Text style={styles.emptySubtext}>
-              Partagez vos idées et améliorations
-            </Text>
-          </View>
+          <EmptyState
+            icon="chatbubbles-outline"
+            title="Aucun feedback"
+            description="Partagez vos idées et les améliorations attendues."
+          />
         }
       />
 
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => setModalVisible(true)}
-        >
-          <Ionicons name="add" size={28} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      <FloatingActionButton
+        label="Ajouter un feedback"
+        onPress={() => setModalVisible(true)}
+      />
 
       <Modal
         visible={modalVisible}
@@ -231,7 +228,7 @@ export const FeedbackScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -328,8 +325,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     padding: 24,
     paddingBottom: 40,
   },
@@ -341,7 +338,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   typeSelector: {

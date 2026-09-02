@@ -1,5 +1,4 @@
 require('dotenv').config();
-process.env.BACKOFFICE_ACCESS_KEY = 'BussApp@Secure2026!Portal';
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -11,6 +10,7 @@ const { S3Client, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const multer = require('multer');
 const multerS3 = require('multer-s3');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = 3003;
@@ -127,6 +127,18 @@ const sendEmail = async (to, subject, html) => {
     return false;
   }
 };
+
+const escapeHtml = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;');
+
+const isSubscriptionRequest = (type, message) => (
+  type === 'other'
+  && /^Demande (?:de changement d'abonnement|de passage au plan)/i.test(String(message || '').trim())
+);
 
 // Schemas
 const ProjectSchema = new mongoose.Schema({
@@ -477,14 +489,6 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
       });
     }
 
-    if (!selectedPlanId) {
-      return res.status(400).json({
-        error: 'Veuillez choisir un plan d\'accompagnement',
-        field: 'selectedPlanId',
-        code: 'MISSING_PLAN'
-      });
-    }
-
     // Check if user exists
     const existingUser = await User.findOne({ $or: [{ username }, { email }] });
     if (existingUser) {
@@ -504,15 +508,18 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
       }
     }
 
-    // Récupérer le plan choisi
-    const SubscriptionPlan = mongoose.model('SubscriptionPlan');
-    const selectedPlan = await SubscriptionPlan.findById(selectedPlanId);
-    if (!selectedPlan) {
-      return res.status(400).json({
-        error: 'Plan d\'accompagnement invalide',
-        field: 'selectedPlanId',
-        code: 'INVALID_PLAN'
-      });
+    // Récupérer le plan choisi (optionnel - l'abonnement peut se faire via IAP après inscription)
+    let selectedPlan = null;
+    if (selectedPlanId) {
+      const SubscriptionPlan = mongoose.model('SubscriptionPlan');
+      selectedPlan = await SubscriptionPlan.findById(selectedPlanId);
+      if (!selectedPlan) {
+        return res.status(400).json({
+          error: 'Plan d\'accompagnement invalide',
+          field: 'selectedPlanId',
+          code: 'INVALID_PLAN'
+        });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -543,7 +550,62 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
     user.projectIds = [defaultProject._id];
     await user.save();
 
-    console.log(`Nouvelle inscription: ${user.username} - Plan choisi: ${selectedPlan.name}`);
+    console.log(`Nouvelle inscription: ${user.username} - Plan choisi: ${selectedPlan ? selectedPlan.name : 'Aucun (IAP)'}`);
+
+    // Inscription sans plan sélectionné : compte activé, abonnement via IAP
+    if (!selectedPlan) {
+      user.isActive = true;
+      await user.save();
+
+      const token = jwt.sign(
+        { id: user._id, username: user.username, role: user.role, projectId: user.projectId },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      // Notification aux super admins
+      try {
+        const SuperAdmin = mongoose.model('SuperAdmin');
+        const superAdmins = await SuperAdmin.find({ isActive: true });
+        const notifHtml = `
+          <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
+            <div style="background: linear-gradient(135deg, #1A1A1A, #2D2D2D); border-radius: 12px; padding: 30px; margin-bottom: 20px;">
+              <h1 style="color: #D4AF37; margin: 0; font-size: 24px;">Nouvelle inscription</h1>
+              <p style="color: #999; margin: 8px 0 0;">Un nouvel utilisateur s'est inscrit (abonnement via In-App Purchase)</p>
+            </div>
+            <div style="background: white; border-radius: 12px; padding: 30px;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr><td style="padding: 8px 0; color: #888; width: 140px;">Nom</td><td style="padding: 8px 0; color: #333; font-weight: 600;">${fullName.trim()}</td></tr>
+                <tr><td style="padding: 8px 0; color: #888;">Email</td><td style="padding: 8px 0; color: #333;">${email.trim()}</td></tr>
+                <tr><td style="padding: 8px 0; color: #888;">Plan</td><td style="padding: 8px 0; color: #333;">Abonnement via l'application (In-App Purchase)</td></tr>
+              </table>
+            </div>
+          </div>
+        `;
+        for (const admin of superAdmins) {
+          await sendEmail(admin.email, `Nouvelle inscription - ${fullName.trim()} (via app)`, notifHtml);
+        }
+      } catch (emailError) {
+        console.error('Erreur notification super admins:', emailError.message);
+      }
+
+      return res.status(201).json({
+        success: true,
+        autoActivated: true,
+        message: 'Compte créé avec succès ! Vous pouvez souscrire un abonnement depuis l\'application.',
+        token,
+        user: {
+          id: user._id,
+          username: user.username,
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+          isActive: user.isActive,
+          projectId: user.projectId,
+          projectIds: user.projectIds
+        }
+      });
+    }
 
     const DURATION_LABELS = { days: 'jour(s)', months: 'mois', years: 'an(s)', lifetime: 'À vie' };
     const durationLabel = selectedPlan.durationType === 'lifetime'
@@ -910,6 +972,50 @@ app.post('/BussnessApp/auth/change-password', authenticateToken, async (req, res
   }
 });
 
+// Delete account
+app.post('/BussnessApp/auth/delete-account', authenticateToken, async (req, res) => {
+  try {
+    const { password } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur introuvable' });
+    }
+
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({ error: 'Mot de passe incorrect' });
+    }
+
+    const userId = req.user.id;
+
+    const db = mongoose.connection.db;
+    const collections = ['sales', 'expenses', 'recurringexpenses', 'stockitems',
+      'stockmovements', 'customers', 'feedbacks', 'schedules', 'commissions'];
+
+    for (const col of collections) {
+      try {
+        await db.collection(col).deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
+      } catch (e) { /* collection might not exist */ }
+    }
+
+    // Cancel active subscriptions
+    try {
+      const Subscription = mongoose.model('Subscription');
+      await Subscription.updateMany(
+        { adminId: userId },
+        { status: 'cancelled', updatedAt: new Date() }
+      );
+    } catch (e) { /* ignore */ }
+
+    await User.findByIdAndDelete(userId);
+
+    res.json({ message: 'Compte supprimé avec succès' });
+  } catch (error) {
+    console.error('Delete account error:', error);
+    res.status(500).json({ error: 'Erreur lors de la suppression du compte' });
+  }
+});
+
 // Update profile photo
 app.put('/BussnessApp/auth/profile-photo', authenticateToken, upload.single('profilePhoto'), async (req, res) => {
   try {
@@ -1054,7 +1160,89 @@ app.post('/BussnessApp/feedback', authenticateToken, async (req, res) => {
       userId: req.user.id
     });
     await feedback.save();
-    res.status(201).json(feedback);
+
+    let emailNotification = null;
+
+    // Les boutons « Demander ce plan » de l'app Android utilisent cette route.
+    // La demande reste enregistrée même si SMTP est momentanément indisponible,
+    // mais le résultat réel des notifications est renvoyé et journalisé.
+    if (isSubscriptionRequest(feedback.type, feedback.message)) {
+      const SuperAdmin = mongoose.model('SuperAdmin');
+      const requester = await User.findById(req.user.id).select('email fullName username');
+      const superAdmins = await SuperAdmin.find({ isActive: true }).select('email');
+      const adminEmails = [...new Set(superAdmins.map(admin => admin.email).filter(Boolean))];
+
+      const requesterSubjectName = String(requester?.fullName || requester?.username || 'Utilisateur')
+        .replace(/[\r\n]+/g, ' ')
+        .slice(0, 120);
+      const requesterName = escapeHtml(requester?.fullName || requester?.username || 'Utilisateur');
+      const requesterEmail = escapeHtml(requester?.email || 'Non renseigné');
+      const requestMessage = escapeHtml(feedback.message);
+
+      const adminHtml = `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
+          <div style="background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+            <h2 style="color: #1a1a2e; margin-top: 0;">Nouvelle demande d'abonnement</h2>
+            <p style="color: #555;">Une demande a été envoyée depuis l'application Android.</p>
+            <div style="background: #f0f0ff; padding: 18px; border-radius: 8px; border-left: 4px solid #6C63FF;">
+              <p style="margin: 5px 0;"><strong>Utilisateur :</strong> ${requesterName}</p>
+              <p style="margin: 5px 0;"><strong>Email :</strong> ${requesterEmail}</p>
+              <p style="margin: 12px 0 5px;"><strong>Demande :</strong></p>
+              <p style="margin: 0; color: #444;">${requestMessage}</p>
+            </div>
+            <p style="color: #777; font-size: 13px; margin-top: 20px;">La demande est également disponible dans les retours de l'application.</p>
+          </div>
+        </div>
+      `;
+
+      const adminResults = await Promise.all(
+        adminEmails.map(email => sendEmail(
+          email,
+          `Nouvelle demande d'abonnement - ${requesterSubjectName}`,
+          adminHtml
+        ))
+      );
+
+      const requesterEmailSent = requester?.email
+        ? await sendEmail(
+          requester.email,
+          'Votre demande d\'abonnement a bien été reçue - BussnessApp',
+          `
+            <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
+              <div style="background: white; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                <h2 style="color: #1a1a2e; margin-top: 0;">Demande reçue</h2>
+                <p style="color: #555;">Bonjour <strong>${requesterName}</strong>,</p>
+                <p style="color: #555;">Votre demande d'abonnement a bien été enregistrée :</p>
+                <div style="background: #f0f0ff; padding: 18px; border-radius: 8px; border-left: 4px solid #6C63FF; color: #444;">
+                  ${requestMessage}
+                </div>
+                <p style="color: #555; margin-top: 20px;">Un administrateur vous contactera sous 24 heures pour finaliser votre demande.</p>
+              </div>
+            </div>
+          `
+        )
+        : false;
+
+      emailNotification = {
+        requesterEmailSent,
+        adminEmailsSent: adminResults.filter(Boolean).length,
+        adminEmailsExpected: adminEmails.length,
+      };
+
+      if (!requesterEmailSent || adminResults.some(result => !result) || adminEmails.length === 0) {
+        console.warn('[subscription request] Demande enregistrée mais notification email incomplète', {
+          feedbackId: feedback._id.toString(),
+          requesterEmailSent,
+          adminEmailsSent: emailNotification.adminEmailsSent,
+          adminEmailsExpected: emailNotification.adminEmailsExpected,
+        });
+      }
+    }
+
+    res.status(201).json({
+      ...feedback.toObject(),
+      ...(emailNotification ? { emailNotification } : {}),
+    });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -1307,7 +1495,6 @@ app.get('/BussnessApp/products', authenticateToken, async (req, res) => {
   try {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
-    console.log(filter)
     const products = await Product.find(filter).sort({ name: 1 }).lean();
 
     // Batch query: une seule requête pour tous les stocks liés
@@ -1364,16 +1551,30 @@ app.post('/BussnessApp/products', authenticateToken, checkRole('admin', 'manager
 app.put('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), upload.single('productImage'), async (req, res) => {
   try {
     const updateData = { ...req.body, updatedAt: Date.now() };
+    const oldProduct = await Product.findById(req.params.id);
+    if (!oldProduct) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
     if (req.file) {
       // Supprimer l'ancienne image S3
-      const oldProduct = await Product.findById(req.params.id);
-      await deleteS3Image(oldProduct?.image);
+      await deleteS3Image(oldProduct.image);
       updateData.image = req.file.location;
     }
     const product = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true });
-    if (!product) {
-      return res.status(404).json({ error: 'Product not found' });
+
+    // Propager le renommage au stock lié et consolider le rattachement via productId,
+    // pour que la modification d'un produit ne casse jamais le lien produit ↔ stock
+    // (le matching de secours par `name` devient sans risque une fois le productId posé).
+    if (updateData.name && updateData.name !== oldProduct.name) {
+      await Stock.updateMany(
+        {
+          projectId: product.projectId,
+          $or: [{ productId: product._id }, { name: oldProduct.name }],
+        },
+        { $set: { name: updateData.name, productId: product._id, updatedAt: Date.now() } }
+      );
     }
+
     res.json(product);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -1397,8 +1598,13 @@ app.delete('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'm
 // Sales Routes
 app.get('/BussnessApp/sales', authenticateToken, async (req, res) => {
   try {
-    const { projectId } = req.query;
+    const { projectId, startDate, endDate } = req.query;
     const filter = projectId ? { projectId } : {};
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) filter.date.$lt = new Date(endDate);
+    }
     const sales = await Sale.find(filter)
       .populate('productId', 'name unitPrice image')
       .populate('customerId', 'name phone email')
@@ -1414,8 +1620,6 @@ app.get('/BussnessApp/sales', authenticateToken, async (req, res) => {
 app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
   try {
     const { customerId, productId, quantity, unitPrice, discount, projectId } = req.body;
-    
-    console.log(req.body)
 
     // Validation des champs requis
     if (!productId || !quantity || unitPrice === undefined || unitPrice === null || unitPrice === '') {
@@ -1488,8 +1692,6 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
         ...(product ? [{ name: product.name }] : [])
       ]
     });
-
-    console.log(stockItem);
 
     if (stockItem) {
       const previousQuantity = stockItem.quantity;
@@ -1749,8 +1951,13 @@ app.post('/BussnessApp/sales/:id/refund', authenticateToken, checkRole('admin', 
 // Expenses Routes
 app.get('/BussnessApp/expenses', authenticateToken, async (req, res) => {
   try {
-    const { projectId } = req.query;
+    const { projectId, startDate, endDate } = req.query;
     const filter = projectId ? { projectId } : {};
+    if (startDate || endDate) {
+      filter.date = {};
+      if (startDate) filter.date.$gte = new Date(startDate);
+      if (endDate) filter.date.$lt = new Date(endDate);
+    }
     const expenses = await Expense.find(filter).sort({ date: -1 });
     res.json(expenses);
   } catch (error) {
@@ -2270,6 +2477,550 @@ app.put('/BussnessApp/customers/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ============================================================
+// IMPORT CSV (produits, stock, ventes, clients, dépenses)
+// ============================================================
+
+// Parseur CSV (type RFC 4180) : champs entre guillemets, séparateur ; ou ,
+// auto-détecté sur la ligne d'en-têtes, fins de ligne \r\n ou \n, BOM Excel.
+const parseCsv = (text) => {
+  const content = text.replace(/^\uFEFF/, '');
+  const headerLine = content.split(/\r?\n/, 1)[0] || '';
+  const delimiter = (headerLine.match(/;/g) || []).length >= (headerLine.match(/,/g) || []).length ? ';' : ',';
+
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (content[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        field += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === delimiter) {
+      row.push(field);
+      field = '';
+    } else if (char === '\n' || char === '\r') {
+      if (char === '\r' && content[i + 1] === '\n') i++;
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else {
+      field += char;
+    }
+  }
+  if (field !== '' || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  // Conserver l'index de ligne d'origine (les lignes vides comptent dans le fichier)
+  return rows
+    .map((cells, index) => ({ cells, line: index + 1 }))
+    .filter(r => r.cells.some(cell => cell.trim() !== ''));
+};
+
+// Normalise un en-tête : minuscules, sans accents, espaces/tirets → underscore
+const normalizeCsvHeader = (header) =>
+  header.trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s-]+/g, '_');
+
+// Nombre au format français (12,50) ou anglais (12.50)
+const parseCsvNumber = (value) => {
+  if (value === undefined || value === null || String(value).trim() === '') return null;
+  const num = parseFloat(String(value).trim().replace(/\s/g, '').replace(',', '.'));
+  return isNaN(num) ? null : num;
+};
+
+// Date au format JJ/MM/AAAA (heure HH:MM optionnelle) ou AAAA-MM-JJ.
+// Retourne null si vide, undefined si invalide.
+const parseCsvDate = (value) => {
+  if (!value || String(value).trim() === '') return null;
+  const trimmed = String(value).trim();
+  const frMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
+  if (frMatch) {
+    const [, day, month, year, hours = '12', minutes = '0'] = frMatch;
+    const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes));
+    return isNaN(date.getTime()) ? undefined : date;
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+    const date = new Date(trimmed);
+    return isNaN(date.getTime()) ? undefined : date;
+  }
+  return undefined;
+};
+
+// Alias d'en-têtes acceptés (français / anglais) → champ canonique
+const CSV_COLUMN_ALIASES = {
+  products: {
+    nom: 'name', name: 'name', produit: 'name',
+    prix_vente: 'unitPrice', prix_de_vente: 'unitPrice', unitprice: 'unitPrice', prix: 'unitPrice',
+    prix_revient: 'costPrice', prix_de_revient: 'costPrice', cout: 'costPrice', costprice: 'costPrice',
+    categorie: 'category', category: 'category',
+    description: 'description',
+    stock_initial: 'initialStock', stock: 'initialStock',
+    stock_minimum: 'minQuantity', seuil_alerte: 'minQuantity', minquantity: 'minQuantity',
+  },
+  stock: {
+    nom: 'name', name: 'name', produit: 'name', article: 'name',
+    quantite: 'quantity', quantity: 'quantity', qte: 'quantity',
+    prix_unitaire: 'unitPrice', unitprice: 'unitPrice', prix: 'unitPrice',
+    quantite_min: 'minQuantity', stock_minimum: 'minQuantity', seuil_alerte: 'minQuantity', minquantity: 'minQuantity',
+    sku: 'sku', code_sku: 'sku',
+    emplacement: 'location', location: 'location',
+  },
+  sales: {
+    produit: 'productName', product: 'productName', nom: 'productName',
+    quantite: 'quantity', quantity: 'quantity', qte: 'quantity',
+    prix_unitaire: 'unitPrice', unitprice: 'unitPrice', prix: 'unitPrice',
+    remise: 'discount', discount: 'discount',
+    date: 'date',
+    client: 'customerName', customer: 'customerName',
+    description: 'description',
+  },
+  customers: {
+    nom: 'name', name: 'name', client: 'name',
+    email: 'email', mail: 'email',
+    telephone: 'phone', phone: 'phone', tel: 'phone',
+    remise: 'discount', discount: 'discount',
+    notes: 'notes', note: 'notes',
+  },
+  expenses: {
+    montant: 'amount', amount: 'amount',
+    categorie: 'category', category: 'category', type: 'category',
+    description: 'description',
+    date: 'date',
+  },
+};
+
+const CSV_REQUIRED_COLUMNS = {
+  products: { required: ['name', 'unitPrice', 'costPrice'], help: 'nom;prix_vente;prix_revient;categorie;description;stock_initial;stock_minimum' },
+  stock: { required: ['name', 'quantity'], help: 'produit;quantite;prix_unitaire;quantite_min;sku;emplacement' },
+  sales: { required: ['productName'], help: 'produit;quantite;prix_unitaire;remise;date;client;description' },
+  customers: { required: ['name'], help: 'nom;email;telephone;remise;notes' },
+  expenses: { required: ['amount', 'category'], help: 'montant;categorie;description;date' },
+};
+
+// Transforme les lignes CSV en objets { champCanonique: valeur, _line: n° de ligne }
+const mapCsvRows = (rows, type) => {
+  const aliases = CSV_COLUMN_ALIASES[type];
+  const headers = rows[0].cells.map(h => aliases[normalizeCsvHeader(h)] || null);
+  const mappedKeys = headers.filter(Boolean);
+
+  const missing = CSV_REQUIRED_COLUMNS[type].required.filter(key => !mappedKeys.includes(key));
+  if (missing.length > 0) {
+    const error = new Error(
+      `Colonnes obligatoires manquantes dans l'en-tête. Colonnes attendues : ${CSV_REQUIRED_COLUMNS[type].help}`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return rows.slice(1).map(({ cells, line }) => {
+    const record = { _line: line };
+    headers.forEach((key, i) => {
+      if (key && cells[i] !== undefined) record[key] = cells[i].trim();
+    });
+    return record;
+  });
+};
+
+const csvNameKey = (name) => name.trim().toLowerCase();
+
+const createStockEntryMovement = async ({ projectId, stock, quantity, previousQuantity, userId, reason }) => {
+  await new StockMovement({
+    projectId,
+    stockId: stock._id,
+    productId: stock.productId,
+    type: 'in',
+    quantity,
+    previousQuantity,
+    newQuantity: stock.quantity,
+    unitPrice: stock.unitPrice,
+    reason: reason || 'Import CSV',
+    userId,
+  }).save();
+};
+
+const importProductsCsv = async (records, { projectId, userId }) => {
+  const errors = [];
+  let inserted = 0;
+
+  const [existingProducts, existingCategories] = await Promise.all([
+    Product.find({ projectId }).select('name').lean(),
+    Category.find({ projectId }).select('name').lean(),
+  ]);
+  const productNames = new Set(existingProducts.map(p => csvNameKey(p.name)));
+  const categoryNames = new Set(existingCategories.map(c => csvNameKey(c.name)));
+
+  for (const record of records) {
+    const name = (record.name || '').trim();
+    if (!name) { errors.push({ line: record._line, message: 'Le nom du produit est requis' }); continue; }
+    if (productNames.has(csvNameKey(name))) { errors.push({ line: record._line, message: `Le produit "${name}" existe déjà` }); continue; }
+
+    const unitPrice = parseCsvNumber(record.unitPrice);
+    const costPrice = parseCsvNumber(record.costPrice);
+    if (unitPrice === null || unitPrice < 0) { errors.push({ line: record._line, message: 'prix_vente invalide (nombre positif attendu, ex: 25.00)' }); continue; }
+    if (costPrice === null || costPrice < 0) { errors.push({ line: record._line, message: 'prix_revient invalide (nombre positif attendu, ex: 10.50)' }); continue; }
+
+    let initialStock = null;
+    if (record.initialStock !== undefined && record.initialStock !== '') {
+      initialStock = parseCsvNumber(record.initialStock);
+      if (initialStock === null || initialStock < 0) { errors.push({ line: record._line, message: 'stock_initial invalide (nombre positif attendu)' }); continue; }
+    }
+    let minQuantity = 0;
+    if (record.minQuantity !== undefined && record.minQuantity !== '') {
+      minQuantity = parseCsvNumber(record.minQuantity);
+      if (minQuantity === null || minQuantity < 0) { errors.push({ line: record._line, message: 'stock_minimum invalide (nombre positif attendu)' }); continue; }
+    }
+
+    const category = (record.category || '').trim();
+    const product = new Product({
+      projectId,
+      name,
+      unitPrice,
+      costPrice,
+      category: category || undefined,
+      description: (record.description || '').trim() || undefined,
+    });
+    await product.save();
+    productNames.add(csvNameKey(name));
+
+    // Créer la catégorie si elle n'existe pas encore
+    if (category && !categoryNames.has(csvNameKey(category))) {
+      await new Category({ projectId, name: category }).save();
+      categoryNames.add(csvNameKey(category));
+    }
+
+    // Créer le stock lié si stock_initial est renseigné
+    if (initialStock !== null) {
+      const stock = new Stock({
+        projectId,
+        productId: product._id,
+        name,
+        quantity: initialStock,
+        unitPrice,
+        minQuantity,
+      });
+      await stock.save();
+      await createStockEntryMovement({ projectId, stock, quantity: initialStock, previousQuantity: 0, userId, reason: 'Import CSV (stock initial)' });
+    }
+
+    inserted++;
+  }
+
+  return { inserted, errors };
+};
+
+const importStockCsv = async (records, { projectId, userId }) => {
+  const errors = [];
+  let inserted = 0;
+  let updated = 0;
+
+  const [products, stockItems] = await Promise.all([
+    Product.find({ projectId }).select('name unitPrice').lean(),
+    Stock.find({ projectId }),
+  ]);
+  const productsByName = new Map(products.map(p => [csvNameKey(p.name), p]));
+  const stockByName = new Map(stockItems.map(s => [csvNameKey(s.name), s]));
+
+  for (const record of records) {
+    const name = (record.name || '').trim();
+    if (!name) { errors.push({ line: record._line, message: "Le nom de l'article est requis" }); continue; }
+
+    const quantity = parseCsvNumber(record.quantity);
+    if (quantity === null || quantity < 0) { errors.push({ line: record._line, message: 'quantite invalide (nombre positif attendu)' }); continue; }
+
+    const product = productsByName.get(csvNameKey(name));
+    let unitPrice = parseCsvNumber(record.unitPrice);
+    if (unitPrice === null) unitPrice = product ? product.unitPrice : null;
+    if (unitPrice === null || unitPrice < 0) {
+      errors.push({ line: record._line, message: `prix_unitaire requis : aucun produit "${name}" trouvé pour reprendre son prix` });
+      continue;
+    }
+
+    let minQuantity = null;
+    if (record.minQuantity !== undefined && record.minQuantity !== '') {
+      minQuantity = parseCsvNumber(record.minQuantity);
+      if (minQuantity === null || minQuantity < 0) { errors.push({ line: record._line, message: 'quantite_min invalide (nombre positif attendu)' }); continue; }
+    }
+
+    const existing = stockByName.get(csvNameKey(name));
+    if (existing) {
+      // Article déjà en stock : la quantité importée est ajoutée (entrée de stock)
+      const previousQuantity = existing.quantity;
+      existing.quantity = previousQuantity + quantity;
+      existing.unitPrice = unitPrice;
+      if (minQuantity !== null) existing.minQuantity = minQuantity;
+      if (record.sku) existing.sku = record.sku;
+      if (record.location) existing.location = record.location;
+      if (!existing.productId && product) existing.productId = product._id;
+      existing.updatedAt = Date.now();
+      await existing.save();
+      if (quantity > 0) {
+        await createStockEntryMovement({ projectId, stock: existing, quantity, previousQuantity, userId });
+      }
+      updated++;
+    } else {
+      const stock = new Stock({
+        projectId,
+        productId: product ? product._id : undefined,
+        name,
+        quantity,
+        unitPrice,
+        minQuantity: minQuantity !== null ? minQuantity : 0,
+        sku: record.sku || undefined,
+        location: record.location || undefined,
+      });
+      await stock.save();
+      stockByName.set(csvNameKey(name), stock);
+      if (quantity > 0) {
+        await createStockEntryMovement({ projectId, stock, quantity, previousQuantity: 0, userId });
+      }
+      inserted++;
+    }
+  }
+
+  return { inserted, updated, errors };
+};
+
+const importSalesCsv = async (records, { projectId, userId, options }) => {
+  const errors = [];
+  let inserted = 0;
+  const updateStock = options.updateStock === true;
+
+  const [products, customers] = await Promise.all([
+    Product.find({ projectId }).select('name unitPrice').lean(),
+    Customer.find({ projectId }),
+  ]);
+  const productsByName = new Map(products.map(p => [csvNameKey(p.name), p]));
+  const customersByName = new Map(customers.map(c => [csvNameKey(c.name), c]));
+
+  for (const record of records) {
+    const productName = (record.productName || '').trim();
+    if (!productName) { errors.push({ line: record._line, message: 'Le nom du produit est requis' }); continue; }
+
+    const product = productsByName.get(csvNameKey(productName));
+    if (!product) { errors.push({ line: record._line, message: `Produit "${productName}" introuvable — importez ou créez d'abord vos produits` }); continue; }
+
+    const quantity = record.quantity !== undefined && record.quantity !== '' ? parseCsvNumber(record.quantity) : 1;
+    if (quantity === null || quantity <= 0) { errors.push({ line: record._line, message: 'quantite invalide (nombre supérieur à 0 attendu)' }); continue; }
+
+    const unitPrice = record.unitPrice !== undefined && record.unitPrice !== '' ? parseCsvNumber(record.unitPrice) : product.unitPrice;
+    if (unitPrice === null || unitPrice < 0) { errors.push({ line: record._line, message: 'prix_unitaire invalide (nombre positif attendu)' }); continue; }
+
+    const discount = record.discount !== undefined && record.discount !== '' ? parseCsvNumber(record.discount) : 0;
+    if (discount === null || discount < 0) { errors.push({ line: record._line, message: 'remise invalide (nombre positif attendu)' }); continue; }
+
+    const date = parseCsvDate(record.date);
+    if (date === undefined) { errors.push({ line: record._line, message: 'date invalide (formats acceptés : JJ/MM/AAAA, JJ/MM/AAAA HH:MM ou AAAA-MM-JJ)' }); continue; }
+
+    // Client optionnel : réutilisé s'il existe, créé sinon
+    let customer = null;
+    const customerName = (record.customerName || '').trim();
+    if (customerName) {
+      customer = customersByName.get(csvNameKey(customerName));
+      if (!customer) {
+        customer = new Customer({ projectId, name: customerName });
+        await customer.save();
+        customersByName.set(csvNameKey(customerName), customer);
+      }
+    }
+
+    const amount = (quantity * unitPrice) - discount;
+    const sale = new Sale({
+      projectId,
+      productId: product._id,
+      customerId: customer ? customer._id : undefined,
+      quantity,
+      unitPrice,
+      discount,
+      description: (record.description || '').trim() || 'Import CSV',
+      amount,
+      date: date || new Date(),
+      employeeId: userId,
+    });
+    await sale.save();
+
+    // Mise à jour fidélité client (même logique que POST /sales)
+    if (customer) {
+      customer.totalPurchases += amount;
+      customer.loyaltyPoints += Math.floor(amount / 10);
+      if (!customer.lastPurchaseDate || sale.date > customer.lastPurchaseDate) {
+        customer.lastPurchaseDate = sale.date;
+      }
+      if (customer.loyaltyPoints >= 1000) { customer.loyaltyLevel = 'platinum'; customer.discount = 15; }
+      else if (customer.loyaltyPoints >= 500) { customer.loyaltyLevel = 'gold'; customer.discount = 10; }
+      else if (customer.loyaltyPoints >= 200) { customer.loyaltyLevel = 'silver'; customer.discount = 5; }
+      else if (customer.loyaltyPoints >= 50) { customer.loyaltyLevel = 'bronze'; customer.discount = 2; }
+      customer.history.push({
+        date: sale.date,
+        amount,
+        description: sale.description,
+        saleId: sale._id,
+      });
+      await customer.save();
+    }
+
+    // Déduction du stock uniquement si demandé (inutile pour un historique déjà écoulé)
+    if (updateStock) {
+      const stockItem = await Stock.findOne({
+        projectId,
+        $or: [{ productId: product._id }, { name: product.name }],
+      });
+      if (stockItem) {
+        const previousQuantity = stockItem.quantity;
+        stockItem.quantity = Math.max(0, previousQuantity - quantity);
+        stockItem.updatedAt = Date.now();
+        await stockItem.save();
+        await new StockMovement({
+          projectId,
+          stockId: stockItem._id,
+          productId: product._id,
+          type: 'sale',
+          quantity: -quantity,
+          previousQuantity,
+          newQuantity: stockItem.quantity,
+          unitPrice,
+          reason: 'Vente (import CSV)',
+          saleId: sale._id,
+          userId,
+        }).save();
+      }
+    }
+
+    inserted++;
+  }
+
+  return { inserted, errors };
+};
+
+const importCustomersCsv = async (records, { projectId }) => {
+  const errors = [];
+  let inserted = 0;
+
+  const existing = await Customer.find({ projectId }).select('name').lean();
+  const customerNames = new Set(existing.map(c => csvNameKey(c.name)));
+
+  for (const record of records) {
+    const name = (record.name || '').trim();
+    if (!name) { errors.push({ line: record._line, message: 'Le nom du client est requis' }); continue; }
+    if (customerNames.has(csvNameKey(name))) { errors.push({ line: record._line, message: `Le client "${name}" existe déjà` }); continue; }
+
+    let discount = 0;
+    if (record.discount !== undefined && record.discount !== '') {
+      discount = parseCsvNumber(record.discount);
+      if (discount === null || discount < 0 || discount > 100) { errors.push({ line: record._line, message: 'remise invalide (pourcentage entre 0 et 100 attendu)' }); continue; }
+    }
+
+    await new Customer({
+      projectId,
+      name,
+      email: (record.email || '').trim() || undefined,
+      phone: (record.phone || '').trim() || undefined,
+      discount,
+      notes: (record.notes || '').trim() || undefined,
+    }).save();
+    customerNames.add(csvNameKey(name));
+    inserted++;
+  }
+
+  return { inserted, errors };
+};
+
+const CSV_EXPENSE_CATEGORIES = {
+  achat: 'purchase', achats: 'purchase', purchase: 'purchase',
+  variable: 'variable', variables: 'variable',
+  fixe: 'fixed', fixes: 'fixed', fixed: 'fixed',
+};
+
+const importExpensesCsv = async (records, { projectId }) => {
+  const errors = [];
+  let inserted = 0;
+
+  for (const record of records) {
+    const amount = parseCsvNumber(record.amount);
+    if (amount === null || amount <= 0) { errors.push({ line: record._line, message: 'montant invalide (nombre supérieur à 0 attendu)' }); continue; }
+
+    const category = CSV_EXPENSE_CATEGORIES[normalizeCsvHeader(record.category || '')];
+    if (!category) { errors.push({ line: record._line, message: `categorie invalide "${record.category || ''}" (valeurs acceptées : achat, variable, fixe)` }); continue; }
+
+    const date = parseCsvDate(record.date);
+    if (date === undefined) { errors.push({ line: record._line, message: 'date invalide (formats acceptés : JJ/MM/AAAA ou AAAA-MM-JJ)' }); continue; }
+
+    await new Expense({
+      projectId,
+      amount,
+      category,
+      description: (record.description || '').trim() || undefined,
+      date: date || new Date(),
+    }).save();
+    inserted++;
+  }
+
+  return { inserted, errors };
+};
+
+const CSV_IMPORTERS = {
+  products: importProductsCsv,
+  stock: importStockCsv,
+  sales: importSalesCsv,
+  customers: importCustomersCsv,
+  expenses: importExpensesCsv,
+};
+
+const CSV_IMPORT_MAX_ROWS = 2000;
+
+app.post('/BussnessApp/import-csv', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+  try {
+    const { projectId, type, csv, options = {} } = req.body;
+
+    if (!projectId) {
+      return res.status(400).json({ error: 'projectId est requis' });
+    }
+    const importer = CSV_IMPORTERS[type];
+    if (!importer) {
+      return res.status(400).json({ error: `Type d'import invalide. Types acceptés : ${Object.keys(CSV_IMPORTERS).join(', ')}` });
+    }
+    if (!csv || typeof csv !== 'string' || csv.trim() === '') {
+      return res.status(400).json({ error: 'Le fichier CSV est vide' });
+    }
+
+    const rows = parseCsv(csv);
+    if (rows.length < 2) {
+      return res.status(400).json({ error: "Le fichier doit contenir une ligne d'en-têtes et au moins une ligne de données" });
+    }
+    if (rows.length - 1 > CSV_IMPORT_MAX_ROWS) {
+      return res.status(400).json({ error: `Maximum ${CSV_IMPORT_MAX_ROWS} lignes par import (${rows.length - 1} reçues). Découpez votre fichier.` });
+    }
+
+    const records = mapCsvRows(rows, type);
+    const result = await importer(records, { projectId, userId: req.user.id, options });
+
+    console.log(`Import CSV ${type} (projet ${projectId}) : ${result.inserted} créé(s), ${result.updated || 0} mis à jour, ${result.errors.length} erreur(s)`);
+
+    res.json({
+      data: {
+        type,
+        total: records.length,
+        inserted: result.inserted,
+        updated: result.updated || 0,
+        errors: result.errors,
+      },
+    });
+  } catch (error) {
+    console.error('Error importing CSV:', error);
+    res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
 // Users Routes
 app.get('/BussnessApp/users', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
@@ -2458,6 +3209,17 @@ app.get('/BussnessApp/schedules/user/:userId', authenticateToken, async (req, re
 });
 
 // Créer un nouveau planning (simple ou récurrent)
+// Calcule la durée d'un shift en heures. Gère les shifts de nuit :
+// si l'heure de fin est antérieure à l'heure de début, le shift se termine le lendemain.
+function computeShiftDuration(startTime, endTime) {
+  const start = new Date(`2000-01-01T${startTime}`);
+  let end = new Date(`2000-01-01T${endTime}`);
+  if (end < start) {
+    end = new Date(end.getTime() + 24 * 60 * 60 * 1000); // shift de nuit (passe minuit)
+  }
+  return (end - start) / (1000 * 60 * 60);
+}
+
 app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const { userId, date, startTime, endTime, notes, projectId, isRecurring, recurringDays, endDate } = req.body;
@@ -2466,20 +3228,17 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
       return res.status(400).json({ error: 'Tous les champs requis doivent être remplis' });
     }
 
-    // Calculer la durée
-    const start = new Date(`2000-01-01 ${startTime}`);
-    const end = new Date(`2000-01-01 ${endTime}`);
-    const duration = (end - start) / (1000 * 60 * 60); // Durée en heures
+    // Calculer la durée (gère les shifts de nuit qui passent minuit)
+    const duration = computeShiftDuration(startTime, endTime);
 
     if (duration <= 0) {
-      return res.status(400).json({ error: 'L\'heure de fin doit être après l\'heure de début' });
+      return res.status(400).json({ error: 'L\'heure de fin doit être différente de l\'heure de début' });
     }
 
     // Si c'est un planning récurrent
     if (isRecurring && recurringDays && recurringDays.length > 0) {
       const startDate = new Date(date);
       const finalEndDate = endDate ? new Date(endDate) : new Date(startDate.getTime() + 90 * 24 * 60 * 60 * 1000); // 90 jours par défaut
-      const createdSchedules = [];
 
       // Construire tous les documents en mémoire, puis insertMany en une seule requête
       const scheduleDocs = [];
@@ -2513,7 +3272,7 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
       res.status(201).json({
         data: populatedSchedules,
         count: inserted.length,
-        message: `${createdSchedules.length} planning(s) créé(s) avec succès`
+        message: `${inserted.length} planning(s) créé(s) avec succès`
       });
     } else {
       // Planning simple (une seule date)
@@ -2560,25 +3319,30 @@ app.put('/BussnessApp/schedules/:id', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Non autorisé' });
     }
 
-    // Calculer la nouvelle durée si les heures changent
-    if (startTime && endTime) {
-      const start = new Date(`2000-01-01 ${startTime}`);
-      const end = new Date(`2000-01-01 ${endTime}`);
-      const duration = (end - start) / (1000 * 60 * 60);
+    // Un salarié ne peut modifier QUE le dailySalary de son propre shift.
+    // Les heures, la date et le statut (qui déclenche la paie) restent réservés aux admin/manager/responsable,
+    // pour qu'un employé ne puisse pas s'auto-attribuer un shift "completed" avec le salaire de son choix.
+    if (isAdmin) {
+      // Calculer la nouvelle durée si les heures changent (gère les shifts de nuit)
+      if (startTime && endTime) {
+        const duration = computeShiftDuration(startTime, endTime);
 
-      if (duration <= 0) {
-        return res.status(400).json({ error: 'L\'heure de fin doit être après l\'heure de début' });
+        if (duration <= 0) {
+          return res.status(400).json({ error: 'L\'heure de fin doit être différente de l\'heure de début' });
+        }
+
+        schedule.duration = duration;
       }
 
-      schedule.duration = duration;
+      if (date) schedule.date = new Date(date);
+      if (startTime) schedule.startTime = startTime;
+      if (endTime) schedule.endTime = endTime;
+      if (status) schedule.status = status;
+      if (notes !== undefined) schedule.notes = notes;
     }
 
-    if (date) schedule.date = new Date(date);
-    if (startTime) schedule.startTime = startTime;
-    if (endTime) schedule.endTime = endTime;
-    if (status) schedule.status = status;
-    if (notes !== undefined) schedule.notes = notes;
-    // Permettre de définir dailySalary (null pour revenir au calcul par défaut)
+    // dailySalary (null = retour au calcul par défaut) : modifiable par un admin
+    // ou par le salarié sur son propre shift.
     if (dailySalary !== undefined) schedule.dailySalary = dailySalary;
     schedule.updatedAt = Date.now();
 
@@ -2983,14 +3747,16 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, asyn
     }
 
     const { projectId } = req.params;
-    const { month, year } = req.query;
+    const { month, year, scope } = req.query;
 
     // Période : mois demandé ou mois en cours
     const now = new Date();
     const m = month ? parseInt(month) : now.getMonth() + 1;
     const y = year ? parseInt(year) : now.getFullYear();
+    const isAllTime = scope === 'all';
     const periodStart = new Date(y, m - 1, 1);
-    const periodEnd = new Date(y, m, 0, 23, 59, 59);
+    const periodEnd = new Date(y, m, 1);
+    const dateFilter = isAllTime ? {} : { date: { $gte: periodStart, $lt: periodEnd } };
 
     // Tous les utilisateurs actifs du projet
     const employees = await User.find({
@@ -3006,12 +3772,12 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, asyn
         userId: { $in: employeeIds },
         projectId,
         status: 'completed',
-        date: { $gte: periodStart, $lte: periodEnd }
+        ...dateFilter
       }).lean(),
       Commission.find({
         userId: { $in: employeeIds },
         projectId,
-        date: { $gte: periodStart, $lte: periodEnd }
+        ...dateFilter
       }).lean()
     ]);
 
@@ -3073,7 +3839,9 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, asyn
       period: {
         month: m,
         year: y,
-        label: periodStart.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+        label: isAllTime
+          ? 'Depuis le début'
+          : periodStart.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
       },
       employees: results,
       totals
@@ -3186,15 +3954,12 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
   try {
     const { projectId } = req.params;
 
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
     const [sales, expenses, stock, schedules, commissions, employees] = await Promise.all([
-      Sale.find({ projectId, date: { $gte: sixMonthsAgo } }).populate('productId', 'name').lean(),
-      Expense.find({ projectId, date: { $gte: sixMonthsAgo } }).lean(),
+      Sale.find({ projectId }).populate('productId', 'name').lean(),
+      Expense.find({ projectId }).lean(),
       Stock.find({ projectId }).lean(),
-      Schedule.find({ projectId, status: 'completed', date: { $gte: sixMonthsAgo } }).lean(),
-      Commission.find({ projectId, date: { $gte: sixMonthsAgo } }).lean(),
+      Schedule.find({ projectId, status: 'completed' }).lean(),
+      Commission.find({ projectId }).lean(),
       User.find({
         $or: [{ projectId }, { projectIds: projectId }],
         isActive: true
@@ -3222,11 +3987,11 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
 
     const netProfit = totalSales - totalExpenses - totalSalaries - totalCommissions;
 
-    // Calculer les données mensuelles pour les 6 derniers mois
+    // Calculer les données mensuelles pour les 12 derniers mois
     const now = new Date();
     const monthlyData = [];
 
-    for (let i = 5; i >= 0; i--) {
+    for (let i = 11; i >= 0; i--) {
       const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const nextMonthDate = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
 
@@ -3264,11 +4029,13 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, async (req, res)
       const monthlyCommissionsTotal = monthCommissions.reduce((sum, c) => sum + c.amount, 0);
 
       monthlyData.push({
+        key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
         month: monthDate.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' }),
         sales: monthlySalesTotal,
         expenses: monthlyExpensesTotal,
         salaries: monthlySalariesTotal,
         commissions: monthlyCommissionsTotal,
+        charges: monthlyExpensesTotal + monthlySalariesTotal + monthlyCommissionsTotal,
         profit: monthlySalesTotal - monthlyExpensesTotal - monthlySalariesTotal - monthlyCommissionsTotal
       });
     }
@@ -4015,7 +4782,8 @@ app.get('/BussnessApp/subscription/my', authenticateToken, async (req, res) => {
       subscription.status = 'expired';
       subscription.updatedAt = new Date();
       await subscription.save();
-      await User.findByIdAndUpdate(subscription.adminId, { isActive: false });
+      // On NE désactive PAS le compte : l'utilisateur expiré doit pouvoir se reconnecter
+      // et voir le paywall pour renouveler (exigence App Review 2.1).
     }
 
     const planData = subscription.planId || {};
@@ -4038,6 +4806,7 @@ app.get('/BussnessApp/subscription/my', authenticateToken, async (req, res) => {
       features: planData.features || [],
       isRecurring: planData.isRecurring || false,
       paymentMethod: subscription.paymentMethod,
+      webappAccess: planData.webappAccess || false,
     });
   } catch (error) {
     console.error('Error fetching subscription:', error);
@@ -4061,12 +4830,350 @@ app.get('/BussnessApp/subscription/plans', async (req, res) => {
       maxProjects: p.maxProjects,
       features: p.features,
       isRecurring: p.isRecurring,
+      webappAccess: p.webappAccess || false,
       tier: p.price === 0 ? 'free' : p.sortOrder <= 1 ? 'basic' : 'premium',
     }));
 
     res.json(plansWithTier);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= CHECKOUT STRIPE SELF-SERVICE (Web App) =============
+// L'utilisateur connecté choisit un plan depuis la webapp et paie directement
+// via Stripe Checkout. L'activation est faite par le webhook existant
+// POST /BussnessApp/backoffice/stripe/webhook (checkout.session.completed),
+// qui matche via metadata.adminId / stripeSessionId.
+
+const WEBAPP_PUBLIC_URL = (process.env.WEBAPP_PUBLIC_URL || 'http://localhost:5174/app').replace(/\/$/, '');
+
+app.post('/BussnessApp/subscription/checkout', authenticateToken, async (req, res) => {
+  try {
+    const { planId } = req.body;
+    if (!planId) {
+      return res.status(400).json({ error: 'planId requis' });
+    }
+
+    const SubscriptionPlan = mongoose.model('SubscriptionPlan');
+    const Subscription = mongoose.model('Subscription');
+    const plan = await SubscriptionPlan.findById(planId);
+    if (!plan || !plan.isActive) {
+      return res.status(404).json({ error: 'Plan introuvable ou inactif' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur introuvable' });
+    }
+
+    const computeEndDate = (duration, durationType) => {
+      const endDate = new Date();
+      if (durationType === 'lifetime') endDate.setFullYear(endDate.getFullYear() + 100);
+      else if (durationType === 'days') endDate.setDate(endDate.getDate() + duration);
+      else if (durationType === 'months') endDate.setMonth(endDate.getMonth() + duration);
+      else if (durationType === 'years') endDate.setFullYear(endDate.getFullYear() + duration);
+      return endDate;
+    };
+
+    // Plan gratuit : activation immédiate, pas de Stripe
+    if (plan.price === 0) {
+      const existing = await Subscription.findOne({
+        adminId: user._id,
+        status: 'active',
+      }).sort({ createdAt: -1 });
+      if (existing && new Date(existing.endDate) > new Date()) {
+        return res.status(400).json({ error: 'Vous avez déjà un abonnement actif' });
+      }
+
+      const subscription = new Subscription({
+        adminId: user._id,
+        planId: plan._id,
+        planName: plan.name,
+        plan: 'custom',
+        status: 'active',
+        startDate: new Date(),
+        endDate: computeEndDate(plan.duration, plan.durationType),
+        amount: 0,
+        duration: plan.duration,
+        durationType: plan.durationType,
+        maxProjects: plan.maxProjects,
+        paymentMethod: 'donation',
+      });
+      await subscription.save();
+      user.isActive = true;
+      await user.save();
+
+      return res.json({ activated: true });
+    }
+
+    if (!stripeForExpiry) {
+      return res.status(503).json({ error: 'Paiement par carte indisponible (Stripe non configuré)' });
+    }
+
+    // Annule les anciennes tentatives en attente pour éviter que le webhook
+    // (fallback { adminId, status: 'pending_payment' }) matche un vieux document.
+    await Subscription.updateMany(
+      { adminId: user._id, status: 'pending_payment' },
+      { $set: { status: 'cancelled', updatedAt: new Date() } }
+    );
+
+    const subscription = new Subscription({
+      adminId: user._id,
+      planId: plan._id,
+      planName: plan.name,
+      plan: plan.durationType === 'lifetime' ? 'lifetime' : (plan.duration >= 12 && plan.durationType === 'months') ? 'yearly' : 'custom',
+      status: 'pending_payment',
+      startDate: null,
+      endDate: null,
+      amount: plan.price,
+      currency: plan.currency,
+      duration: plan.duration,
+      durationType: plan.durationType,
+      maxProjects: plan.maxProjects,
+      paymentMethod: 'card',
+      createdBy: user._id,
+    });
+    await subscription.save();
+
+    const isRecurring = plan.isRecurring && plan.durationType !== 'lifetime';
+    let recurringInterval = 'month';
+    if (plan.durationType === 'years') recurringInterval = 'year';
+    else if (plan.durationType === 'months' && plan.duration >= 12) recurringInterval = 'year';
+
+    const session = await stripeForExpiry.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: (plan.currency || 'EUR').toLowerCase(),
+          product_data: {
+            name: `BussnessApp - ${plan.name}`,
+            description: `${plan.name} pour ${user.fullName} (max ${plan.maxProjects} business)`,
+          },
+          unit_amount: Math.round(plan.price * 100),
+          ...(isRecurring ? { recurring: { interval: recurringInterval } } : {}),
+        },
+        quantity: 1,
+      }],
+      mode: isRecurring ? 'subscription' : 'payment',
+      success_url: `${WEBAPP_PUBLIC_URL}/abonnement/succes?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${WEBAPP_PUBLIC_URL}/abonnement?canceled=1`,
+      customer_email: user.email,
+      metadata: {
+        adminId: user._id.toString(),
+        subscriptionId: subscription._id.toString(),
+        source: 'webapp',
+      },
+    });
+
+    subscription.stripeSessionId = session.id;
+    subscription.stripePaymentLinkUrl = session.url;
+    await subscription.save();
+
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error('Erreur création checkout:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Polling après retour de Stripe : la webapp attend que le webhook active l'abonnement.
+app.get('/BussnessApp/subscription/checkout-status', authenticateToken, async (req, res) => {
+  try {
+    const { session_id } = req.query;
+    if (!session_id) {
+      return res.status(400).json({ error: 'session_id requis' });
+    }
+
+    const Subscription = mongoose.model('Subscription');
+    const subscription = await Subscription.findOne({
+      stripeSessionId: session_id,
+      adminId: req.user.id,
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ error: 'Session introuvable' });
+    }
+
+    res.json({ status: subscription.status });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============= IAP Receipt Validation =============
+// ===== Vérification du reçu IAP Apple (StoreKit 2 / JWS) =====
+// Le client (react-native-iap v15) envoie `purchaseToken`, qui sur iOS est le JWS
+// signé par Apple. On le vérifie de façon cryptographique et hors-ligne :
+//   1) la chaîne de certificats x5c du header doit remonter à l'Apple Root CA - G3 (épinglé),
+//   2) la signature ES256 doit être valide,
+//   3) le bundleId / productId / expiration du payload sont contrôlés.
+// L'empreinte du root CA est une info PUBLIQUE (pas un secret) ; elle est fournie par env
+// pour ne pas coder en dur une valeur potentiellement erronée.
+const APPLE_ROOT_CA_G3_SHA256 = (process.env.APPLE_ROOT_CA_G3_SHA256 || '').toLowerCase().replace(/[^a-f0-9]/g, '');
+const APPLE_BUNDLE_ID = process.env.APPLE_BUNDLE_ID || '';
+
+function b64urlToBuffer(s) {
+  return Buffer.from(String(s).replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+}
+function certSha256(cert) {
+  return cert.fingerprint256.toLowerCase().replace(/[^a-f0-9]/g, '');
+}
+
+// Renvoie le payload décodé et VÉRIFIÉ, ou lève une erreur (fail-closed).
+function verifyAppleSignedTransaction(jws, expectedProductId) {
+  if (!APPLE_ROOT_CA_G3_SHA256) {
+    const err = new Error('IAP_NOT_CONFIGURED');
+    err.code = 'IAP_NOT_CONFIGURED';
+    throw err;
+  }
+  const parts = String(jws || '').split('.');
+  if (parts.length !== 3) throw new Error('INVALID_JWS_FORMAT');
+  const [headerB64, payloadB64, signatureB64] = parts;
+
+  const header = JSON.parse(b64urlToBuffer(headerB64).toString('utf8'));
+  if (header.alg !== 'ES256') throw new Error('UNEXPECTED_ALG');
+  if (!Array.isArray(header.x5c) || header.x5c.length < 2) throw new Error('MISSING_CERT_CHAIN');
+
+  // x5c = [leaf, intermediate, root] en base64 DER
+  const certs = header.x5c.map((b64) => new crypto.X509Certificate(Buffer.from(b64, 'base64')));
+  const leaf = certs[0];
+  const root = certs[certs.length - 1];
+
+  // 1) Le root doit être l'Apple Root CA - G3 épinglé
+  if (certSha256(root) !== APPLE_ROOT_CA_G3_SHA256) throw new Error('ROOT_CA_MISMATCH');
+  // 2) Chaîne de confiance : chaque cert est signé par le suivant, le root est auto-signé
+  for (let i = 0; i < certs.length - 1; i++) {
+    if (!certs[i].verify(certs[i + 1].publicKey)) throw new Error('CERT_CHAIN_INVALID');
+  }
+  if (!root.verify(root.publicKey)) throw new Error('ROOT_NOT_SELF_SIGNED');
+  // Validité temporelle des certificats
+  const nowMs = Date.now();
+  for (const c of certs) {
+    if (nowMs < Date.parse(c.validFrom) || nowMs > Date.parse(c.validTo)) throw new Error('CERT_EXPIRED');
+  }
+
+  // 3) Signature JWS ES256 (r||s brut => ieee-p1363)
+  const ok = crypto.verify(
+    'sha256',
+    Buffer.from(`${headerB64}.${payloadB64}`),
+    { key: leaf.publicKey, dsaEncoding: 'ieee-p1363' },
+    b64urlToBuffer(signatureB64)
+  );
+  if (!ok) throw new Error('SIGNATURE_INVALID');
+
+  // 4) Contenu
+  const payload = JSON.parse(b64urlToBuffer(payloadB64).toString('utf8'));
+  if (APPLE_BUNDLE_ID && payload.bundleId && payload.bundleId !== APPLE_BUNDLE_ID) {
+    throw new Error('BUNDLE_ID_MISMATCH');
+  }
+  if (expectedProductId && payload.productId && payload.productId !== expectedProductId) {
+    throw new Error('PRODUCT_ID_MISMATCH');
+  }
+  if (payload.expiresDate && payload.expiresDate < Date.now()) {
+    throw new Error('SUBSCRIPTION_EXPIRED');
+  }
+  return payload;
+}
+
+app.post('/BussnessApp/subscription/validate-receipt', authenticateToken, async (req, res) => {
+  try {
+    const { receipt, productId, platform } = req.body;
+    if (!receipt || !productId) {
+      return res.status(400).json({ error: 'Receipt and productId are required' });
+    }
+
+    // Ce flux est réservé à l'IAP iOS. Android passe par l'activation manuelle.
+    if (platform && platform !== 'ios') {
+      return res.status(400).json({ error: 'Validation IAP réservée à iOS' });
+    }
+
+    // Vérification cryptographique du reçu auprès d'Apple AVANT toute activation.
+    let verified;
+    try {
+      verified = verifyAppleSignedTransaction(receipt, productId);
+    } catch (verr) {
+      if (verr.code === 'IAP_NOT_CONFIGURED') {
+        console.error('[IAP] Vérification impossible : APPLE_ROOT_CA_G3_SHA256 non configuré. Reçu rejeté (fail-closed).');
+        return res.status(503).json({ error: 'Validation des achats indisponible (configuration serveur manquante)' });
+      }
+      console.warn(`[IAP] Reçu rejeté pour user ${req.user.id} / ${productId}: ${verr.message}`);
+      return res.status(400).json({ error: 'Reçu invalide', reason: verr.message });
+    }
+
+    const Subscription = mongoose.model('Subscription');
+    const userId = req.user.id;
+
+    // On se base sur le productId VÉRIFIÉ par Apple, pas sur la valeur brute du client.
+    const verifiedProductId = verified.productId || productId;
+
+    // Determine plan tier from product ID
+    let tier = 'basic';
+    let planName = 'EAS Basic';
+    let maxProjects = 1;
+    let durationMonths = 12;
+
+    if (verifiedProductId.includes('standard')) {
+      tier = 'standard';
+      planName = 'EAS Standard';
+      maxProjects = 3;
+    } else if (verifiedProductId.includes('premium')) {
+      tier = 'premium';
+      planName = 'EAS Premium';
+      maxProjects = 100;
+    }
+
+    if (verifiedProductId.includes('monthly')) {
+      durationMonths = 1;
+    }
+
+    const now = new Date();
+    // Date d'expiration : on privilégie celle signée par Apple, sinon on calcule.
+    const endDate = verified.expiresDate
+      ? new Date(verified.expiresDate)
+      : (() => { const d = new Date(now); d.setMonth(d.getMonth() + durationMonths); return d; })();
+
+    // Deactivate old subscriptions
+    await Subscription.updateMany(
+      { adminId: userId, status: 'active' },
+      { status: 'replaced', updatedAt: now }
+    );
+
+    // Create new subscription from IAP
+    const newSub = new Subscription({
+      adminId: userId,
+      planName: planName,
+      plan: tier,
+      status: 'active',
+      amount: 0,
+      currency: 'EUR',
+      startDate: now,
+      endDate: endDate,
+      maxProjects: maxProjects,
+      paymentMethod: 'apple_iap',
+      iapProductId: verifiedProductId,
+      iapOriginalTransactionId: verified.originalTransactionId || verified.transactionId,
+      iapReceipt: receipt.substring(0, 500),
+      createdAt: now,
+      updatedAt: now,
+    });
+    await newSub.save();
+
+    await User.findByIdAndUpdate(userId, { isActive: true });
+
+    res.json({
+      success: true,
+      message: 'Subscription activated via In-App Purchase',
+      subscription: {
+        id: newSub._id,
+        plan: tier,
+        status: 'active',
+        endDate: endDate,
+      }
+    });
+  } catch (error) {
+    console.error('IAP receipt validation error:', error);
+    res.status(500).json({ error: 'Receipt validation failed' });
   }
 });
 
@@ -4189,11 +5296,12 @@ const expireSubscriptions = async () => {
         }
       }
 
-      // 2. Passer le statut à 'expired' et bloquer le compte
+      // 2. Passer le statut à 'expired' (sans désactiver le compte)
       subscription.status = 'expired';
       subscription.updatedAt = new Date();
       await subscription.save();
-      await User.findByIdAndUpdate(subscription.adminId, { isActive: false });
+      // On NE désactive PAS le compte : l'utilisateur doit pouvoir se reconnecter
+      // pour atterrir sur le paywall et renouveler son abonnement (exigence App Review 2.1).
 
       // 3. Envoyer un email de notification à l'utilisateur
       try {
@@ -4247,7 +5355,7 @@ const expireSubscriptions = async () => {
 // Start server
 app.listen(PORT, async () => {
   const publicApiUrl = process.env.BACKEND_PUBLIC_URL || `http://localhost:${PORT}/BussnessApp`;
-  console.log("Version 1.0.1");
+  console.log("Version 1.0.2");
   console.log(`Server is running on port ${PORT}`);
   console.log(`API accessible at http://localhost:${PORT}/BussnessApp`);
   console.log(`Public URL: ${publicApiUrl}`);

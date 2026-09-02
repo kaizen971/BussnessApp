@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, LayoutAnimation, Platform, UIManager } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, gradients } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 
 if (Platform.OS === 'android') {
     if (UIManager.setLayoutAnimationEnabledExperimental) {
@@ -11,6 +11,8 @@ if (Platform.OS === 'android') {
 }
 
 export const TutorialScreen = ({ navigation }) => {
+  const { colors, gradients } = useTheme();
+  const styles = useThemedStyles(createStyles);
     const [expandedStep, setExpandedStep] = useState(0);
     const [completedSteps, setCompletedSteps] = useState([]);
 
@@ -130,6 +132,8 @@ export const TutorialScreen = ({ navigation }) => {
     const handleAction = (route) => {
         if (route === 'CREATE_CATEGORY') {
             navigation.navigate('Categories');
+        } else if (['Dashboard', 'Sales', 'Products', 'Customers'].includes(route)) {
+            navigation.navigate('Main', { screen: route });
         } else {
             navigation.navigate(route);
         }
@@ -252,7 +256,7 @@ export const TutorialScreen = ({ navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
     container: {
         flex: 1,
         backgroundColor: colors.background,
@@ -279,7 +283,7 @@ const styles = StyleSheet.create({
     },
     headerTitle: {
         fontSize: 20,
-        fontWeight: 'bold',
+        fontWeight: '700',
         color: colors.text,
     },
     progressBarContainer: {
@@ -364,7 +368,7 @@ const styles = StyleSheet.create({
     },
     stepTitle: {
         fontSize: 16,
-        fontWeight: 'bold',
+        fontWeight: '700',
         color: colors.text,
         marginBottom: 4,
     },
@@ -413,7 +417,7 @@ const styles = StyleSheet.create({
     },
     actionButtonText: {
         color: colors.secondary,
-        fontWeight: 'bold',
+        fontWeight: '700',
         fontSize: 14,
     },
     doneButton: {

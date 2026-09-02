@@ -115,6 +115,7 @@ export const authAPI = {
   refreshToken: () => refreshAuthToken(),
   getCurrentUser: () => api.get('/auth/me'),
   changePassword: (oldPassword, newPassword) => api.post('/auth/change-password', { oldPassword, newPassword }),
+  deleteAccount: (password) => api.post('/auth/delete-account', { password }),
   updateProfilePhoto: (imageUri) => {
     const formData = new FormData();
     formData.append('profilePhoto', {
@@ -140,7 +141,7 @@ export const projectsAPI = {
 
 // Sales API
 export const salesAPI = {
-  getAll: (projectId) => api.get('/sales', { params: { projectId } }),
+  getAll: (projectId, filters = {}) => api.get('/sales', { params: { projectId, ...filters } }),
   create: (data) => api.post('/sales', data),
   update: (saleId, data) => api.put(`/sales/${saleId}`, data),
   refund: (saleId) => api.post(`/sales/${saleId}/refund`),
@@ -148,7 +149,7 @@ export const salesAPI = {
 
 // Expenses API
 export const expensesAPI = {
-  getAll: (projectId) => api.get('/expenses', { params: { projectId } }),
+  getAll: (projectId, filters = {}) => api.get('/expenses', { params: { projectId, ...filters } }),
   create: (data) => api.post('/expenses', data),
   update: (id, data) => api.put(`/expenses/${id}`, data),
   delete: (id) => api.delete(`/expenses/${id}`),
@@ -189,7 +190,7 @@ export const dashboardAPI = {
 
 // Team Payroll API
 export const teamPayrollAPI = {
-  getPayroll: (projectId, month, year) => api.get(`/projects/${projectId}/team-payroll`, { params: { month, year } }),
+  getPayroll: (projectId, month, year, scope) => api.get(`/projects/${projectId}/team-payroll`, { params: { month, year, scope } }),
 };
 
 // Feedback API
@@ -262,10 +263,20 @@ export const exportAPI = {
   },
 };
 
+export const csvImportAPI = {
+  importData: (projectId, type, csv, options = {}) => api.post('/import-csv', {
+    projectId,
+    type,
+    csv,
+    options,
+  }),
+};
+
 // Subscription API
 export const subscriptionAPI = {
   getMySubscription: () => api.get('/subscription/my'),
   getPlans: () => api.get('/subscription/plans'),
+  validateReceipt: (data) => api.post('/subscription/validate-receipt', data),
 };
 
 // Legal API (pas besoin d'authentification)

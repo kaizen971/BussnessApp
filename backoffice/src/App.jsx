@@ -6,6 +6,8 @@ import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
 import AccessGatePage from './pages/AccessGatePage'
 import LoginPage from './pages/LoginPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 import DashboardPage from './pages/DashboardPage'
 import AdminsPage from './pages/AdminsPage'
 import CreateAdminPage from './pages/CreateAdminPage'
@@ -42,6 +44,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<DashboardPage />} />
         <Route path="admins" element={<AdminsPage />} />
@@ -127,11 +130,21 @@ export default function App() {
             },
           }}
         />
-        <AccessGateWrapper>
-          <AuthProvider>
-            <AppRoutes />
-          </AuthProvider>
-        </AccessGateWrapper>
+        <Routes>
+          {/* Hors portail : le lien reçu par email est ouvert sans code d'accès en session,
+              le token de réinitialisation faisant lui-même office de secret */}
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route
+            path="*"
+            element={
+              <AccessGateWrapper>
+                <AuthProvider>
+                  <AppRoutes />
+                </AuthProvider>
+              </AccessGateWrapper>
+            }
+          />
+        </Routes>
       </BrowserRouter>
     </ErrorBoundary>
   )

@@ -9,14 +9,18 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { colors } from '../utils/colors';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { AppHeader } from '../components/AppHeader';
+import { EmptyState } from '../components/AppPrimitives';
 import { Card } from '../components/Card';
 import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import api from '../services/api';
 
 export const CommissionsScreen = ({ navigation }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user, selectedProjectId } = useAuth();
   const { format: formatPrice } = useCurrency();
   const [commissions, setCommissions] = useState([]);
@@ -154,26 +158,11 @@ export const CommissionsScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={[colors.surface, colors.background]}
-        style={styles.header}
-      >
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>Commissions</Text>
-            <Text style={styles.subtitle}>
-              {isAdmin ? `${commissions.length} commission(s)` : 'Mes commissions'}
-            </Text>
-          </View>
-          <View style={{ width: 44 }} />
-        </View>
-      </LinearGradient>
+      <AppHeader
+        title="Commissions"
+        subtitle={isAdmin ? `${commissions.length} commission(s)` : 'Mes commissions'}
+        onBack={() => navigation.goBack()}
+      />
 
       {stats && (
         <LinearGradient
@@ -220,13 +209,11 @@ export const CommissionsScreen = ({ navigation }) => {
           refreshing={loading}
           onRefresh={loadCommissions}
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="cash-outline" size={80} color={colors.textSecondary} />
-              <Text style={styles.emptyText}>Aucune commission</Text>
-              <Text style={styles.emptySubtext}>
-                Les commissions apparaîtront après les ventes
-              </Text>
-            </View>
+            <EmptyState
+              icon="cash-outline"
+              title="Aucune commission"
+              description="Les commissions apparaîtront après les premières ventes."
+            />
           }
         />
       )}
@@ -234,7 +221,7 @@ export const CommissionsScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -267,7 +254,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 2,
   },
@@ -291,7 +278,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginTop: 6,
   },
@@ -337,7 +324,7 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -396,7 +383,7 @@ const styles = StyleSheet.create({
   },
   commissionAmount: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.success,
   },
   commissionActions: {
@@ -417,7 +404,7 @@ const styles = StyleSheet.create({
   },
   payButtonText: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#fff',
   },
   emptyContainer: {
