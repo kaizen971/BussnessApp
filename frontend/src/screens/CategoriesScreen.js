@@ -190,7 +190,7 @@ export const CategoriesScreen = ({ navigation }) => {
                     <Ionicons
                       name={editingCategory ? "create-outline" : "add-circle-outline"}
                       size={28}
-                      color="#000"
+                      color={colors.onPrimary}
                     />
                   </LinearGradient>
                 </View>
@@ -261,10 +261,10 @@ export const CategoriesScreen = ({ navigation }) => {
                   style={styles.saveButton}
                 >
                   {loading ? (
-                    <ActivityIndicator color="#000" />
+                    <ActivityIndicator color={colors.onPrimary} />
                   ) : (
                     <>
-                      <Ionicons name="checkmark-circle" size={20} color="#000" />
+                      <Ionicons name="checkmark-circle" size={20} color={colors.onPrimary} />
                       <Text style={styles.saveButtonText}>
                         {editingCategory ? 'Modifier' : 'Créer'}
                       </Text>
@@ -510,6 +510,6 @@ const createStyles = (colors) => ({
   saveButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#000',
+    color: colors.onPrimary,
   },
 });

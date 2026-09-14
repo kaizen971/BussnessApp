@@ -1,7 +1,7 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authAPI, setCachedToken, clearCachedToken } from '../services/api';
+import { authAPI, setCachedToken, clearCachedToken, setOnSessionInvalidated } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -20,9 +20,28 @@ export const AuthProvider = ({ children }) => {
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [availableProjects, setAvailableProjects] = useState([]);
 
+  const clearSessionState = useCallback(async () => {
+    clearCachedToken();
+    setToken(null);
+    setUser(null);
+    setSelectedProjectId(null);
+    setAvailableProjects([]);
+    try {
+      await AsyncStorage.removeItem('selectedProjectId');
+    } catch (_) {
+      // ignore storage errors during forced logout
+    }
+  }, []);
+
   useEffect(() => {
     loadStoredAuth();
   }, []);
+
+  // Si l'intercepteur API détecte une session morte, on ramène l'UI à l'écran de connexion
+  useEffect(() => {
+    setOnSessionInvalidated(clearSessionState);
+    return () => setOnSessionInvalidated(null);
+  }, [clearSessionState]);
 
   const loadStoredAuth = async () => {
     try {

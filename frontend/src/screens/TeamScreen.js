@@ -684,7 +684,7 @@ export const TeamScreen = ({ navigation }) => {
                     colors={[colors.primary, colors.primaryDark]}
                     style={styles.modalIcon}
                   >
-                    <Ionicons name="person-add" size={28} color="#000" />
+                    <Ionicons name="person-add" size={28} color={colors.onPrimary} />
                   </LinearGradient>
                 </View>
                 <View style={styles.modalTitleContainer}>
@@ -799,10 +799,10 @@ export const TeamScreen = ({ navigation }) => {
                   style={styles.saveButton}
                 >
                   {loading ? (
-                    <ActivityIndicator color="#000" />
+                    <ActivityIndicator color={colors.onPrimary} />
                   ) : (
                     <>
-                      <Ionicons name="person-add" size={20} color="#000" />
+                      <Ionicons name="person-add" size={20} color={colors.onPrimary} />
                       <Text style={styles.saveButtonText}>Créer</Text>
                     </>
                   )}
@@ -2033,7 +2033,7 @@ const createStyles = (colors) => ({
   saveButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#000',
+    color: colors.onPrimary,
   },
   // Styles du modal de changement de rôle
   roleModalOverlay: {

@@ -13,7 +13,14 @@
       "Bash(node scripts/validate_palette.js \"#C98500,#E66767,#3987E5,#9085E9\" --mode dark --surface \"#1A1A1A\")",
       "Bash(node scripts/validate_palette.js \"#C98500,#3987E5,#E66767,#9085E9\" --mode dark --surface \"#1A1A1A\")",
       "Bash(node scripts/validate_palette.js \"#C98500,#3987E5,#E66767,#199E70\" --mode dark --surface \"#1A1A1A\")",
-      "Bash(node scripts/validate_palette.js \"#C98500,#E66767\" --mode dark --surface \"#1A1A1A\")"
+      "Bash(node scripts/validate_palette.js \"#C98500,#E66767\" --mode dark --surface \"#1A1A1A\")",
+      "Bash(node --check backoffice.js)",
+      "Bash(npm run *)",
+      "Bash(unzip -l backoffice/backoffice-dist.zip)",
+      "Bash(ls -la ~/.ssh/ 2>/dev/null | head -20; echo \"--- config ---\"; cat ~/.ssh/config 2>/dev/null | head -20)",
+      "Read(//Users/jordanhoomiz/.ssh/**)",
+      "Bash(nc -z -G 5 52.47.146.19 22)",
+      "Bash(ssh -o BatchMode=yes -o ConnectTimeout=6 -o StrictHostKeyChecking=accept-new ubuntu@52.47.146.19 'echo AUTH_OK')"
     ]
   }
 }

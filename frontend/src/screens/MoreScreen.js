@@ -36,6 +36,7 @@ const GROUPS = [
     title: 'Compte',
     items: [
       { route: 'Subscription', label: 'Abonnement', detail: 'Offre et facturation', icon: 'diamond-outline', admin: true },
+      { route: 'ChangePassword', label: 'Changer le mot de passe', detail: 'Sécurité et accès au compte', icon: 'lock-closed-outline' },
       { route: 'Tutorial', label: 'Guide de démarrage', detail: 'Configurer correctement l’application', icon: 'school-outline' },
       { route: 'Feedback', label: 'Nous écrire', detail: 'Question ou suggestion', icon: 'chatbubble-outline' },
     ],

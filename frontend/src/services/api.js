@@ -15,9 +15,30 @@ const api = axios.create({
 // Cache en mémoire pour éviter de lire AsyncStorage à chaque requête
 let cachedToken = null;
 let refreshPromise = null;
+let onSessionInvalidated = null;
 
 export const setCachedToken = (token) => { cachedToken = token; };
 export const clearCachedToken = () => { cachedToken = null; };
+
+/** Enregistré par AuthContext pour forcer la déconnexion UI si la session est morte */
+export const setOnSessionInvalidated = (callback) => {
+  onSessionInvalidated = callback;
+};
+
+const invalidateSession = async () => {
+  await Promise.all([
+    AsyncStorage.removeItem('userToken'),
+    AsyncStorage.removeItem('userData'),
+  ]);
+  cachedToken = null;
+  if (typeof onSessionInvalidated === 'function') {
+    try {
+      await onSessionInvalidated();
+    } catch (e) {
+      console.error('Session invalidation callback failed:', e);
+    }
+  }
+};
 
 const refreshAuthToken = async () => {
   if (refreshPromise) return refreshPromise;
@@ -79,9 +100,13 @@ api.interceptors.response.use(
       });
 
       const originalRequest = error.config;
+      const errorCode = error.response.data?.code;
       const isExpiredToken =
         error.response.status === 403 &&
-        error.response.data?.code === 'TOKEN_EXPIRED';
+        errorCode === 'TOKEN_EXPIRED';
+      const isInvalidToken =
+        (error.response.status === 401 || error.response.status === 403) &&
+        (errorCode === 'TOKEN_INVALID' || errorCode === 'NO_TOKEN');
 
       if (isExpiredToken && originalRequest && !originalRequest._retry && !originalRequest.skipAuthRefresh) {
         originalRequest._retry = true;
@@ -91,11 +116,14 @@ api.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${refreshed.token}`;
           return api(originalRequest);
         } catch (refreshError) {
-          await AsyncStorage.removeItem('userToken');
-          await AsyncStorage.removeItem('userData');
-          cachedToken = null;
+          await invalidateSession();
           return Promise.reject(refreshError);
         }
+      }
+
+      // Token invalide / absent : déconnexion propre (évite l'écran bloqué)
+      if (isInvalidToken && originalRequest && !originalRequest.skipAuthRefresh) {
+        await invalidateSession();
       }
     } else if (error.request) {
       // Request was made but no response received

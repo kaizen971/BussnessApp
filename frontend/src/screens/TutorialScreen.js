@@ -222,7 +222,7 @@ export const TutorialScreen = ({ navigation }) => {
 
     return (
         <View style={styles.container}>
-            <LinearGradient colors={gradients.dark} style={styles.background} />
+            <LinearGradient colors={[colors.background, colors.background]} style={styles.background} />
 
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -316,7 +316,7 @@ const createStyles = (colors) => ({
         paddingBottom: 40,
     },
     introText: {
-        color: colors.textLight,
+        color: colors.textSecondary,
         fontSize: 16,
         marginBottom: 24,
         lineHeight: 24,
@@ -382,9 +382,13 @@ const createStyles = (colors) => ({
     },
     stepDetails: {
         marginLeft: 56,
-        paddingRight: 16,
-        paddingBottom: 24,
+        marginRight: 16,
+        padding: 14,
         marginBottom: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.surface,
     },
     detailItem: {
         flexDirection: 'row',

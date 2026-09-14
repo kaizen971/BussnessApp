@@ -256,7 +256,7 @@ export const RegisterScreen = ({ navigation }) => {
         activeOpacity={0.7}
       >
         <View style={[styles.cguCheckbox, cguAccepted && styles.cguCheckboxChecked]}>
-          {cguAccepted && <Ionicons name="checkmark" size={14} color="#000" />}
+          {cguAccepted && <Ionicons name="checkmark" size={14} color={colors.onPrimary} />}
         </View>
         <Text style={styles.cguText}>
           J'accepte les{' '}
@@ -370,10 +370,10 @@ export const RegisterScreen = ({ navigation }) => {
             style={styles.validateBtnGradient}
           >
             {loading ? (
-              <ActivityIndicator color="#000" />
+              <ActivityIndicator color={colors.onPrimary} />
             ) : (
               <>
-                <Ionicons name="checkmark-circle" size={22} color="#000" />
+                <Ionicons name="checkmark-circle" size={22} color={colors.onPrimary} />
                 <Text style={styles.validateBtnText}>Créer mon compte</Text>
               </>
             )}
@@ -523,7 +523,7 @@ export const RegisterScreen = ({ navigation }) => {
                   colors={[colors.primary, colors.primaryDark]}
                   style={styles.cguAcceptBtnGradient}
                 >
-                  <Ionicons name="checkmark-circle" size={18} color="#000" />
+                  <Ionicons name="checkmark-circle" size={18} color={colors.onPrimary} />
                   <Text style={styles.cguAcceptBtnText}>Accepter</Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -780,7 +780,7 @@ const createStyles = (colors) => ({
   validateBtnText: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#000',
+    color: colors.onPrimary,
   },
   validateBtnTextDisabled: {
     color: '#999',
@@ -1019,6 +1019,6 @@ const createStyles = (colors) => ({
   cguAcceptBtnText: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#000',
+    color: colors.onPrimary,
   },
 });

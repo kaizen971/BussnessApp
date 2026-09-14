@@ -23,6 +23,21 @@ import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import api from '../services/api';
 
+const formatDateKey = (date) => {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getScheduleDateKey = (date) => {
+  if (typeof date === 'string' && date.length >= 10) {
+    return date.slice(0, 10);
+  }
+  return formatDateKey(date);
+};
+
 export const PlanningScreen = ({ navigation }) => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
@@ -94,8 +109,8 @@ export const PlanningScreen = ({ navigation }) => {
 
       const params = {
         projectId: selectedProjectId || user?.projectId,
-        startDate: weekStart.toISOString(),
-        endDate: weekEnd.toISOString(),
+        startDate: `${formatDateKey(weekStart)}T00:00:00.000Z`,
+        endDate: `${formatDateKey(weekEnd)}T23:59:59.999Z`,
       };
 
       if (isCashier) {
@@ -138,8 +153,8 @@ export const PlanningScreen = ({ navigation }) => {
       setLoading(true);
       const dataToSend = {
         ...formData,
-        date: formData.date.toISOString().split('T')[0],
-        endDate: formData.endDate ? formData.endDate.toISOString().split('T')[0] : null,
+        date: formatDateKey(formData.date),
+        endDate: formData.endDate ? formatDateKey(formData.endDate) : null,
         projectId: selectedProjectId || user?.projectId,
       };
 
@@ -203,13 +218,16 @@ export const PlanningScreen = ({ navigation }) => {
     const d = new Date(date);
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Lundi
-    return new Date(d.setDate(diff));
+    d.setDate(diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
   };
 
   const getWeekEnd = (date) => {
     const start = getWeekStart(date);
     const end = new Date(start);
     end.setDate(end.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
     return end;
   };
 
@@ -227,7 +245,7 @@ export const PlanningScreen = ({ navigation }) => {
   const schedulesByDay = useMemo(() => {
     const map = {};
     for (const schedule of schedules) {
-      const key = new Date(schedule.date).toDateString();
+      const key = getScheduleDateKey(schedule.date);
       if (!map[key]) map[key] = [];
       map[key].push(schedule);
     }
@@ -235,7 +253,7 @@ export const PlanningScreen = ({ navigation }) => {
   }, [schedules]);
 
   const getSchedulesForDay = useCallback((date) => {
-    return schedulesByDay[date.toDateString()] || [];
+    return schedulesByDay[formatDateKey(date)] || [];
   }, [schedulesByDay]);
 
   const previousWeek = useCallback(() => {
@@ -653,7 +671,7 @@ export const PlanningScreen = ({ navigation }) => {
                     colors={[colors.primary, colors.primaryDark]}
                     style={styles.modalIcon}
                   >
-                    <Ionicons name="calendar" size={28} color="#000" />
+                    <Ionicons name="calendar" size={28} color={colors.onPrimary} />
                   </LinearGradient>
                 </View>
                 <View style={styles.modalTitleContainer}>
@@ -873,10 +891,10 @@ export const PlanningScreen = ({ navigation }) => {
                   style={styles.saveButton}
                 >
                   {loading ? (
-                    <ActivityIndicator color="#000" />
+                    <ActivityIndicator color={colors.onPrimary} />
                   ) : (
                     <>
-                      <Ionicons name="checkmark-circle" size={20} color="#000" />
+                      <Ionicons name="checkmark-circle" size={20} color={colors.onPrimary} />
                       <Text style={styles.saveButtonText}>
                         {formData.isRecurring ? 'Créer les plannings' : 'Créer'}
                       </Text>
@@ -1739,7 +1757,7 @@ const createStyles = (colors) => ({
     color: colors.text,
   },
   dayChipTextSelected: {
-    color: '#000',
+    color: colors.onPrimary,
   },
   dateButton: {
     flexDirection: 'row',
@@ -1809,7 +1827,7 @@ const createStyles = (colors) => ({
   saveButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#000',
+    color: colors.onPrimary,
   },
   // Styles pour le bouton de salaire
   salaryButton: {

@@ -24,7 +24,7 @@
       "buildNumber": "24"
     },
     "android": {
-      "versionCode": 45,
+      "versionCode": 48,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -36,7 +36,17 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "./plugins/fix-fmt-xcode26"
+      "./plugins/fix-fmt-xcode26",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "buildToolsVersion": "36.0.0"
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {

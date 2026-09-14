@@ -369,7 +369,7 @@ export const ProductsScreen = ({ navigation }) => {
                     <Ionicons
                       name={editingProduct ? "create-outline" : "add-circle-outline"}
                       size={28}
-                      color="#000"
+                      color={colors.onPrimary}
                     />
                   </LinearGradient>
                 </View>
@@ -517,10 +517,10 @@ export const ProductsScreen = ({ navigation }) => {
                   style={styles.saveButton}
                 >
                   {loading ? (
-                    <ActivityIndicator color="#000" />
+                    <ActivityIndicator color={colors.onPrimary} />
                   ) : (
                     <>
-                      <Ionicons name="checkmark-circle" size={20} color="#000" />
+                      <Ionicons name="checkmark-circle" size={20} color={colors.onPrimary} />
                       <Text style={styles.saveButtonText}>
                         {editingProduct ? 'Modifier' : 'Créer'}
                       </Text>
@@ -894,7 +894,7 @@ const createStyles = (colors) => ({
   saveButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#000',
+    color: colors.onPrimary,
   },
   categoryContainer: {
     marginBottom: 15,
@@ -937,7 +937,7 @@ const createStyles = (colors) => ({
     color: colors.text,
   },
   selectedCategoryChipText: {
-    color: '#000',
+    color: colors.onPrimary,
     fontWeight: '600',
   },
   modalOverlay: {
@@ -989,7 +989,7 @@ const createStyles = (colors) => ({
     fontWeight: '600',
   },
   smallButtonTextSave: {
-    color: '#000',
+    color: colors.onPrimary,
     fontWeight: '700',
   },
   imagePickerContainer: {

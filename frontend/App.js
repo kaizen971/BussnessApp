@@ -5,6 +5,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { CurrencyProvider } from './src/contexts/CurrencyContext';
@@ -33,6 +34,7 @@ import { MoreScreen } from './src/screens/MoreScreen';
 import { CsvImportScreen } from './src/screens/CsvImportScreen';
 import { SubscriptionScreen } from './src/screens/SubscriptionScreen';
 import { PaywallScreen } from './src/screens/PaywallScreen';
+import { ChangePasswordScreen } from './src/screens/ChangePasswordScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -73,6 +75,8 @@ const TAB_ICONS = {
 
 const MainTabs = () => {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 8);
 
   return (
     <Tab.Navigator
@@ -84,15 +88,14 @@ const MainTabs = () => {
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
-          marginBottom: 3,
         },
         tabBarItemStyle: {
           paddingTop: 5,
         },
         tabBarStyle: {
-          height: Platform.OS === 'ios' ? 84 : 64,
+          height: 60 + bottomInset,
           paddingTop: 4,
-          paddingBottom: Platform.OS === 'ios' ? 20 : 4,
+          paddingBottom: bottomInset,
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: 1,
@@ -162,6 +165,11 @@ const MainStack = () => {
       name="Subscription"
       component={SubscriptionScreen}
       options={{ title: 'Mon abonnement' }}
+    />
+    <Stack.Screen
+      name="ChangePassword"
+      component={ChangePasswordScreen}
+      options={{ title: 'Changer le mot de passe' }}
     />
     <Stack.Screen
       name="Paywall"
@@ -262,17 +270,19 @@ const ThemedStatusBar = () => {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <CurrencyProvider>
-          <SubscriptionProvider>
-            <IAPProvider>
-              <ThemedStatusBar />
-              <AppNavigator />
-            </IAPProvider>
-          </SubscriptionProvider>
-        </CurrencyProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <CurrencyProvider>
+            <SubscriptionProvider>
+              <IAPProvider>
+                <ThemedStatusBar />
+                <AppNavigator />
+              </IAPProvider>
+            </SubscriptionProvider>
+          </CurrencyProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

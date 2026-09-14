@@ -344,17 +344,23 @@ const authenticateToken = (req, res, next) => {
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
-    return res.status(401).json({ error: 'Access token required' });
+    return res.status(401).json({ error: 'Access token required', code: 'NO_TOKEN' });
   }
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) {
-      return res.status(403).json({ error: 'Invalid or expired token' });
+      if (err.name === 'TokenExpiredError') {
+        return res.status(403).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+      }
+      return res.status(403).json({ error: 'Invalid token', code: 'TOKEN_INVALID' });
     }
     req.user = user;
     next();
   });
 };
+
+// Durée de grâce après expiration : le client peut encore rafraîchir le token
+const TOKEN_REFRESH_GRACE_SECONDS = 30 * 24 * 60 * 60; // 30 jours
 
 // Role checking middleware
 const checkRole = (...roles) => {
@@ -924,6 +930,63 @@ app.post('/BussnessApp/auth/login', async (req, res) => {
   }
 });
 
+// Refresh JWT — accepte un token encore valide OU expiré depuis moins de 30 jours
+app.post('/BussnessApp/auth/refresh', async (req, res) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+      return res.status(401).json({ error: 'Access token required', code: 'NO_TOKEN' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET, { ignoreExpiration: true });
+    } catch (err) {
+      return res.status(403).json({ error: 'Invalid token', code: 'TOKEN_INVALID' });
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    if (decoded.exp && (now - decoded.exp) > TOKEN_REFRESH_GRACE_SECONDS) {
+      return res.status(403).json({
+        error: 'Token expired beyond grace period',
+        code: 'TOKEN_EXPIRED'
+      });
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({
+        error: 'Compte désactivé - contactez un administrateur',
+        code: 'ACCOUNT_DISABLED'
+      });
+    }
+
+    const newToken = jwt.sign(
+      { id: user._id, username: user.username, role: user.role, projectId: user.projectId },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    res.json({ user: userResponse, token: newToken });
+  } catch (error) {
+    console.error('Refresh error:', error);
+    res.status(500).json({
+      error: 'Erreur lors du rafraîchissement du token. Veuillez réessayer.',
+      details: error.message,
+      code: 'REFRESH_ERROR'
+    });
+  }
+});
+
 // Get current user
 app.get('/BussnessApp/auth/me', authenticateToken, async (req, res) => {
   try {
@@ -951,6 +1014,18 @@ app.post('/BussnessApp/auth/change-password', authenticateToken, async (req, res
   try {
     const { oldPassword, newPassword } = req.body;
 
+    if (typeof oldPassword !== 'string' || typeof newPassword !== 'string') {
+      return res.status(400).json({ error: 'Mot de passe actuel et nouveau mot de passe requis' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Le nouveau mot de passe doit contenir au moins 6 caractères' });
+    }
+
+    if (oldPassword === newPassword) {
+      return res.status(400).json({ error: 'Le nouveau mot de passe doit être différent de l’ancien' });
+    }
+
     const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -959,14 +1034,14 @@ app.post('/BussnessApp/auth/change-password', authenticateToken, async (req, res
     // Verify old password
     const isValidPassword = await bcrypt.compare(oldPassword, user.password);
     if (!isValidPassword) {
-      return res.status(401).json({ error: 'Current password is incorrect' });
+      return res.status(401).json({ error: 'Le mot de passe actuel est incorrect' });
     }
 
     // Hash and update new password
     user.password = await bcrypt.hash(newPassword, 10);
     await user.save();
 
-    res.json({ message: 'Password changed successfully' });
+    res.json({ message: 'Mot de passe modifié avec succès' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -3145,8 +3220,8 @@ app.get('/BussnessApp/schedules', authenticateToken, async (req, res) => {
 
     if (startDate || endDate) {
       filter.date = {};
-      if (startDate) filter.date.$gte = new Date(startDate);
-      if (endDate) filter.date.$lte = new Date(endDate);
+      if (startDate) filter.date.$gte = parseDateOnlyUTC(startDate);
+      if (endDate) filter.date.$lte = parseDateOnlyUTC(endDate, true);
     }
 
     const schedules = await Schedule.find(filter)
@@ -3176,8 +3251,8 @@ app.get('/BussnessApp/schedules/user/:userId', authenticateToken, async (req, re
 
     if (startDate || endDate) {
       filter.date = {};
-      if (startDate) filter.date.$gte = new Date(startDate);
-      if (endDate) filter.date.$lte = new Date(endDate);
+      if (startDate) filter.date.$gte = parseDateOnlyUTC(startDate);
+      if (endDate) filter.date.$lte = parseDateOnlyUTC(endDate, true);
     }
 
     const schedules = await Schedule.find(filter)
@@ -3220,6 +3295,23 @@ function computeShiftDuration(startTime, endTime) {
   return (end - start) / (1000 * 60 * 60);
 }
 
+function parseDateOnlyUTC(dateValue, endOfDay = false) {
+  if (!dateValue) return null;
+  const rawValue = String(dateValue);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(rawValue)
+    ? new Date(`${rawValue}T00:00:00.000Z`)
+    : new Date(rawValue);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  if (endOfDay) {
+    date.setUTCHours(23, 59, 59, 999);
+  } else {
+    date.setUTCHours(0, 0, 0, 0);
+  }
+  return date;
+}
+
 app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const { userId, date, startTime, endTime, notes, projectId, isRecurring, recurringDays, endDate } = req.body;
@@ -3237,14 +3329,14 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
 
     // Si c'est un planning récurrent
     if (isRecurring && recurringDays && recurringDays.length > 0) {
-      const startDate = new Date(date);
-      const finalEndDate = endDate ? new Date(endDate) : new Date(startDate.getTime() + 90 * 24 * 60 * 60 * 1000); // 90 jours par défaut
+      const startDate = parseDateOnlyUTC(date);
+      const finalEndDate = endDate ? parseDateOnlyUTC(endDate, true) : new Date(startDate.getTime() + 90 * 24 * 60 * 60 * 1000); // 90 jours par défaut
 
       // Construire tous les documents en mémoire, puis insertMany en une seule requête
       const scheduleDocs = [];
       let currentDate = new Date(startDate);
       while (currentDate <= finalEndDate) {
-        const dayOfWeek = currentDate.getDay();
+        const dayOfWeek = currentDate.getUTCDay();
         if (recurringDays.includes(dayOfWeek)) {
           scheduleDocs.push({
             projectId: projectId || req.user.projectId,
@@ -3257,7 +3349,7 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
             createdBy: req.user.id
           });
         }
-        currentDate.setDate(currentDate.getDate() + 1);
+        currentDate.setUTCDate(currentDate.getUTCDate() + 1);
       }
 
       const inserted = await Schedule.insertMany(scheduleDocs);
@@ -3279,7 +3371,7 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
       const schedule = new Schedule({
         projectId: projectId || req.user.projectId,
         userId,
-        date: new Date(date),
+        date: parseDateOnlyUTC(date),
         startTime,
         endTime,
         duration,
@@ -3334,7 +3426,7 @@ app.put('/BussnessApp/schedules/:id', authenticateToken, async (req, res) => {
         schedule.duration = duration;
       }
 
-      if (date) schedule.date = new Date(date);
+      if (date) schedule.date = parseDateOnlyUTC(date);
       if (startTime) schedule.startTime = startTime;
       if (endTime) schedule.endTime = endTime;
       if (status) schedule.status = status;

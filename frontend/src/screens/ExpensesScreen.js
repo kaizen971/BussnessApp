@@ -9,9 +9,12 @@ import {
   TouchableOpacity,
   Switch,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { Button } from '../components/Button';
@@ -26,6 +29,7 @@ import { getMonthBounds, MONTH_HISTORY_LIMIT, shiftMonth, startOfMonth } from '.
 export const ExpensesScreen = () => {
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { format: formatPrice } = useCurrency();
   const [expenses, setExpenses] = useState([]);
@@ -496,11 +500,24 @@ export const ExpensesScreen = () => {
         visible={modalVisible}
         animationType="slide"
         transparent
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={handleCloseModal}
       >
-        <View style={styles.modalOverlay}>
-          <ScrollView style={styles.modalScrollView}>
-            <View style={styles.modalContent}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView
+            style={styles.modalScrollView}
+            contentContainerStyle={[
+              styles.modalScrollContent,
+              { paddingTop: Math.max(insets.top, 16) },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
                   {editingExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
@@ -590,7 +607,7 @@ export const ExpensesScreen = () => {
               />
             </View>
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -794,6 +811,10 @@ const createStyles = (colors) => ({
   },
   modalScrollView: {
     flex: 1,
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
   },
   recurringSection: {
     marginVertical: 16,

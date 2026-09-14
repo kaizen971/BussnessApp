@@ -780,7 +780,7 @@ export const SalesScreen = () => {
                 colors={[colors.primary, colors.primaryDark]}
                 style={styles.mainSaleButton}
               >
-                <Ionicons name="add-circle" size={28} color="#000" />
+                <Ionicons name="add-circle" size={28} color={colors.onPrimary} />
                 <Text style={styles.mainSaleButtonText}>Nouvelle Vente</Text>
               </LinearGradient>
             </TouchableOpacity>
@@ -837,7 +837,7 @@ export const SalesScreen = () => {
                     colors={[colors.primary, colors.primaryDark]}
                     style={styles.modalIcon}
                   >
-                    <Ionicons name="cart" size={28} color="#000" />
+                    <Ionicons name="cart" size={28} color={colors.onPrimary} />
                   </LinearGradient>
                 </View>
                 <View style={styles.modalTitleContainer}>
@@ -870,157 +870,265 @@ export const SalesScreen = () => {
                 </LinearGradient>
               )}
 
-              {/* Sélection du client */}
-              <Text style={styles.fieldLabel}>
-                Client {isAdmin ? '(obligatoire)' : '(optionnel)'}
-              </Text>
-
-              {/* Badge du client sélectionné */}
-              {selectedCustomer ? (
-                <View style={styles.selectedClientContainer}>
-                  <LinearGradient
-                    colors={[colors.primary + '20', colors.primary + '10']}
-                    style={styles.selectedClientCard}
-                  >
-                    <View style={styles.selectedClientInfo}>
-                      <View style={styles.selectedClientIcon}>
-                        <Ionicons name="person" size={20} color={colors.primary} />
-                      </View>
-                      <View>
-                        <Text style={styles.selectedClientName}>{selectedCustomer.name}</Text>
-                        <Text style={styles.selectedClientPhone}>{selectedCustomer.phone || 'Pas de téléphone'}</Text>
-                      </View>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.removeClientButton}
-                      onPress={() => {
-                        setFormData({ ...formData, customerId: '' });
-                        setCustomerSearch('');
-                      }}
-                    >
-                      <Ionicons name="close" size={20} color={colors.danger} />
-                    </TouchableOpacity>
-                  </LinearGradient>
+              <View style={styles.assignmentCard}>
+                <View style={styles.assignmentHeader}>
+                  <View style={styles.assignmentHeaderIcon}>
+                    <Ionicons name="people-outline" size={20} color={colors.primary} />
+                  </View>
+                  <View style={styles.assignmentHeaderText}>
+                    <Text style={styles.assignmentTitle}>Attribution de la vente</Text>
+                    <Text style={styles.assignmentSubtitle}>Choisissez le client et la personne ayant réalisé la vente.</Text>
+                  </View>
                 </View>
-              ) : (
-                /* Champ de recherche et liste d'autocomplete */
-                <View style={styles.autocompleteContainer}>
-                  <SearchField
-                    value={customerSearch}
-                    onChangeText={setCustomerSearch}
-                    placeholder="Rechercher un client..."
-                    style={styles.searchContainer}
-                  />
 
-                  {/* Liste des résultats d'autocomplete */}
-                  {customerSearch.length > 0 && (
-                    <View style={styles.autocompleteList}>
-                      {filteredCustomers.length > 0 ? (
-                        filteredCustomers.slice(0, 5).map(customer => (
-                          <TouchableOpacity
-                            key={customer._id}
-                            style={styles.autocompleteItem}
-                            onPress={() => {
-                              setFormData({ ...formData, customerId: customer._id });
-                              setCustomerSearch(''); // Optionnel : vider la recherche ou garder le nom
-                            }}
+                <View style={styles.selectorBlock}>
+                  <View style={styles.selectorLabelRow}>
+                    <View style={styles.selectorLabelGroup}>
+                      <Ionicons name="person-outline" size={18} color={colors.primary} />
+                      <Text style={styles.selectorLabel}>Client</Text>
+                    </View>
+                    <View style={[styles.requirementBadge, !isAdmin && styles.optionalBadge]}>
+                      <Text style={[styles.requirementText, !isAdmin && styles.optionalText]}>
+                        {isAdmin ? 'Requis' : 'Optionnel'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {selectedCustomer ? (
+                    <View style={[styles.selectedPartyCard, { borderColor: `${colors.primary}55` }]}>
+                      <View style={[styles.partyAvatar, { backgroundColor: `${colors.primary}18` }]}>
+                        <Text style={[styles.partyAvatarText, { color: colors.primary }]}>
+                          {(selectedCustomer.name || 'C').charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.selectedPartyInfo}>
+                        <Text style={styles.selectedPartyName} numberOfLines={1}>{selectedCustomer.name}</Text>
+                        <Text style={styles.selectedPartyDetail} numberOfLines={1}>
+                          {selectedCustomer.phone || selectedCustomer.email || 'Aucune coordonnée'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.changePartyButton}
+                        onPress={() => {
+                          setFormData({ ...formData, customerId: '' });
+                          setCustomerSearch('');
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Changer de client"
+                      >
+                        <Ionicons name="swap-horizontal" size={19} color={colors.primary} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={styles.autocompleteContainer}>
+                      <SearchField
+                        value={customerSearch}
+                        onChangeText={setCustomerSearch}
+                        placeholder="Nom, téléphone ou email"
+                        style={styles.selectorSearch}
+                      />
+                      {customerSearch.trim() ? (
+                        <View style={styles.autocompleteList}>
+                          {filteredCustomers.length > 0 ? (
+                            <>
+                              {filteredCustomers.slice(0, 4).map((customer, index) => (
+                                <TouchableOpacity
+                                  key={customer._id}
+                                  style={[styles.autocompleteItem, index > 0 && styles.autocompleteItemBorder]}
+                                  onPress={() => {
+                                    setFormData({ ...formData, customerId: customer._id });
+                                    setCustomerSearch('');
+                                  }}
+                                >
+                                  <View style={[styles.partyAvatar, styles.resultAvatar]}>
+                                    <Text style={styles.resultAvatarText}>{(customer.name || 'C').charAt(0).toUpperCase()}</Text>
+                                  </View>
+                                  <View style={styles.autocompleteItemContent}>
+                                    <Text style={styles.autocompleteItemName} numberOfLines={1}>{customer.name}</Text>
+                                    <Text style={styles.autocompleteItemSub} numberOfLines={1}>{customer.phone || customer.email || 'Aucune coordonnée'}</Text>
+                                  </View>
+                                  <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
+                                </TouchableOpacity>
+                              ))}
+                              {filteredCustomers.length > 4 && (
+                                <Text style={styles.moreResultsText}>
+                                  4 sur {filteredCustomers.length} résultats · affinez la recherche
+                                </Text>
+                              )}
+                            </>
+                          ) : (
+                            <View style={styles.autocompleteEmpty}>
+                              <Ionicons name="person-add-outline" size={20} color={colors.textLight} />
+                              <Text style={styles.autocompleteEmptyText}>Aucun client trouvé</Text>
+                            </View>
+                          )}
+                        </View>
+                      ) : customers.length > 0 ? (
+                        <View style={styles.quickChoices}>
+                          <Text style={styles.quickChoicesLabel}>Suggestions · {customers.length} client(s)</Text>
+                          <ScrollView
+                            horizontal
+                            nestedScrollEnabled
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.quickChoicesRow}
                           >
-                            <View style={styles.autocompleteItemIcon}>
-                              <Ionicons name="person-outline" size={18} color={colors.textSecondary} />
-                            </View>
-                            <View style={styles.autocompleteItemContent}>
-                              <Text style={styles.autocompleteItemName}>{customer.name}</Text>
-                              <Text style={styles.autocompleteItemSub}>{customer.phone || customer.email || 'N/A'}</Text>
-                            </View>
-                            <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
-                          </TouchableOpacity>
-                        ))
+                            {customers.slice(0, 6).map((customer) => (
+                              <TouchableOpacity
+                                key={customer._id}
+                                style={styles.quickChoiceCard}
+                                onPress={() => setFormData({ ...formData, customerId: customer._id })}
+                              >
+                                <View style={[styles.partyAvatar, styles.quickChoiceAvatar]}>
+                                  <Text style={styles.resultAvatarText}>{(customer.name || 'C').charAt(0).toUpperCase()}</Text>
+                                </View>
+                                <Text style={styles.quickChoiceName} numberOfLines={1}>{customer.name}</Text>
+                              </TouchableOpacity>
+                            ))}
+                            {customers.length > 6 && (
+                              <View style={styles.quickChoiceMore}>
+                                <Text style={styles.quickChoiceMoreText}>+{customers.length - 6}</Text>
+                                <Text style={styles.quickChoiceMoreLabel}>Rechercher</Text>
+                              </View>
+                            )}
+                          </ScrollView>
+                        </View>
                       ) : (
-                        <View style={styles.autocompleteEmpty}>
-                          <Text style={styles.autocompleteEmptyText}>Aucun client trouvé</Text>
+                        <View style={styles.autocompleteList}>
+                          <View style={styles.autocompleteEmpty}>
+                            <Ionicons name="person-add-outline" size={20} color={colors.textLight} />
+                            <Text style={styles.autocompleteEmptyText}>Aucun client disponible</Text>
+                          </View>
                         </View>
                       )}
                     </View>
                   )}
                 </View>
-              )}
 
-              {/* Sélection du vendeur (obligatoire pour les managers) */}
-              {isAdmin && (
-                <>
-                  <Text style={styles.fieldLabel}>Vendeur (obligatoire)</Text>
+                {isAdmin && (
+                  <View style={[styles.selectorBlock, styles.sellerSelectorBlock]}>
+                    <View style={styles.selectorLabelRow}>
+                      <View style={styles.selectorLabelGroup}>
+                        <Ionicons name="storefront-outline" size={18} color={colors.success} />
+                        <Text style={styles.selectorLabel}>Vendeur</Text>
+                      </View>
+                      <View style={[styles.requirementBadge, { backgroundColor: `${colors.success}16` }]}>
+                        <Text style={[styles.requirementText, { color: colors.success }]}>Requis</Text>
+                      </View>
+                    </View>
 
-                  {/* Badge du vendeur sélectionné */}
-                  {selectedSeller ? (
-                    <View style={styles.selectedClientContainer}>
-                      <LinearGradient
-                        colors={[colors.success + '20', colors.success + '10']}
-                        style={styles.selectedClientCard}
-                      >
-                        <View style={styles.selectedClientInfo}>
-                          <View style={[styles.selectedClientIcon, { backgroundColor: colors.success + '20' }]}>
-                            <Ionicons name="briefcase" size={20} color={colors.success} />
-                          </View>
-                          <View>
-                            <Text style={styles.selectedClientName}>{selectedSeller.fullName || selectedSeller.username}</Text>
-                            <Text style={styles.selectedClientPhone}>{selectedSeller.role || 'Vendeur'}</Text>
-                          </View>
+                    {selectedSeller ? (
+                      <View style={[styles.selectedPartyCard, { borderColor: `${colors.success}55` }]}>
+                        <View style={[styles.partyAvatar, { backgroundColor: `${colors.success}18` }]}>
+                          <Text style={[styles.partyAvatarText, { color: colors.success }]}>
+                            {(selectedSeller.fullName || selectedSeller.username || 'V').charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={styles.selectedPartyInfo}>
+                          <Text style={styles.selectedPartyName} numberOfLines={1}>{selectedSeller.fullName || selectedSeller.username}</Text>
+                          <Text style={styles.selectedPartyDetail} numberOfLines={1}>{selectedSeller.role || 'Vendeur'}</Text>
                         </View>
                         <TouchableOpacity
-                          style={styles.removeClientButton}
+                          style={[styles.changePartyButton, { backgroundColor: `${colors.success}14` }]}
                           onPress={() => {
                             setFormData({ ...formData, sellerId: '' });
                             setSellerSearch('');
                           }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Changer de vendeur"
                         >
-                          <Ionicons name="close" size={20} color={colors.danger} />
+                          <Ionicons name="swap-horizontal" size={19} color={colors.success} />
                         </TouchableOpacity>
-                      </LinearGradient>
-                    </View>
-                  ) : (
-                    /* Champ de recherche vendeur */
-                    <View style={styles.autocompleteContainer}>
-                      <SearchField
-                        value={sellerSearch}
-                        onChangeText={setSellerSearch}
-                        placeholder="Rechercher un vendeur..."
-                        style={styles.searchContainer}
-                      />
-
-                      {/* Liste des vendeurs */}
-                      {sellerSearch.length > 0 && (
-                        <View style={styles.autocompleteList}>
-                          {filteredSellers.length > 0 ? (
-                            filteredSellers.slice(0, 5).map(seller => (
-                              <TouchableOpacity
-                                key={seller._id}
-                                style={styles.autocompleteItem}
-                                onPress={() => {
-                                  setFormData({ ...formData, sellerId: seller._id });
-                                  setSellerSearch('');
-                                }}
-                              >
-                                <View style={styles.autocompleteItemIcon}>
-                                  <Ionicons name="briefcase-outline" size={18} color={colors.textSecondary} />
+                      </View>
+                    ) : (
+                      <View style={styles.autocompleteContainer}>
+                        <SearchField
+                          value={sellerSearch}
+                          onChangeText={setSellerSearch}
+                          placeholder="Nom ou identifiant du vendeur"
+                          style={styles.selectorSearch}
+                        />
+                        {sellerSearch.trim() ? (
+                          <View style={styles.autocompleteList}>
+                            {filteredSellers.length > 0 ? (
+                              <>
+                                {filteredSellers.slice(0, 4).map((seller, index) => (
+                                  <TouchableOpacity
+                                    key={seller._id}
+                                    style={[styles.autocompleteItem, index > 0 && styles.autocompleteItemBorder]}
+                                    onPress={() => {
+                                      setFormData({ ...formData, sellerId: seller._id });
+                                      setSellerSearch('');
+                                    }}
+                                  >
+                                    <View style={[styles.partyAvatar, styles.resultAvatar, { backgroundColor: `${colors.success}14` }]}>
+                                      <Text style={[styles.resultAvatarText, { color: colors.success }]}>
+                                        {(seller.fullName || seller.username || 'V').charAt(0).toUpperCase()}
+                                      </Text>
+                                    </View>
+                                    <View style={styles.autocompleteItemContent}>
+                                      <Text style={styles.autocompleteItemName} numberOfLines={1}>{seller.fullName || seller.username}</Text>
+                                      <Text style={styles.autocompleteItemSub} numberOfLines={1}>{seller.role || 'Vendeur'}</Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
+                                  </TouchableOpacity>
+                                ))}
+                                {filteredSellers.length > 4 && (
+                                  <Text style={styles.moreResultsText}>
+                                    4 sur {filteredSellers.length} résultats · affinez la recherche
+                                  </Text>
+                                )}
+                              </>
+                            ) : (
+                              <View style={styles.autocompleteEmpty}>
+                                <Ionicons name="people-outline" size={20} color={colors.textLight} />
+                                <Text style={styles.autocompleteEmptyText}>Aucun vendeur trouvé</Text>
+                              </View>
+                            )}
+                          </View>
+                        ) : sellers.length > 0 ? (
+                          <View style={styles.quickChoices}>
+                            <Text style={styles.quickChoicesLabel}>Suggestions · {sellers.length} vendeur(s)</Text>
+                            <ScrollView
+                              horizontal
+                              nestedScrollEnabled
+                              showsHorizontalScrollIndicator={false}
+                              contentContainerStyle={styles.quickChoicesRow}
+                            >
+                              {sellers.slice(0, 6).map((seller) => (
+                                <TouchableOpacity
+                                  key={seller._id}
+                                  style={styles.quickChoiceCard}
+                                  onPress={() => setFormData({ ...formData, sellerId: seller._id })}
+                                >
+                                  <View style={[styles.partyAvatar, styles.quickChoiceAvatar, { backgroundColor: `${colors.success}14` }]}>
+                                    <Text style={[styles.resultAvatarText, { color: colors.success }]}>
+                                      {(seller.fullName || seller.username || 'V').charAt(0).toUpperCase()}
+                                    </Text>
+                                  </View>
+                                  <Text style={styles.quickChoiceName} numberOfLines={1}>{seller.fullName || seller.username}</Text>
+                                </TouchableOpacity>
+                              ))}
+                              {sellers.length > 6 && (
+                                <View style={styles.quickChoiceMore}>
+                                  <Text style={[styles.quickChoiceMoreText, { color: colors.success }]}>+{sellers.length - 6}</Text>
+                                  <Text style={styles.quickChoiceMoreLabel}>Rechercher</Text>
                                 </View>
-                                <View style={styles.autocompleteItemContent}>
-                                  <Text style={styles.autocompleteItemName}>{seller.fullName || seller.username}</Text>
-                                  <Text style={styles.autocompleteItemSub}>{seller.role || 'Vendeur'}</Text>
-                                </View>
-                                <Ionicons name="add-circle-outline" size={20} color={colors.success} />
-                              </TouchableOpacity>
-                            ))
-                          ) : (
+                              )}
+                            </ScrollView>
+                          </View>
+                        ) : (
+                          <View style={styles.autocompleteList}>
                             <View style={styles.autocompleteEmpty}>
-                              <Text style={styles.autocompleteEmptyText}>Aucun vendeur trouvé</Text>
+                              <Ionicons name="people-outline" size={20} color={colors.textLight} />
+                              <Text style={styles.autocompleteEmptyText}>Aucun vendeur disponible</Text>
                             </View>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  )}
-                </>
-              )}
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
 
               {/* Sélection des produits */}
               <View style={styles.sectionHeader}>
@@ -1220,10 +1328,10 @@ export const SalesScreen = () => {
                     style={styles.validateButton}
                   >
                     {submitting ? (
-                      <ActivityIndicator color="#000" />
+                      <ActivityIndicator color={colors.onPrimary} />
                     ) : (
                       <>
-                        <Ionicons name="checkmark-circle" size={22} color="#000" />
+                        <Ionicons name="checkmark-circle" size={22} color={colors.onPrimary} />
                         <Text style={styles.validateButtonText}>
                           Valider {cart.length} vente(s)
                         </Text>
@@ -1538,7 +1646,7 @@ const createStyles = (colors) => ({
   mainSaleButtonText: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#000',
+    color: colors.onPrimary,
   },
   quickStatsContainer: {
     flexDirection: 'row',
@@ -2195,7 +2303,7 @@ const createStyles = (colors) => ({
   validateButtonText: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#000',
+    color: colors.onPrimary,
   },
   clearButton: {
     flexDirection: 'row',
@@ -2343,7 +2451,7 @@ const createStyles = (colors) => ({
     elevation: 3,
   },
   productBadgeText: {
-    color: '#000',
+    color: colors.onPrimary,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -2412,93 +2520,224 @@ const createStyles = (colors) => ({
     justifyContent: 'center',
     marginLeft: 8,
   },
-  // Styles Autocomplete Client
-  selectedClientContainer: {
+  assignmentCard: {
+    marginBottom: 20,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  assignmentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 16,
   },
-  selectedClientCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.primary + '30',
-  },
-  selectedClientInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  selectedClientIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary + '20',
+  assignmentHeaderIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    backgroundColor: `${colors.primary}14`,
+    marginRight: 10,
   },
-  selectedClientName: {
+  assignmentHeaderText: {
+    flex: 1,
+  },
+  assignmentTitle: {
     fontSize: 15,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 2,
   },
-  selectedClientPhone: {
+  assignmentSubtitle: {
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.textLight,
+  },
+  selectorBlock: {
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sellerSelectorBlock: {
+    marginTop: 12,
+  },
+  selectorLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  selectorLabelGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  selectorLabel: {
     fontSize: 13,
-    color: colors.textSecondary,
+    fontWeight: '700',
+    color: colors.text,
   },
-  removeClientButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.danger + '10',
+  requirementBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: `${colors.primary}14`,
+  },
+  requirementText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary,
+    textTransform: 'uppercase',
+  },
+  optionalBadge: {
+    backgroundColor: `${colors.textLight}12`,
+  },
+  optionalText: {
+    color: colors.textLight,
+  },
+  selectedPartyCard: {
+    minHeight: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+  },
+  partyAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    backgroundColor: `${colors.primary}14`,
   },
-  autocompleteContainer: {
-    position: 'relative',
-    zIndex: 10,
+  partyAvatarText: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  selectedPartyInfo: {
+    flex: 1,
+    minWidth: 0,
+    marginHorizontal: 10,
+  },
+  selectedPartyName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  selectedPartyDetail: {
+    marginTop: 3,
+    fontSize: 11,
+    color: colors.textLight,
+  },
+  changePartyButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: `${colors.primary}14`,
+  },
+  autocompleteContainer: {},
+  selectorSearch: {
+    backgroundColor: colors.surface,
   },
   autocompleteList: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
+    marginTop: 8,
     backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    maxHeight: 250,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
-    zIndex: 1000,
-    marginTop: -8,
     overflow: 'hidden',
   },
-  autocompleteItem: {
+  quickChoices: {
+    marginTop: 9,
+  },
+  quickChoicesLabel: {
+    marginBottom: 7,
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  quickChoicesRow: {
+    gap: 8,
+    paddingRight: 4,
+  },
+  quickChoiceCard: {
+    width: 104,
+    minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border + '50',
+    paddingHorizontal: 9,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  autocompleteItemIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.background,
+  quickChoiceAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    marginRight: 7,
+  },
+  quickChoiceName: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  quickChoiceMore: {
+    width: 86,
+    minHeight: 64,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  quickChoiceMoreText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  quickChoiceMoreLabel: {
+    marginTop: 2,
+    fontSize: 9,
+    color: colors.textSecondary,
+  },
+  autocompleteItem: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  autocompleteItemBorder: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  resultAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+  },
+  resultAvatarText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.primary,
   },
   autocompleteItemContent: {
     flex: 1,
+    minWidth: 0,
+    marginHorizontal: 10,
   },
   autocompleteItemName: {
     fontSize: 14,
@@ -2511,13 +2750,26 @@ const createStyles = (colors) => ({
     color: colors.textSecondary,
   },
   autocompleteEmpty: {
-    padding: 16,
+    minHeight: 64,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 14,
   },
   autocompleteEmptyText: {
     fontSize: 14,
     color: colors.textSecondary,
     fontStyle: 'italic',
+  },
+  moreResultsText: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    fontSize: 10,
+    textAlign: 'center',
+    color: colors.textSecondary,
   },
   cartTotal: {
     backgroundColor: colors.primary + '10',
