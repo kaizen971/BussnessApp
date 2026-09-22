@@ -11,6 +11,8 @@ const multer = require('multer');
 const multerS3 = require('multer-s3');
 const path = require('path');
 const crypto = require('crypto');
+const { createDeleteAccountHandler } = require('./accountDeletion');
+const { createAuthenticateToken, checkRole } = require('./authorization');
 
 const app = express();
 const PORT = 3003;
@@ -339,38 +341,10 @@ const Category = mongoose.model('Category', CategorySchema);
 const JWT_SECRET = process.env.JWT_SECRET || 'bussnessapp_secret_key_2025';
 
 // Auth Middleware
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ error: 'Access token required', code: 'NO_TOKEN' });
-  }
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) {
-      if (err.name === 'TokenExpiredError') {
-        return res.status(403).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
-      }
-      return res.status(403).json({ error: 'Invalid token', code: 'TOKEN_INVALID' });
-    }
-    req.user = user;
-    next();
-  });
-};
+const authenticateToken = createAuthenticateToken({ jwt, User, secret: JWT_SECRET });
 
 // Durée de grâce après expiration : le client peut encore rafraîchir le token
 const TOKEN_REFRESH_GRACE_SECONDS = 30 * 24 * 60 * 60; // 30 jours
-
-// Role checking middleware
-const checkRole = (...roles) => {
-  return (req, res, next) => {
-    if (!req.user) {
-      return res.status(403).json({ error: 'Insufficient permissions' });
-    }
-    next();
-  };
-};
 
 // Backoffice routes
 const backofficeRoutes = require('./backoffice');
@@ -1047,49 +1021,15 @@ app.post('/BussnessApp/auth/change-password', authenticateToken, async (req, res
   }
 });
 
-// Delete account
-app.post('/BussnessApp/auth/delete-account', authenticateToken, async (req, res) => {
-  try {
-    const { password } = req.body;
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ error: 'Utilisateur introuvable' });
-    }
-
-    const isValidPassword = await bcrypt.compare(password, user.password);
-    if (!isValidPassword) {
-      return res.status(401).json({ error: 'Mot de passe incorrect' });
-    }
-
-    const userId = req.user.id;
-
-    const db = mongoose.connection.db;
-    const collections = ['sales', 'expenses', 'recurringexpenses', 'stockitems',
-      'stockmovements', 'customers', 'feedbacks', 'schedules', 'commissions'];
-
-    for (const col of collections) {
-      try {
-        await db.collection(col).deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
-      } catch (e) { /* collection might not exist */ }
-    }
-
-    // Cancel active subscriptions
-    try {
-      const Subscription = mongoose.model('Subscription');
-      await Subscription.updateMany(
-        { adminId: userId },
-        { status: 'cancelled', updatedAt: new Date() }
-      );
-    } catch (e) { /* ignore */ }
-
-    await User.findByIdAndDelete(userId);
-
-    res.json({ message: 'Compte supprimé avec succès' });
-  } catch (error) {
-    console.error('Delete account error:', error);
-    res.status(500).json({ error: 'Erreur lors de la suppression du compte' });
-  }
-});
+// Delete only the authenticated user's account, never their project's business records.
+app.post('/BussnessApp/auth/delete-account', authenticateToken, createDeleteAccountHandler({
+  User,
+  Project,
+  Feedback,
+  Subscription: mongoose.model('Subscription'),
+  bcrypt,
+  deleteS3Image
+}));
 
 // Update profile photo
 app.put('/BussnessApp/auth/profile-photo', authenticateToken, upload.single('profilePhoto'), async (req, res) => {
@@ -1675,6 +1615,13 @@ app.get('/BussnessApp/sales', authenticateToken, async (req, res) => {
   try {
     const { projectId, startDate, endDate } = req.query;
     const filter = projectId ? { projectId } : {};
+    if (req.user.role === 'cashier') {
+      if (!req.user.projectId || (projectId && String(req.user.projectId) !== String(projectId))) {
+        return res.status(403).json({ error: 'Accès non autorisé à ce projet' });
+      }
+      filter.projectId = req.user.projectId;
+      filter.employeeId = req.user.id;
+    }
     if (startDate || endDate) {
       filter.date = {};
       if (startDate) filter.date.$gte = new Date(startDate);

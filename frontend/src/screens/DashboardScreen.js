@@ -43,6 +43,13 @@ import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { getMonthBounds, MONTH_HISTORY_LIMIT, monthKey, shiftMonth, startOfMonth } from '../utils/monthPeriod';
 
 const screenWidth = Dimensions.get('window').width;
+const formatLocalDateKey = (date) => (
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+);
+
+const formatShiftDate = (dateKey) => new Date(`${dateKey}T12:00:00`).toLocaleDateString('fr-FR', {
+  weekday: 'long', day: 'numeric', month: 'long',
+});
 
 export const DashboardScreen = ({ navigation }) => {
   const { colors } = useTheme();
@@ -69,14 +76,20 @@ export const DashboardScreen = ({ navigation }) => {
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [employeeSchedules, setEmployeeSchedules] = useState([]);
+  const [employeeSales, setEmployeeSales] = useState([]);
+  const [employeeLoading, setEmployeeLoading] = useState(false);
+  const [employeeScheduleError, setEmployeeScheduleError] = useState(false);
+  const [employeeSalesError, setEmployeeSalesError] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const monthlyRequestId = useRef(0);
+  const employeeRequestId = useRef(0);
   const slideAnim = useRef(new Animated.Value(50)).current;
   const modalSlideAnim = useRef(new Animated.Value(0)).current;
   const exportModalSlideAnim = useRef(new Animated.Value(0)).current;
   const commerceModalSlideAnim = useRef(new Animated.Value(0)).current;
   const appState = useRef(AppState.currentState);
-  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'responsable';
 
   // Charger les projets disponibles au montage si pas encore chargés
   useEffect(() => {
@@ -119,6 +132,7 @@ export const DashboardScreen = ({ navigation }) => {
   useEffect(() => {
     const unsubscribeFocus = navigation.addListener('focus', () => {
       refreshSubscription();
+      if (!isAdmin) loadEmployeeOverview();
     });
 
     const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
@@ -132,7 +146,7 @@ export const DashboardScreen = ({ navigation }) => {
       unsubscribeFocus();
       appStateSubscription.remove();
     };
-  }, [navigation, refreshSubscription]);
+  }, [navigation, refreshSubscription, isAdmin, selectedProjectId, user?.projectId, user?.id, user?._id]);
 
   useEffect(() => {
     if (selectedProjectId) {
@@ -144,6 +158,10 @@ export const DashboardScreen = ({ navigation }) => {
     if (isAdmin) loadMonthlyOverview();
   }, [selectedMonth, selectedProjectId, user?.projectId, isAdmin]);
 
+  useEffect(() => {
+    if (!isAdmin) loadEmployeeOverview();
+  }, [selectedProjectId, user?.projectId, user?.id, user?._id, isAdmin]);
+
   const loadDashboardData = async () => {
     const projectId = selectedProjectId || user?.projectId;
 
@@ -153,8 +171,10 @@ export const DashboardScreen = ({ navigation }) => {
     }
 
     try {
-      const response = await dashboardAPI.getStats(projectId);
-      setStats(response.data);
+      if (isAdmin) {
+        const response = await dashboardAPI.getStats(projectId);
+        setStats(response.data);
+      }
 
       // Charger les infos du projet pour obtenir la devise
       const project = availableProjects.find(p => p._id === projectId);
@@ -168,14 +188,50 @@ export const DashboardScreen = ({ navigation }) => {
       Alert.alert('Erreur', 'Impossible de charger les données');
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
+  };
+
+  const loadEmployeeOverview = async () => {
+    const projectId = user?.projectId;
+    const employeeId = user?._id || user?.id;
+    const requestId = ++employeeRequestId.current;
+    if (!projectId || !employeeId || isAdmin) {
+      setEmployeeLoading(false);
+      return;
+    }
+
+    const today = new Date();
+    const todayKey = formatLocalDateKey(today);
+    const horizon = new Date(today);
+    horizon.setDate(horizon.getDate() + 14);
+    setEmployeeLoading(true);
+
+    const [schedulesResult, salesResult] = await Promise.allSettled([
+      api.get('/schedules', {
+        params: {
+          projectId,
+          userId: employeeId,
+          startDate: todayKey,
+          endDate: formatLocalDateKey(horizon),
+        },
+      }),
+      salesAPI.getAll(projectId, getMonthBounds(today)),
+    ]);
+
+    if (requestId !== employeeRequestId.current) return;
+
+    setEmployeeScheduleError(schedulesResult.status === 'rejected');
+    setEmployeeSalesError(salesResult.status === 'rejected');
+    setEmployeeSchedules(schedulesResult.status === 'fulfilled' ? schedulesResult.value.data?.data || [] : []);
+    setEmployeeSales(salesResult.status === 'fulfilled' ? salesResult.value.data?.data || [] : []);
+    setEmployeeLoading(false);
   };
 
   const onRefresh = () => {
     setRefreshing(true);
     refreshSubscription();
-    loadDashboardData();
+    Promise.allSettled([loadDashboardData(), ...(!isAdmin ? [loadEmployeeOverview()] : [])])
+      .finally(() => setRefreshing(false));
   };
 
   const handleChangeProfilePhoto = async () => {
@@ -495,6 +551,23 @@ export const DashboardScreen = ({ navigation }) => {
     + (displayedMonthlyStats.commissions || 0)
   );
   const chartMonthlyData = stats?.monthlyData?.slice(-6) || [];
+  const now = new Date();
+  const todayKey = formatLocalDateKey(now);
+  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const employeeId = user?._id || user?.id;
+  const ownSales = employeeSales.filter((sale) =>
+    String(sale.employeeId?._id || sale.employeeId) === String(employeeId)
+  );
+  const todaySales = ownSales.filter((sale) => formatLocalDateKey(new Date(sale.date)) === todayKey);
+  const nextShifts = employeeSchedules
+    .filter((schedule) => {
+      const shiftDay = String(schedule.date).slice(0, 10);
+      return schedule.status === 'scheduled'
+        && (shiftDay > todayKey || (shiftDay === todayKey && schedule.endTime > currentTime));
+    })
+    .sort((left, right) => `${left.date}${left.startTime}`.localeCompare(`${right.date}${right.startTime}`))
+    .slice(0, 2);
+  const sumSales = (sales) => sales.reduce((total, sale) => total + (Number(sale.amount) || 0), 0);
 
   if (loading) {
     return <LoadingScreen />;
@@ -527,7 +600,7 @@ export const DashboardScreen = ({ navigation }) => {
                 <Text style={styles.userName}>{user?.fullName || user?.username}</Text>
                 <View style={styles.roleContainer}>
                   <Text style={styles.userRole}>
-                    {user?.role === 'admin' ? 'Administrateur' : user?.role === 'manager' ? 'Responsable' : 'Salarié'}
+                    {user?.role === 'admin' ? 'Administrateur' : isAdmin ? 'Responsable' : 'Salarié'}
                   </Text>
                 </View>
               </View>
@@ -674,8 +747,84 @@ export const DashboardScreen = ({ navigation }) => {
           </TouchableOpacity>
         )}
 
-        <Text style={styles.sectionTitle}>Raccourcis</Text>
+        {!isAdmin && (
+          <>
+            <Card style={styles.employeeOverviewCard}>
+              <View style={styles.employeeCardHeader}>
+                <View style={[styles.employeeCardIcon, { backgroundColor: colors.primary + '15' }]}>
+                  <Ionicons name="calendar-outline" size={21} color={colors.primary} />
+                </View>
+                <View style={styles.employeeCardHeading}>
+                  <Text style={styles.employeeEyebrow}>Mon planning</Text>
+                  <Text style={styles.employeeCardTitle}>Mes prochains services</Text>
+                </View>
+                <TouchableOpacity onPress={() => navigation.navigate('Planning')} accessibilityLabel="Voir mon planning">
+                  <Ionicons name="arrow-forward" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+              {employeeLoading ? (
+                <ActivityIndicator style={styles.employeeLoading} color={colors.primary} />
+              ) : employeeScheduleError ? (
+                <Text style={styles.employeeEmpty}>Planning indisponible. Réessayez en actualisant l'accueil.</Text>
+              ) : nextShifts.length ? nextShifts.map((schedule) => (
+                <View key={schedule._id} style={styles.employeeShiftRow}>
+                  <View style={styles.employeeShiftDot} />
+                  <Text style={styles.employeeShiftDate} numberOfLines={1}>
+                    {formatShiftDate(String(schedule.date).slice(0, 10))}
+                  </Text>
+                  <Text style={styles.employeeShiftTime}>
+                    {schedule.startTime?.slice(0, 5)} – {schedule.endTime?.slice(0, 5)}
+                  </Text>
+                </View>
+              )) : (
+                <Text style={styles.employeeEmpty}>Aucun service prévu dans les 14 prochains jours.</Text>
+              )}
+            </Card>
+
+            <Card style={styles.employeeOverviewCard}>
+              <View style={styles.employeeCardHeader}>
+                <View style={[styles.employeeCardIcon, { backgroundColor: colors.success + '15' }]}>
+                  <Ionicons name="cart-outline" size={21} color={colors.success} />
+                </View>
+                <View style={styles.employeeCardHeading}>
+                  <Text style={styles.employeeEyebrow}>Mon activité</Text>
+                  <Text style={styles.employeeCardTitle}>Mes ventes</Text>
+                </View>
+                <TouchableOpacity onPress={() => navigation.navigate('Sales')} accessibilityLabel="Voir mes ventes">
+                  <Ionicons name="arrow-forward" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+              {employeeLoading ? (
+                <ActivityIndicator style={styles.employeeLoading} color={colors.primary} />
+              ) : employeeSalesError ? (
+                <Text style={styles.employeeEmpty}>Ventes indisponibles. Réessayez en actualisant l'accueil.</Text>
+              ) : (
+                <View style={styles.employeeSalesMetrics}>
+                  <View style={styles.employeeSalesMetric}>
+                    <Text style={styles.employeeMetricLabel}>Aujourd'hui</Text>
+                    <Text style={styles.employeeMetricCount}>{todaySales.length} vente{todaySales.length > 1 ? 's' : ''}</Text>
+                    <Text style={styles.employeeMetricAmount} numberOfLines={1} adjustsFontSizeToFit>{formatPrice(sumSales(todaySales))}</Text>
+                  </View>
+                  <View style={styles.employeeMetricDivider} />
+                  <View style={styles.employeeSalesMetric}>
+                    <Text style={styles.employeeMetricLabel}>Ce mois</Text>
+                    <Text style={styles.employeeMetricCount}>{ownSales.length} vente{ownSales.length > 1 ? 's' : ''}</Text>
+                    <Text style={styles.employeeMetricAmount} numberOfLines={1} adjustsFontSizeToFit>{formatPrice(sumSales(ownSales))}</Text>
+                  </View>
+                </View>
+              )}
+            </Card>
+          </>
+        )}
+
+        <Text style={styles.sectionTitle}>{isAdmin ? 'Raccourcis' : 'Accès rapides'}</Text>
         <View style={styles.actionsGrid}>
+          {!isAdmin && <>
+            <QuickActionButton title="Ventes" icon="cart-outline" color={colors.success} onPress={() => navigation.navigate('Sales')} />
+            <QuickActionButton title="Planning" icon="calendar-outline" color={colors.primary} onPress={() => navigation.navigate('Planning')} />
+            <QuickActionButton title="Commissions" icon="cash-outline" color={colors.warning} onPress={() => navigation.navigate('Commissions')} />
+            <QuickActionButton title="Produits" icon="pricetag-outline" color={colors.info} onPress={() => navigation.navigate('Products')} />
+          </>}
           {isAdmin && (
             <QuickActionButton
               title="Dépenses"
@@ -1354,7 +1503,7 @@ export const DashboardScreen = ({ navigation }) => {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.settingsOptionTitle, { color: colors.error }]}>Supprimer mon compte</Text>
-                  <Text style={styles.settingsOptionDesc}>Suppression définitive de vos données</Text>
+                  <Text style={styles.settingsOptionDesc}>Supprimer votre profil et votre accès</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.error} />
               </TouchableOpacity>
@@ -1382,7 +1531,7 @@ export const DashboardScreen = ({ navigation }) => {
             </View>
             <Text style={styles.deleteModalTitle}>Supprimer votre compte ?</Text>
             <Text style={styles.deleteModalDesc}>
-              Cette action est irréversible. Toutes vos données, projets, ventes, dépenses et historiques seront définitivement supprimés.
+              Votre compte et votre profil seront supprimés définitivement. Les projets, ventes, plannings et autres données de l'entreprise seront conservés.
             </Text>
 
             <Text style={styles.deleteModalLabel}>Saisissez votre mot de passe pour confirmer :</Text>
@@ -1719,6 +1868,105 @@ const createStyles = (colors) => ({
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  employeeOverviewCard: {
+    marginBottom: 14,
+    padding: 16,
+  },
+  employeeCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  employeeCardIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  employeeCardHeading: {
+    flex: 1,
+  },
+  employeeEyebrow: {
+    color: colors.textLight,
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  employeeCardTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  employeeLoading: {
+    marginTop: 20,
+    marginBottom: 4,
+  },
+  employeeEmpty: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 18,
+  },
+  employeeShiftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    marginTop: 14,
+    paddingTop: 14,
+    gap: 9,
+  },
+  employeeShiftDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+  },
+  employeeShiftDate: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  employeeShiftTime: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  employeeSalesMetrics: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    marginTop: 16,
+    paddingTop: 16,
+  },
+  employeeSalesMetric: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 6,
+  },
+  employeeMetricLabel: {
+    color: colors.textLight,
+    fontSize: 12,
+  },
+  employeeMetricCount: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 5,
+  },
+  employeeMetricAmount: {
+    color: colors.success,
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 3,
+  },
+  employeeMetricDivider: {
+    width: 1,
+    backgroundColor: colors.border,
   },
   sectionTitle: {
     fontSize: 17,

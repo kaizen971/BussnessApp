@@ -36,6 +36,7 @@ export const SalesScreen = () => {
   const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const { format: formatPrice } = useCurrency();
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'responsable';
   const [sales, setSales] = useState([]);
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -84,7 +85,7 @@ export const SalesScreen = () => {
         salesAPI.getAll(user?.projectId, getPeriodFilters()),
         productsAPI.getAll(user?.projectId),
         customersAPI.getAll(user?.projectId),
-        usersAPI.getAll(user?.projectId),
+        isAdmin ? usersAPI.getAll(user?.projectId) : Promise.resolve({ data: [] }),
       ]);
       const receivedSales = salesRes.data?.data || [];
       const bounds = getMonthBounds(selectedMonth);
@@ -528,7 +529,6 @@ export const SalesScreen = () => {
   };
 
   // Déterminer si l'utilisateur est admin/manager
-  const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'responsable';
 
   // Fonction pour afficher les ventes (uniquement pour les admins)
   const renderSaleItem = ({ item }) => {

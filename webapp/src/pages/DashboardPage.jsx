@@ -508,7 +508,7 @@ export default function DashboardPage() {
             <span className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center"><Trash2 className="w-5 h-5 text-red-400" /></span>
             <span className="flex-1">
               <span className="block text-sm font-semibold text-red-400">Supprimer mon compte</span>
-              <span className="block text-[11.5px] text-gray-500">Suppression définitive de vos données</span>
+              <span className="block text-[11.5px] text-gray-500">Supprimer votre profil et votre accès</span>
             </span>
             <ChevronRight className="w-4 h-4 text-red-400/60" />
           </button>
@@ -522,8 +522,8 @@ export default function DashboardPage() {
             <AlertTriangle className="w-7 h-7 text-red-400" />
           </div>
           <p className="text-[13px] text-gray-400 text-center leading-relaxed">
-            Cette action est irréversible. Toutes vos données, projets, ventes, dépenses et historiques
-            seront définitivement supprimés.
+            Votre compte et votre profil seront supprimés définitivement. Les projets, ventes,
+            plannings et autres données de l'entreprise seront conservés.
           </p>
           <div>
             <label className="input-label">Saisissez votre mot de passe pour confirmer :</label>
