@@ -55,7 +55,7 @@ const refreshAuthToken = async () => {
     const token = cachedToken || await AsyncStorage.getItem('userToken');
     if (!token) throw new Error('No token to refresh');
 
-    const response = await api.post('/auth/refresh', null, {
+    const response = await api.post('/auth/refresh', {}, {
       headers: { Authorization: `Bearer ${token}` },
       skipAuthRefresh: true,
     });

@@ -25,12 +25,21 @@ app.set('trust proxy', 1);
 app.use(cors());
 app.use(bodyParser.json({
   limit: '50mb',
+  // strict: false : les apps mobiles envoient le corps JSON `null` sur /auth/refresh (axios avec data null).
+  // En mode strict, body-parser le rejetait (500) : le token n'était jamais renouvelé et, après 7 jours,
+  // l'app affichait « Impossible de charger les données » jusqu'à une reconnexion.
+  strict: false,
   verify: (req, res, buf) => {
     if (req.originalUrl.includes('/stripe/webhook')) {
       req.rawBody = buf;
     }
   }
 }));
+// Corps JSON non-objet (null, nombre, chaîne) ramené à {} pour les routes qui déstructurent req.body
+app.use((req, res, next) => {
+  if (req.body === null || typeof req.body !== 'object') req.body = {};
+  next();
+});
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
 // MongoDB Connection
