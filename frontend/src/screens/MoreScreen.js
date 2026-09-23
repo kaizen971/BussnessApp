@@ -5,6 +5,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { useSubscription } from '../contexts/SubscriptionContext'
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext'
 import { ThemePicker } from '../components/ThemePicker'
+import { LanguagePicker } from '../components/LanguagePicker'
+import { useI18n } from '../i18n'
 import { radius, spacing, typography } from '../utils/designSystem'
 
 const GROUPS = [
@@ -48,6 +50,7 @@ export const MoreScreen = ({ navigation }) => {
   const styles = useThemedStyles(createStyles)
   const { user, logout } = useAuth()
   const { canAccessScreen } = useSubscription()
+  const { t } = useI18n()
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'responsable'
 
   const groups = GROUPS.map((group) => ({
@@ -63,16 +66,17 @@ export const MoreScreen = ({ navigation }) => {
             <Text style={styles.avatarText}>{(user?.fullName || user?.username || 'U').charAt(0).toUpperCase()}</Text>
           </View>
           <View style={styles.identity}>
-            <Text style={styles.title}>Plus</Text>
+            <Text style={styles.title}>{t('Plus')}</Text>
             <Text style={styles.userName} numberOfLines={1}>{user?.fullName || user?.username}</Text>
           </View>
         </View>
 
         <ThemePicker mode="row" />
+        <LanguagePicker mode="row" style={styles.languagePicker} />
 
         {groups.map((group) => (
           <View key={group.title} style={styles.section}>
-            <Text style={styles.sectionTitle}>{group.title}</Text>
+            <Text style={styles.sectionTitle}>{t(group.title)}</Text>
             <View style={styles.list}>
               {group.items.map((item, index) => {
                 const locked = item.premium && !canAccessScreen(item.premium)
@@ -88,8 +92,8 @@ export const MoreScreen = ({ navigation }) => {
                       <Ionicons name={item.icon} size={20} color={colors.primary} />
                     </View>
                     <View style={styles.rowContent}>
-                      <Text style={styles.rowLabel}>{item.label}</Text>
-                      <Text style={styles.rowDetail}>{item.detail}</Text>
+                      <Text style={styles.rowLabel}>{t(item.label)}</Text>
+                      <Text style={styles.rowDetail}>{t(item.detail)}</Text>
                     </View>
                     <Ionicons name={locked ? 'lock-closed-outline' : 'chevron-forward'} size={17} color={locked ? colors.warning : colors.textLight} />
                   </TouchableOpacity>
@@ -101,7 +105,7 @@ export const MoreScreen = ({ navigation }) => {
 
         <TouchableOpacity style={styles.logout} onPress={logout} activeOpacity={0.72} accessibilityRole="button">
           <Ionicons name="log-out-outline" size={20} color={colors.error} />
-          <Text style={styles.logoutText}>Se déconnecter</Text>
+          <Text style={styles.logoutText}>{t('Se déconnecter')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -148,6 +152,9 @@ const createStyles = (colors) => ({
     ...typography.caption,
     color: colors.textLight,
     marginTop: 2,
+  },
+  languagePicker: {
+    marginTop: spacing.sm,
   },
   section: {
     marginTop: spacing.xl,

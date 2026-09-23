@@ -4,8 +4,10 @@ import { Ionicons } from '@expo/vector-icons'
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext'
 import { control, radius, spacing } from '../utils/designSystem'
 import { monthKey, monthLabel, shiftMonth, startOfMonth } from '../utils/monthPeriod'
+import { t, useLanguage } from '../i18n'
 
 export function MonthNavigator({ value, onChange, minimumDate, maximumDate = new Date(), style }) {
+  useLanguage()
   const { colors } = useTheme()
   const styles = useThemedStyles(createStyles)
   const selected = startOfMonth(value)
@@ -27,7 +29,7 @@ export function MonthNavigator({ value, onChange, minimumDate, maximumDate = new
         onPress={() => changeMonth(previous, previousDisabled)}
         disabled={previousDisabled}
         accessibilityRole="button"
-        accessibilityLabel="Mois précédent"
+        accessibilityLabel={t('Mois précédent')}
         accessibilityState={{ disabled: previousDisabled }}
       >
         <Ionicons name="chevron-back" size={20} color={previousDisabled ? colors.textLight : colors.text} />
@@ -43,7 +45,7 @@ export function MonthNavigator({ value, onChange, minimumDate, maximumDate = new
         onPress={() => changeMonth(next, nextDisabled)}
         disabled={nextDisabled}
         accessibilityRole="button"
-        accessibilityLabel="Mois suivant"
+        accessibilityLabel={t('Mois suivant')}
         accessibilityState={{ disabled: nextDisabled }}
       >
         <Ionicons name="chevron-forward" size={20} color={nextDisabled ? colors.textLight : colors.text} />

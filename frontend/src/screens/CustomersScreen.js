@@ -17,8 +17,10 @@ import { Card } from '../components/Card';
 import { customersAPI } from '../services/api';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { EmptyState, FloatingActionButton, SearchField } from '../components/AppPrimitives';
+import { t, useLanguage } from '../i18n';
 
 export const CustomersScreen = () => {
+  useLanguage();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
@@ -54,7 +56,7 @@ export const CustomersScreen = () => {
       setCustomers(response.data.data || response.data || []);
     } catch (error) {
       console.error('Error loading customers:', error);
-      Alert.alert('Erreur', 'Impossible de charger les clients');
+      Alert.alert(t('Erreur'), t('Impossible de charger les clients'));
     } finally {
       setLoading(false);
     }
@@ -62,7 +64,7 @@ export const CustomersScreen = () => {
 
   const handleSaveCustomer = async () => {
     if (!formData.name || !formData.name.trim()) {
-      Alert.alert('Erreur', 'Veuillez saisir un nom');
+      Alert.alert(t('Erreur'), t('Veuillez saisir un nom'));
       return;
     }
 
@@ -75,13 +77,13 @@ export const CustomersScreen = () => {
 
       if (selectedCustomer) {
         const response = await customersAPI.update(selectedCustomer._id, customerData);
-        Alert.alert('Succès', 'Client modifié avec succès');
+        Alert.alert(t('Succès'), t('Client modifié avec succès'));
       } else {
         const response = await customersAPI.create({
           ...customerData,
           projectId: user?.projectId,
         });
-        Alert.alert('Succès', 'Client ajouté avec succès');
+        Alert.alert(t('Succès'), t('Client ajouté avec succès'));
       }
 
       setFormData({ name: '', email: '', phone: '' });
@@ -90,11 +92,11 @@ export const CustomersScreen = () => {
       await loadCustomers();
     } catch (error) {
       console.error('Error saving customer:', error);
-      const errorMessage = error.response?.data?.error || error.message || 'Impossible de sauvegarder le client';
+      const errorMessage = error.response?.data?.error || error.message || t('Impossible de sauvegarder le client');
       const errorDetails = error.response?.status === 403
-        ? 'Vous n\'avez pas les permissions nécessaires pour créer un client'
+        ? t("Vous n'avez pas les permissions nécessaires pour créer un client")
         : errorMessage;
-      Alert.alert('Erreur', errorDetails);
+      Alert.alert(t('Erreur'), errorDetails);
     }
   };
 
@@ -142,7 +144,7 @@ export const CustomersScreen = () => {
           <View style={styles.statsRow}>
             <View style={styles.statBadge}>
               <Text style={styles.statValue}>{formatPrice(item.totalPurchases || 0)}</Text>
-              <Text style={styles.statLabel}>Total achats</Text>
+              <Text style={styles.statLabel}>{t('Total achats')}</Text>
             </View>
 
           </View>
@@ -154,10 +156,10 @@ export const CustomersScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.searchContainer}>
-        <SearchField value={searchQuery} onChangeText={setSearchQuery} placeholder="Rechercher un client…" />
+        <SearchField value={searchQuery} onChangeText={setSearchQuery} placeholder={t('Rechercher un client…')} />
         {searchQuery.length > 0 && (
           <Text style={styles.searchResultText}>
-            {filteredCustomers.length} client{filteredCustomers.length !== 1 ? 's' : ''} trouvé{filteredCustomers.length !== 1 ? 's' : ''}
+            {filteredCustomers.length !== 1 ? t('{count} clients trouvés', { count: filteredCustomers.length }) : t('{count} client trouvé', { count: filteredCustomers.length })}
           </Text>
         )}
       </View>
@@ -170,13 +172,13 @@ export const CustomersScreen = () => {
         ListEmptyComponent={
           <EmptyState
             icon="people-outline"
-            title={searchQuery ? 'Aucun résultat' : 'Aucun client'}
-            description={searchQuery ? 'Modifiez votre recherche.' : 'Ajoutez votre premier client pour commencer le suivi.'}
+            title={searchQuery ? t('Aucun résultat') : t('Aucun client')}
+            description={searchQuery ? t('Modifiez votre recherche.') : t('Ajoutez votre premier client pour commencer le suivi.')}
           />
         }
       />
 
-      <FloatingActionButton icon="person-add-outline" label="Ajouter un client" onPress={() => openCustomerModal()} bottom={80} />
+      <FloatingActionButton icon="person-add-outline" label={t('Ajouter un client')} onPress={() => openCustomerModal()} bottom={80} />
 
       <Modal
         visible={modalVisible}
@@ -188,7 +190,7 @@ export const CustomersScreen = () => {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {selectedCustomer ? 'Modifier client' : 'Nouveau client'}
+                {selectedCustomer ? t('Modifier client') : t('Nouveau client')}
               </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={24} color={colors.text} />
@@ -196,15 +198,15 @@ export const CustomersScreen = () => {
             </View>
 
             <Input
-              label="Nom *"
+              label={t('Nom *')}
               value={formData.name}
               onChangeText={(value) => setFormData(prev => ({ ...prev, name: value }))}
-              placeholder="Nom du client"
+              placeholder={t('Nom du client')}
               icon="person-outline"
             />
 
             <Input
-              label="Email"
+              label={t('Email')}
               value={formData.email}
               onChangeText={(value) => setFormData(prev => ({ ...prev, email: value }))}
               placeholder="email@exemple.com"
@@ -214,7 +216,7 @@ export const CustomersScreen = () => {
             />
 
             <Input
-              label="Téléphone"
+              label={t('Téléphone')}
               value={formData.phone}
               onChangeText={(value) => setFormData(prev => ({ ...prev, phone: value }))}
               placeholder="+33 6 12 34 56 78"
@@ -223,7 +225,7 @@ export const CustomersScreen = () => {
             />
 
             <Button
-              title={selectedCustomer ? 'Modifier' : 'Ajouter'}
+              title={selectedCustomer ? t('Modifier') : t('Ajouter')}
               onPress={handleSaveCustomer}
             />
           </View>

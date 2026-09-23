@@ -1,3 +1,5 @@
+import { getLocale } from '../i18n'
+
 export const MONTH_HISTORY_LIMIT = 11
 
 export function startOfMonth(date = new Date()) {
@@ -14,7 +16,7 @@ export function monthKey(date) {
 }
 
 export function monthLabel(date) {
-  const label = date.toLocaleDateString('fr-FR', {
+  const label = date.toLocaleDateString(getLocale(), {
     month: 'long',
     year: 'numeric',
   })

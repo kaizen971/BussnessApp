@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, UserCheck, UserX, Send, CreditCard, Activity, FolderOpen, Clock, Loader2, RefreshCw, Banknote, Heart, AlertTriangle, ChevronRight, Plus, Check, Package, Trash2 } from 'lucide-react'
+import { ArrowLeft, UserCheck, UserX, Send, CreditCard, Activity, FolderOpen, Clock, Loader2, RefreshCw, Banknote, Heart, AlertTriangle, ChevronRight, Plus, Check, Package, Trash2, Tag } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Badge, Skeleton, ConfirmDialog, Modal } from '../components/ui'
 import api from '../services/api'
@@ -205,6 +205,11 @@ export default function AdminDetailPage() {
             <div className="flex items-center gap-3 mt-2.5 flex-wrap">
               <span className="text-xs text-gray-400 bg-gray-50 px-2.5 py-1 rounded-lg font-medium">@{admin.username}</span>
               <span className="text-xs text-gray-400 bg-gray-50 px-2.5 py-1 rounded-lg font-medium">Créé le {formatShort(admin.createdAt)}</span>
+              {admin.partnerCode && (
+                <Link to={`/admins?partner=${encodeURIComponent(admin.partnerCode)}`} className="inline-flex items-center gap-1 text-xs text-primary-600 bg-primary-50 px-2.5 py-1 rounded-lg font-semibold hover:bg-primary-100">
+                  <Tag className="w-3 h-3" /> Code partenaire : {admin.partnerCode}
+                </Link>
+              )}
               {latestSub && <Badge variant={SUB_STATUS[latestSub.status]?.variant || 'neutral'}>{latestSub.planName || latestSub.plan}</Badge>}
             </div>
           </div>

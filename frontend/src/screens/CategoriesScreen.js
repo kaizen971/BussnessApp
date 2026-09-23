@@ -18,8 +18,10 @@ import { Card } from '../components/Card';
 import { Input } from '../components/Input';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { t, useLanguage, getLocale } from '../i18n';
 
 export const CategoriesScreen = ({ navigation }) => {
+  useLanguage();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
@@ -42,7 +44,7 @@ export const CategoriesScreen = ({ navigation }) => {
       setCategories(response.data?.data || []);
     } catch (error) {
       console.error('Error loading categories', error);
-      Alert.alert('Erreur', 'Impossible de charger les catégories');
+      Alert.alert(t('Erreur'), t('Impossible de charger les catégories'));
     } finally {
       setLoading(false);
     }
@@ -50,7 +52,7 @@ export const CategoriesScreen = ({ navigation }) => {
 
   const handleSave = async () => {
     if (!categoryName.trim()) {
-      Alert.alert('Erreur', 'Veuillez entrer un nom de catégorie');
+      Alert.alert(t('Erreur'), t('Veuillez entrer un nom de catégorie'));
       return;
     }
 
@@ -61,20 +63,20 @@ export const CategoriesScreen = ({ navigation }) => {
           name: categoryName,
           projectId: user?.projectId
         });
-        Alert.alert('Succès', 'Catégorie modifiée');
+        Alert.alert(t('Succès'), t('Catégorie modifiée'));
       } else {
         await api.post('/categories', {
           name: categoryName,
           projectId: user?.projectId
         });
-        Alert.alert('Succès', 'Catégorie créée');
+        Alert.alert(t('Succès'), t('Catégorie créée'));
       }
       setModalVisible(false);
       setCategoryName('');
       setEditingCategory(null);
       loadCategories();
     } catch (error) {
-      Alert.alert('Erreur', error.response?.data?.error || 'Une erreur est survenue');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Une erreur est survenue'));
     } finally {
       setLoading(false);
     }
@@ -88,20 +90,20 @@ export const CategoriesScreen = ({ navigation }) => {
 
   const handleDelete = (category) => {
     Alert.alert(
-      'Confirmer la suppression',
-      `Voulez-vous vraiment supprimer la catégorie "${category.name}" ?`,
+      t('Confirmer la suppression'),
+      t('Voulez-vous vraiment supprimer la catégorie "{name}" ?', { name: category.name }),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
         {
-          text: 'Supprimer',
+          text: t('Supprimer'),
           style: 'destructive',
           onPress: async () => {
             try {
               await api.delete(`/categories/${category._id}`);
               loadCategories();
-              Alert.alert('Succès', 'Catégorie supprimée');
+              Alert.alert(t('Succès'), t('Catégorie supprimée'));
             } catch (error) {
-              Alert.alert('Erreur', 'Impossible de supprimer la catégorie');
+              Alert.alert(t('Erreur'), t('Impossible de supprimer la catégorie'));
             }
           },
         },
@@ -123,7 +125,7 @@ export const CategoriesScreen = ({ navigation }) => {
         <View style={styles.categoryInfo}>
           <Text style={styles.categoryName}>{item.name}</Text>
           <Text style={styles.categoryDate}>
-            Créée le {new Date(item.createdAt).toLocaleDateString('fr-FR')}
+            {t('Créée le {toLocaleDateString}', { toLocaleDateString: new Date(item.createdAt).toLocaleDateString(getLocale()) })}
           </Text>
         </View>
         {isAdmin && (
@@ -143,11 +145,11 @@ export const CategoriesScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <AppHeader
-        title="Catégories"
-        subtitle={`${categories.length} catégorie(s)`}
+        title={t('Catégories')}
+        subtitle={t('{length} catégorie(s)', { length: categories.length })}
         onBack={() => navigation.goBack()}
         rightIcon={isAdmin ? 'add' : undefined}
-        rightLabel="Ajouter une catégorie"
+        rightLabel={t('Ajouter une catégorie')}
         onRightPress={isAdmin ? () => {
           setCategoryName('');
           setEditingCategory(null);
@@ -165,8 +167,8 @@ export const CategoriesScreen = ({ navigation }) => {
         ListEmptyComponent={
           <EmptyState
             icon="grid-outline"
-            title="Aucune catégorie"
-            description="Créez une catégorie pour organiser votre catalogue."
+            title={t('Aucune catégorie')}
+            description={t('Créez une catégorie pour organiser votre catalogue.')}
           />
         }
       />
@@ -196,10 +198,10 @@ export const CategoriesScreen = ({ navigation }) => {
                 </View>
                 <View style={styles.modalTitleContainer}>
                   <Text style={styles.modalTitle}>
-                    {editingCategory ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
+                    {editingCategory ? t('Modifier la catégorie') : t('Nouvelle catégorie')}
                   </Text>
                   <Text style={styles.modalSubtitle}>
-                    {editingCategory ? 'Modifiez le nom' : 'Créez une nouvelle catégorie'}
+                    {editingCategory ? t('Modifiez le nom') : t('Créez une nouvelle catégorie')}
                   </Text>
                 </View>
               </LinearGradient>
@@ -216,18 +218,18 @@ export const CategoriesScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.modalForm}>
-              <Text style={styles.inputLabel}>Nom de la catégorie</Text>
+              <Text style={styles.inputLabel}>{t('Nom de la catégorie')}</Text>
               <Input
-                placeholder="Ex: Boissons, Soins, Accessoires..."
+                placeholder={t('Ex: Boissons, Soins, Accessoires...')}
                 value={categoryName}
                 onChangeText={setCategoryName}
                 autoFocus
               />
 
               <View style={styles.suggestionsContainer}>
-                <Text style={styles.suggestionsTitle}>Suggestions</Text>
+                <Text style={styles.suggestionsTitle}>{t('Suggestions')}</Text>
                 <View style={styles.suggestionsGrid}>
-                  {['Boissons', 'Soins', 'Accessoires', 'Vêtements', 'Alimentation', 'Services'].map((suggestion) => (
+                  {[t('Boissons'), t('Soins'), t('Accessoires'), t('Vêtements'), t('Alimentation'), t('Services')].map((suggestion) => (
                     <TouchableOpacity
                       key={suggestion}
                       style={styles.suggestionChip}
@@ -249,7 +251,7 @@ export const CategoriesScreen = ({ navigation }) => {
                   setEditingCategory(null);
                 }}
               >
-                <Text style={styles.cancelButtonText}>Annuler</Text>
+                <Text style={styles.cancelButtonText}>{t('Annuler')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.saveButtonWrapper}
@@ -266,7 +268,7 @@ export const CategoriesScreen = ({ navigation }) => {
                     <>
                       <Ionicons name="checkmark-circle" size={20} color={colors.onPrimary} />
                       <Text style={styles.saveButtonText}>
-                        {editingCategory ? 'Modifier' : 'Créer'}
+                        {editingCategory ? t('Modifier') : t('Créer')}
                       </Text>
                     </>
                   )}

@@ -13,6 +13,7 @@ import { SubscriptionProvider, useSubscription } from './src/contexts/Subscripti
 import { IAPProvider } from './src/contexts/IAPContext';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import { ThemePicker } from './src/components/ThemePicker';
+import { LanguageProvider, useI18n } from './src/i18n';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
@@ -58,8 +59,9 @@ const AuthStack = () => {
 function PremiumGate(WrappedComponent, screenName, featureName) {
   return function GatedScreen(props) {
     const { canAccessScreen } = useSubscription();
+    const { t } = useI18n();
     if (!canAccessScreen(screenName)) {
-      return <PaywallScreen {...props} route={{ ...props.route, params: { ...props.route?.params, featureName } }} />;
+      return <PaywallScreen {...props} route={{ ...props.route, params: { ...props.route?.params, featureName: t(featureName) } }} />;
     }
     return <WrappedComponent {...props} />;
   };
@@ -75,6 +77,7 @@ const TAB_ICONS = {
 
 const MainTabs = () => {
   const { colors } = useTheme();
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 8);
 
@@ -108,14 +111,14 @@ const MainTabs = () => {
         },
       })}
     >
-      <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Accueil' }} />
-      <Tab.Screen name="Sales" component={SalesScreen} options={{ title: 'Ventes' }} />
-      <Tab.Screen name="Products" component={ProductsScreen} options={{ title: 'Produits' }} />
+      <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: t('Accueil') }} />
+      <Tab.Screen name="Sales" component={SalesScreen} options={{ title: t('Ventes') }} />
+      <Tab.Screen name="Products" component={ProductsScreen} options={{ title: t('Produits') }} />
       <Tab.Screen
         name="Customers"
         component={PremiumGate(CustomersScreen, 'Customers', 'CRM Clients')}
         options={{
-          title: 'Clients',
+          title: t('Clients'),
           headerShown: true,
           headerStyle: { backgroundColor: colors.surface },
           headerTintColor: colors.text,
@@ -123,13 +126,14 @@ const MainTabs = () => {
           headerShadowVisible: false,
         }}
       />
-      <Tab.Screen name="More" component={MoreScreen} options={{ title: 'Plus' }} />
+      <Tab.Screen name="More" component={MoreScreen} options={{ title: t('Plus') }} />
     </Tab.Navigator>
   );
 };
 
 const MainStack = () => {
   const { colors } = useTheme();
+  const { t } = useI18n();
 
   return (
     <Stack.Navigator
@@ -164,12 +168,12 @@ const MainStack = () => {
     <Stack.Screen
       name="Subscription"
       component={SubscriptionScreen}
-      options={{ title: 'Mon abonnement' }}
+      options={{ title: t('Mon abonnement') }}
     />
     <Stack.Screen
       name="ChangePassword"
       component={ChangePasswordScreen}
-      options={{ title: 'Changer le mot de passe' }}
+      options={{ title: t('Changer le mot de passe') }}
     />
     <Stack.Screen
       name="Paywall"
@@ -179,42 +183,42 @@ const MainStack = () => {
     <Stack.Screen
       name="Simulation"
       component={PremiumGate(SimulationScreen, 'Simulation', 'Simulation Business Plan')}
-      options={{ title: 'Simulation Business Plan' }}
+      options={{ title: t('Simulation Business Plan') }}
     />
     <Stack.Screen
       name="Expenses"
       component={ExpensesScreen}
-      options={{ title: 'Dépenses' }}
+      options={{ title: t('Dépenses') }}
     />
     <Stack.Screen
       name="Stock"
       component={PremiumGate(StockScreen, 'Stock', 'Gestion de stock')}
-      options={{ title: 'Stock' }}
+      options={{ title: t('Stock') }}
     />
     <Stack.Screen
       name="Team"
       component={PremiumGate(TeamScreen, 'Team', 'Gestion d\'équipe')}
-      options={{ title: 'Équipe', headerShown: false }}
+      options={{ title: t('Équipe'), headerShown: false }}
     />
     <Stack.Screen
       name="Feedback"
       component={FeedbackScreen}
-      options={{ title: 'Feedback' }}
+      options={{ title: t('Feedback') }}
     />
     <Stack.Screen
       name="Projects"
       component={ProjectsScreen}
-      options={{ title: 'Projets', headerShown: false }}
+      options={{ title: t('Projets'), headerShown: false }}
     />
     <Stack.Screen
       name="Planning"
       component={PremiumGate(PlanningScreen, 'Planning', 'Planning')}
-      options={{ title: 'Planning', headerShown: false }}
+      options={{ title: t('Planning'), headerShown: false }}
     />
     <Stack.Screen
       name="Commissions"
       component={PremiumGate(CommissionsScreen, 'Commissions', 'Commissions')}
-      options={{ title: 'Commissions', headerShown: false }}
+      options={{ title: t('Commissions'), headerShown: false }}
     />
     <Stack.Screen
       name="Tutorial"
@@ -229,7 +233,7 @@ const MainStack = () => {
     <Stack.Screen
       name="CsvImport"
       component={CsvImportScreen}
-      options={{ title: 'Import CSV' }}
+      options={{ title: t('Import CSV') }}
     />
     </Stack.Navigator>
   );
@@ -272,6 +276,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
+        <LanguageProvider>
         <AuthProvider>
           <CurrencyProvider>
             <SubscriptionProvider>
@@ -282,6 +287,7 @@ export default function App() {
             </SubscriptionProvider>
           </CurrencyProvider>
         </AuthProvider>
+        </LanguageProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

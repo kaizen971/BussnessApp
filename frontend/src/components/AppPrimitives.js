@@ -3,8 +3,10 @@ import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-nativ
 import { Ionicons } from '@expo/vector-icons'
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext'
 import { control, radius, spacing, typography } from '../utils/designSystem'
+import { t, useLanguage } from '../i18n'
 
-export function SearchField({ value, onChangeText, placeholder = 'Rechercher…', style }) {
+export function SearchField({ value, onChangeText, placeholder = t('Rechercher…'), style }) {
+  useLanguage()
   const { colors } = useTheme()
   const styles = useThemedStyles(createStyles)
 
@@ -26,7 +28,7 @@ export function SearchField({ value, onChangeText, placeholder = 'Rechercher…'
           style={styles.clearButton}
           onPress={() => onChangeText('')}
           accessibilityRole="button"
-          accessibilityLabel="Effacer la recherche"
+          accessibilityLabel={t('Effacer la recherche')}
         >
           <Ionicons name="close-circle" size={19} color={colors.textLight} />
         </TouchableOpacity>
@@ -36,6 +38,7 @@ export function SearchField({ value, onChangeText, placeholder = 'Rechercher…'
 }
 
 export function EmptyState({ icon, title, description, actionLabel, onAction, compact = false }) {
+  useLanguage()
   const { colors } = useTheme()
   const styles = useThemedStyles(createStyles)
 
@@ -56,6 +59,7 @@ export function EmptyState({ icon, title, description, actionLabel, onAction, co
 }
 
 export function SegmentedControl({ options, value, onChange, style }) {
+  useLanguage()
   const { colors } = useTheme()
   const styles = useThemedStyles(createStyles)
 
@@ -81,6 +85,7 @@ export function SegmentedControl({ options, value, onChange, style }) {
 }
 
 export function FloatingActionButton({ icon = 'add', label, onPress, bottom = 24, color }) {
+  useLanguage()
   const { colors } = useTheme()
   const styles = useThemedStyles(createStyles)
 

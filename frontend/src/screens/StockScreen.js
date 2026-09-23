@@ -19,8 +19,10 @@ import { EmptyState, FloatingActionButton } from '../components/AppPrimitives';
 import { stockAPI } from '../services/api';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import api from '../services/api';
+import { t, useLanguage, getLocale } from '../i18n';
 
 export const StockScreen = () => {
+  useLanguage();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
@@ -58,7 +60,7 @@ export const StockScreen = () => {
       setStock(response.data.data || response.data || []);
     } catch (error) {
       console.error('Error loading stock:', error);
-      Alert.alert('Erreur', 'Impossible de charger le stock');
+      Alert.alert(t('Erreur'), t('Impossible de charger le stock'));
     } finally {
       setLoading(false);
     }
@@ -70,13 +72,13 @@ export const StockScreen = () => {
       setProducts(response.data?.data || []);
     } catch (error) {
       console.error('Error loading products:', error);
-      Alert.alert('Erreur', 'Impossible de charger les produits');
+      Alert.alert(t('Erreur'), t('Impossible de charger les produits'));
     }
   };
 
   const handleSaveStock = async () => {
     if (!formData.productId || !formData.quantity || formData.unitPrice === '' || formData.unitPrice === undefined) {
-      Alert.alert('Erreur', 'Veuillez sélectionner un produit et remplir tous les champs obligatoires');
+      Alert.alert(t('Erreur'), t('Veuillez sélectionner un produit et remplir tous les champs obligatoires'));
       return;
     }
 
@@ -91,13 +93,13 @@ export const StockScreen = () => {
 
       if (selectedItem) {
         const response = await stockAPI.update(selectedItem._id, stockData);
-        Alert.alert('Succès', 'Article modifié avec succès');
+        Alert.alert(t('Succès'), t('Article modifié avec succès'));
       } else {
         const response = await stockAPI.create({
           ...stockData,
           projectId: user?.projectId,
         });
-        Alert.alert('Succès', 'Article ajouté avec succès');
+        Alert.alert(t('Succès'), t('Article ajouté avec succès'));
       }
 
       setFormData({ name: '', quantity: '', unitPrice: '', minQuantity: '', productId: '' });
@@ -106,11 +108,11 @@ export const StockScreen = () => {
       await loadStock();
     } catch (error) {
       console.error('Error saving stock:', error);
-      const errorMessage = error.response?.data?.error || error.message || 'Impossible de sauvegarder l\'article';
+      const errorMessage = error.response?.data?.error || error.message || t("Impossible de sauvegarder l'article");
       const errorDetails = error.response?.status === 403
-        ? 'Vous n\'avez pas les permissions nécessaires pour créer un article'
+        ? t("Vous n'avez pas les permissions nécessaires pour créer un article")
         : errorMessage;
-      Alert.alert('Erreur', errorDetails);
+      Alert.alert(t('Erreur'), errorDetails);
     }
   };
 
@@ -150,13 +152,13 @@ export const StockScreen = () => {
       setShowMovements(true);
     } catch (error) {
       console.error('Error loading movements:', error);
-      Alert.alert('Erreur', 'Impossible de charger l\'historique');
+      Alert.alert(t('Erreur'), t("Impossible de charger l'historique"));
     }
   };
 
   const handleAddMovement = async () => {
     if (!movementQuantity || parseFloat(movementQuantity) <= 0) {
-      Alert.alert('Erreur', 'Veuillez entrer une quantité valide');
+      Alert.alert(t('Erreur'), t('Veuillez entrer une quantité valide'));
       return;
     }
 
@@ -165,10 +167,10 @@ export const StockScreen = () => {
         stockId: selectedItem._id,
         type: movementType,
         quantity: parseFloat(movementQuantity),
-        reason: movementReason || (movementType === 'in' ? 'Approvisionnement' : 'Sortie'),
+        reason: movementReason || (movementType === 'in' ? 'Approvisionnement' : 'Sortie'), // stocké en français, traduit à l'affichage
       });
 
-      Alert.alert('Succès', 'Mouvement enregistré');
+      Alert.alert(t('Succès'), t('Mouvement enregistré'));
       setShowMovementModal(false);
       setMovementQuantity('');
       setMovementReason('');
@@ -178,7 +180,7 @@ export const StockScreen = () => {
       }
     } catch (error) {
       console.error('Error adding movement:', error);
-      Alert.alert('Erreur', 'Impossible d\'enregistrer le mouvement');
+      Alert.alert(t('Erreur'), t("Impossible d'enregistrer le mouvement"));
     }
   };
 
@@ -205,30 +207,30 @@ export const StockScreen = () => {
               {isLowStock && (
                 <View style={styles.alertBadge}>
                   <Ionicons name="warning-outline" size={14} color={colors.error} />
-                  <Text style={styles.alertText}>Stock bas</Text>
+                  <Text style={styles.alertText}>{t('Stock bas')}</Text>
                 </View>
               )}
             </View>
             <View style={styles.detailsRow}>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Quantité</Text>
+                <Text style={styles.detailLabel}>{t('Quantité')}</Text>
                 <Text style={[styles.detailValue, isLowStock && { color: colors.error }]}>
                   {item.quantity}
                 </Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Prix unitaire</Text>
+                <Text style={styles.detailLabel}>{t('Prix unitaire')}</Text>
                 <Text style={styles.detailValue}>{formatPrice(item.unitPrice)}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Valeur totale</Text>
+                <Text style={styles.detailLabel}>{t('Valeur totale')}</Text>
                 <Text style={[styles.detailValue, styles.totalValue]}>
                   {formatPrice(totalValue)}
                 </Text>
               </View>
             </View>
             {item.sku && (
-              <Text style={styles.skuText}>SKU: {item.sku}</Text>
+              <Text style={styles.skuText}>{t('SKU: {sku}', { sku: item.sku })}</Text>
             )}
             {item.location && (
               <Text style={styles.locationText}>
@@ -237,7 +239,7 @@ export const StockScreen = () => {
             )}
             {item.minQuantity > 0 && (
               <Text style={styles.minQuantityText}>
-                Seuil minimum: {item.minQuantity}
+                {t('Seuil minimum: {minQuantity}', { minQuantity: item.minQuantity })}
               </Text>
             )}
           </View>
@@ -252,7 +254,7 @@ export const StockScreen = () => {
             }}
           >
             <Ionicons name="time-outline" size={18} color={colors.info} />
-            <Text style={[styles.actionBtnText, { color: colors.info }]}>Historique</Text>
+            <Text style={[styles.actionBtnText, { color: colors.info }]}>{t('Historique')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionBtn}
@@ -263,7 +265,7 @@ export const StockScreen = () => {
             }}
           >
             <Ionicons name="add-circle-outline" size={18} color={colors.success} />
-            <Text style={[styles.actionBtnText, { color: colors.success }]}>Entrée</Text>
+            <Text style={[styles.actionBtnText, { color: colors.success }]}>{t('Entrée')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionBtn}
@@ -274,7 +276,7 @@ export const StockScreen = () => {
             }}
           >
             <Ionicons name="remove-circle-outline" size={18} color={colors.error} />
-            <Text style={[styles.actionBtnText, { color: colors.error }]}>Sortie</Text>
+            <Text style={[styles.actionBtnText, { color: colors.error }]}>{t('Sortie')}</Text>
           </TouchableOpacity>
         </View>
       </Card>
@@ -288,14 +290,14 @@ export const StockScreen = () => {
     <View style={styles.container}>
       <View style={styles.header}>
         <Card style={styles.totalCard}>
-          <Text style={styles.totalLabel}>Valeur du stock</Text>
+          <Text style={styles.totalLabel}>{t('Valeur du stock')}</Text>
           <Text style={styles.totalAmount}>{formatPrice(totalStockValue)}</Text>
           <View style={styles.statsRow}>
-            <Text style={styles.totalCount}>{stock.length} article(s)</Text>
+            <Text style={styles.totalCount}>{t('{length} article(s)', { length: stock.length })}</Text>
             {lowStockItems.length > 0 && (
               <View style={styles.alertBadge}>
                 <Ionicons name="warning" size={14} color={colors.error} />
-                <Text style={styles.alertText}>{lowStockItems.length} en alerte</Text>
+                <Text style={styles.alertText}>{t('{length} en alerte', { length: lowStockItems.length })}</Text>
               </View>
             )}
           </View>
@@ -310,14 +312,14 @@ export const StockScreen = () => {
         ListEmptyComponent={
           <EmptyState
             icon="cube-outline"
-            title="Aucun article en stock"
-            description="Ajoutez un article pour commencer à suivre vos quantités."
+            title={t('Aucun article en stock')}
+            description={t('Ajoutez un article pour commencer à suivre vos quantités.')}
           />
         }
       />
 
       <FloatingActionButton
-        label="Ajouter un article au stock"
+        label={t('Ajouter un article au stock')}
         onPress={() => openStockModal()}
       />
 
@@ -331,7 +333,7 @@ export const StockScreen = () => {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {selectedItem ? 'Modifier l\'article' : 'Nouvel article'}
+                {selectedItem ? t("Modifier l'article") : t('Nouvel article')}
               </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={24} color={colors.text} />
@@ -339,7 +341,7 @@ export const StockScreen = () => {
             </View>
 
             <View style={styles.productSelectorContainer}>
-              <Text style={styles.inputLabel}>Produit *</Text>
+              <Text style={styles.inputLabel}>{t('Produit *')}</Text>
               <TouchableOpacity
                 style={styles.productSelector}
                 onPress={() => !selectedItem && setShowProductSelector(true)}
@@ -347,7 +349,7 @@ export const StockScreen = () => {
               >
                 <Ionicons name="pricetag-outline" size={20} color={formData.productId ? colors.success : colors.textSecondary} />
                 <Text style={[styles.productSelectorText, formData.productId && styles.productSelectorTextSelected]}>
-                  {formData.name || 'Sélectionner un produit'}
+                  {formData.name || t('Sélectionner un produit')}
                 </Text>
                 {!selectedItem && (
                   <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
@@ -364,7 +366,7 @@ export const StockScreen = () => {
             </View>
 
             <Input
-              label="Quantité *"
+              label={t('Quantité *')}
               value={formData.quantity}
               onChangeText={(value) => setFormData(prev => ({ ...prev, quantity: value }))}
               placeholder="0"
@@ -373,7 +375,7 @@ export const StockScreen = () => {
             />
 
             <Input
-              label="Prix unitaire *"
+              label={t('Prix unitaire *')}
               value={formData.unitPrice}
               onChangeText={(value) => setFormData(prev => ({ ...prev, unitPrice: value }))}
               placeholder="0.00"
@@ -382,32 +384,32 @@ export const StockScreen = () => {
             />
 
             <Input
-              label="Quantité minimale (optionnel)"
+              label={t('Quantité minimale (optionnel)')}
               value={formData.minQuantity}
               onChangeText={(value) => setFormData(prev => ({ ...prev, minQuantity: value }))}
-              placeholder="Seuil d'alerte"
+              placeholder={t("Seuil d'alerte")}
               keyboardType="numeric"
               icon="alert-circle-outline"
             />
 
             <Input
-              label="Code SKU (optionnel)"
+              label={t('Code SKU (optionnel)')}
               value={formData.sku}
               onChangeText={(value) => setFormData(prev => ({ ...prev, sku: value }))}
-              placeholder="Ex: PRD-001"
+              placeholder={t('Ex: PRD-001')}
               icon="barcode-outline"
             />
 
             <Input
-              label="Emplacement (optionnel)"
+              label={t('Emplacement (optionnel)')}
               value={formData.location}
               onChangeText={(value) => setFormData(prev => ({ ...prev, location: value }))}
-              placeholder="Ex: Étagère A3"
+              placeholder={t('Ex: Étagère A3')}
               icon="location-outline"
             />
 
             <Button
-              title={selectedItem ? 'Modifier' : 'Ajouter'}
+              title={selectedItem ? t('Modifier') : t('Ajouter')}
               onPress={handleSaveStock}
             />
           </View>
@@ -425,7 +427,7 @@ export const StockScreen = () => {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {movementType === 'in' ? 'Entrée de stock' : 'Sortie de stock'}
+                {movementType === 'in' ? t('Entrée de stock') : t('Sortie de stock')}
               </Text>
               <TouchableOpacity onPress={() => setShowMovementModal(false)}>
                 <Ionicons name="close" size={24} color={colors.text} />
@@ -436,32 +438,32 @@ export const StockScreen = () => {
               <View style={styles.selectedItemInfo}>
                 <Text style={styles.selectedItemName}>{selectedItem.name}</Text>
                 <Text style={styles.selectedItemQuantity}>
-                  Stock actuel: {selectedItem.quantity}
+                  {t('Stock actuel: {quantity}', { quantity: selectedItem.quantity })}
                 </Text>
               </View>
             )}
 
             <Input
-              label="Quantité *"
+              label={t('Quantité *')}
               value={movementQuantity}
               onChangeText={setMovementQuantity}
-              placeholder="Quantité à ajouter/retirer"
+              placeholder={t('Quantité à ajouter/retirer')}
               keyboardType="numeric"
               icon={movementType === 'in' ? 'add-circle-outline' : 'remove-circle-outline'}
             />
 
             <Input
-              label="Raison (optionnel)"
+              label={t('Raison (optionnel)')}
               value={movementReason}
               onChangeText={setMovementReason}
-              placeholder={movementType === 'in' ? 'Ex: Réception commande' : 'Ex: Retour client'}
+              placeholder={movementType === 'in' ? t('Ex: Réception commande') : t('Ex: Retour client')}
               multiline
               numberOfLines={2}
               icon="document-text-outline"
             />
 
             <Button
-              title={movementType === 'in' ? 'Ajouter au stock' : 'Retirer du stock'}
+              title={movementType === 'in' ? t('Ajouter au stock') : t('Retirer du stock')}
               onPress={handleAddMovement}
             />
           </View>
@@ -478,7 +480,7 @@ export const StockScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxHeight: '80%' }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Historique des mouvements</Text>
+              <Text style={styles.modalTitle}>{t('Historique des mouvements')}</Text>
               <TouchableOpacity onPress={() => setShowMovements(false)}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -488,7 +490,7 @@ export const StockScreen = () => {
               <View style={styles.selectedItemInfo}>
                 <Text style={styles.selectedItemName}>{selectedItem.name}</Text>
                 <Text style={styles.selectedItemQuantity}>
-                  Stock actuel: {selectedItem.quantity}
+                  {t('Stock actuel: {quantity}', { quantity: selectedItem.quantity })}
                 </Text>
               </View>
             )}
@@ -516,13 +518,13 @@ export const StockScreen = () => {
                       />
                     </View>
                     <View style={styles.movementInfo}>
-                      <Text style={styles.movementType}>{item.reason || item.type}</Text>
+                      <Text style={styles.movementType}>{t(item.reason) || item.type}</Text>
                       <Text style={styles.movementDate}>
-                        {new Date(item.createdAt).toLocaleString('fr-FR')}
+                        {new Date(item.createdAt).toLocaleString(getLocale())}
                       </Text>
                       {item.userId && (
                         <Text style={styles.movementUser}>
-                          Par: {item.userId.fullName || item.userId.username}
+                          {t('Par:')}{' '}{item.userId.fullName || item.userId.username}
                         </Text>
                       )}
                     </View>
@@ -546,7 +548,7 @@ export const StockScreen = () => {
               ListEmptyComponent={
                 <EmptyState
                   icon="time-outline"
-                  title="Aucun mouvement enregistré"
+                  title={t('Aucun mouvement enregistré')}
                   compact
                 />
               }
@@ -565,7 +567,7 @@ export const StockScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Sélectionner un produit</Text>
+              <Text style={styles.modalTitle}>{t('Sélectionner un produit')}</Text>
               <TouchableOpacity onPress={() => setShowProductSelector(false)}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -597,8 +599,8 @@ export const StockScreen = () => {
               ListEmptyComponent={
                 <EmptyState
                   icon="cube-outline"
-                  title="Aucun produit disponible"
-                  description="Créez d'abord un produit dans la section Produits."
+                  title={t('Aucun produit disponible')}
+                  description={t("Créez d'abord un produit dans la section Produits.")}
                   compact
                 />
               }

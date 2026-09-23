@@ -1,5 +1,6 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { t, getLanguage } from '../i18n';
 
 // URL du serveur AWS Lightsail (HTTPS)
 const API_BASE_URL = 'https://businessapp.installpostiz.com/bussnessapp';
@@ -80,6 +81,7 @@ api.interceptors.request.use(
     if (cachedToken) {
       config.headers.Authorization = `Bearer ${cachedToken}`;
     }
+    config.headers['Accept-Language'] = getLanguage();
     return config;
   },
   (error) => {
@@ -87,11 +89,23 @@ api.interceptors.request.use(
   }
 );
 
+// Les messages du serveur sont en français : on les traduit s'ils figurent au dictionnaire
+const translateServerMessages = (data, isError) => {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+  if (typeof data.error === 'string') data.error = t(data.error);
+  // `message` n'est traduit que dans une réponse de statut (évite de toucher aux contenus, ex. feedbacks)
+  if (typeof data.message === 'string' && (isError || 'success' in data)) data.message = t(data.message);
+};
+
 // Add response interceptor for better error handling
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    translateServerMessages(response.data, false);
+    return response;
+  },
   async (error) => {
     if (error.response) {
+      translateServerMessages(error.response.data, true);
       // Server responded with error status
       console.error('API Error Response:', {
         status: error.response.status,

@@ -15,10 +15,13 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { t, useLanguage } from '../i18n';
+import { LanguagePicker } from '../components/LanguagePicker';
 
 const logo = require('../assets/icon/dashboard.png');
 
 export const LoginScreen = ({ navigation }) => {
+  useLanguage();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [username, setUsername] = useState('');
@@ -54,7 +57,7 @@ export const LoginScreen = ({ navigation }) => {
 
   const handleLogin = async () => {
     if (!username || !password) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs');
+      Alert.alert(t('Erreur'), t('Veuillez remplir tous les champs'));
       return;
     }
 
@@ -64,17 +67,17 @@ export const LoginScreen = ({ navigation }) => {
 
     if (!result.success) {
       // Affichage détaillé de l'erreur avec le code et les détails
-      let errorTitle = 'Erreur de connexion';
+      let errorTitle = t('Erreur de connexion');
       let errorMessage = result.error;
 
       if (result.code) {
-        errorMessage += `\n\nCode: ${result.code}`;
+        errorMessage += t('\n\nCode: {code}', { code: result.code });
       }
       if (result.field) {
-        errorMessage += `\nChamp concerné: ${result.field}`;
+        errorMessage += t('\nChamp concerné: {field}', { field: result.field });
       }
       if (result.details) {
-        errorMessage += `\n\nDétails techniques: ${result.details}`;
+        errorMessage += t('\n\nDétails techniques: {details}', { details: result.details });
       }
 
       Alert.alert(errorTitle, errorMessage);
@@ -91,6 +94,7 @@ export const LoginScreen = ({ navigation }) => {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
+          <LanguagePicker mode="compact" style={styles.languagePicker} />
           <Animated.View
             style={[
               styles.header,
@@ -104,7 +108,7 @@ export const LoginScreen = ({ navigation }) => {
               <Image source={logo} style={styles.logo} />
             </View>
             <Text style={styles.title}>EAS</Text>
-            <Text style={styles.subtitle}>Pilotez votre activité avec clarté</Text>
+            <Text style={styles.subtitle}>{t('Pilotez votre activité avec clarté')}</Text>
           </Animated.View>
 
           <Animated.View
@@ -114,29 +118,29 @@ export const LoginScreen = ({ navigation }) => {
             }}
           >
             <Card style={styles.loginCard}>
-              <Text style={styles.loginTitle}>Connexion</Text>
-              <Text style={styles.loginSubtitle}>Accédez à votre espace professionnel</Text>
+              <Text style={styles.loginTitle}>{t('Connexion')}</Text>
+              <Text style={styles.loginSubtitle}>{t('Accédez à votre espace professionnel')}</Text>
 
               <Input
-                label="Nom d'utilisateur ou Email"
+                label={t("Nom d'utilisateur ou Email")}
                 value={username}
                 onChangeText={setUsername}
-                placeholder="Entrez votre identifiant"
+                placeholder={t('Entrez votre identifiant')}
                 icon="person-outline"
                 autoCapitalize="none"
               />
 
               <Input
-                label="Mot de passe"
+                label={t('Mot de passe')}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="Entrez votre mot de passe"
+                placeholder={t('Entrez votre mot de passe')}
                 icon="lock-closed-outline"
                 secureTextEntry
               />
 
               <Button
-                title="Se connecter"
+                title={t('Se connecter')}
                 icon="log-in-outline"
                 onPress={handleLogin}
                 loading={loading}
@@ -144,7 +148,7 @@ export const LoginScreen = ({ navigation }) => {
               />
 
               <Button
-                title="Créer un compte"
+                title={t('Créer un compte')}
                 icon="person-add-outline"
                 onPress={() => navigation.navigate('Register')}
                 variant="outline"
@@ -155,7 +159,7 @@ export const LoginScreen = ({ navigation }) => {
 
           <Animated.View style={[styles.footer, { opacity: fadeAnim }]}>
             <Text style={styles.footerText}>
-              En vous connectant, vous acceptez nos conditions d'utilisation
+              {t("En vous connectant, vous acceptez nos conditions d'utilisation")}
             </Text>
           </Animated.View>
         </ScrollView>
@@ -171,6 +175,10 @@ const createStyles = (colors) => ({
   background: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  languagePicker: {
+    alignSelf: 'flex-end',
+    marginBottom: 8,
   },
   scrollContent: {
     flexGrow: 1,

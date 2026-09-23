@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Search, Plus, MoreVertical, UserCheck, UserX, ChevronRight, CreditCard, Banknote, Heart, Send, RefreshCw, Users, Trash2 } from 'lucide-react'
+import { Search, Plus, MoreVertical, UserCheck, UserX, ChevronRight, CreditCard, Banknote, Heart, Send, RefreshCw, Users, Trash2, Tag, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PageHeader, Badge, SkeletonTable, EmptyState, ConfirmDialog } from '../components/ui'
 import api from '../services/api'
@@ -22,6 +22,7 @@ export default function AdminsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState(searchParams.get('status') || 'all')
+  const [partnerCode, setPartnerCode] = useState(searchParams.get('partner') || '')
   const [activeMenu, setActiveMenu] = useState(null)
   const [confirm, setConfirm] = useState({ open: false, admin: null, action: null })
   const [actionLoading, setActionLoading] = useState(false)
@@ -31,13 +32,14 @@ export default function AdminsPage() {
     const params = {}
     if (filter !== 'all') params.status = filter
     if (search) params.search = search
+    if (partnerCode) params.partnerCode = partnerCode
     api.get('/backoffice/admins', { params })
       .then(res => setAdmins(res.data))
       .catch(() => toast.error('Erreur de chargement'))
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { loadAdmins() }, [filter])
+  useEffect(() => { loadAdmins() }, [filter, partnerCode])
   useEffect(() => {
     const t = setTimeout(() => { if (search !== '') loadAdmins(); else if (search === '' && !loading) loadAdmins() }, 350)
     return () => clearTimeout(t)
@@ -104,10 +106,25 @@ export default function AdminsPage() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Rechercher par nom, email..."
+            placeholder="Rechercher par nom, email, code partenaire..."
             className="input-field pl-10"
           />
         </div>
+        {partnerCode ? (
+          <div className="flex items-center gap-2 bg-primary-50 border border-primary-200 text-primary-700 rounded-xl px-3 py-2 text-xs font-semibold">
+            <Tag className="w-3.5 h-3.5" />
+            {partnerCode === '__any__' ? 'Avec code partenaire' : partnerCode === '__none__' ? 'Sans code partenaire' : `Code : ${partnerCode}`}
+            <button onClick={() => setPartnerCode('')} className="p-0.5 rounded hover:bg-primary-100" title="Retirer le filtre">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <select value="" onChange={e => setPartnerCode(e.target.value)} className="input-field sm:w-52 text-sm">
+            <option value="">Code partenaire : tous</option>
+            <option value="__any__">Avec code partenaire</option>
+            <option value="__none__">Sans code partenaire</option>
+          </select>
+        )}
         <div className="flex gap-0.5 bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
           {filters.map(f => (
             <button key={f.key} onClick={() => setFilter(f.key)}
@@ -160,6 +177,11 @@ export default function AdminsPage() {
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-gray-900 truncate group-hover:text-primary-600 transition-colors">{admin.fullName || admin.username}</p>
                             <p className="text-xs text-gray-400 truncate">{admin.email}</p>
+                            {admin.partnerCode && (
+                              <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-md bg-primary-50 text-primary-600 text-[10px] font-semibold">
+                                <Tag className="w-3 h-3" /> {admin.partnerCode}
+                              </span>
+                            )}
                           </div>
                         </Link>
                       </td>

@@ -23,16 +23,18 @@ import {
   CSV_IMPORT_TYPES,
   inspectCsv,
 } from '../utils/csvImport'
+import { t, useLanguage } from '../i18n'
 
 const IMPORT_TYPE_KEYS = Object.keys(CSV_IMPORT_TYPES)
 
 function formatFileSize(size = 0) {
   if (size < 1024) return `${size} o`
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} Ko`
-  return `${(size / (1024 * 1024)).toFixed(1)} Mo`
+  if (size < 1024 * 1024) return t('{round} Ko', { round: Math.round(size / 1024) })
+  return t('{toFixed} Mo', { toFixed: (size / (1024 * 1024)).toFixed(1) })
 }
 
 export const CsvImportScreen = () => {
+  useLanguage()
   const { colors } = useTheme()
   const styles = useThemedStyles(createStyles)
   const { user, selectedProjectId } = useAuth()
@@ -76,15 +78,15 @@ export const CsvImportScreen = () => {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'text/csv',
-          dialogTitle: `Enregistrer le modèle ${config.label}`,
+          dialogTitle: t('Enregistrer le modèle {label}', { label: t(config.label) }),
           UTI: 'public.comma-separated-values-text',
         })
       } else {
-        Alert.alert('Modèle créé', `Le fichier est disponible ici : ${fileUri}`)
+        Alert.alert(t('Modèle créé'), t('Le fichier est disponible ici : {fileUri}', { fileUri: fileUri }))
       }
     } catch (error) {
       console.error('CSV template error:', error)
-      Alert.alert('Erreur', 'Impossible de créer le modèle CSV.')
+      Alert.alert(t('Erreur'), t('Impossible de créer le modèle CSV.'))
     }
   }
 
@@ -99,11 +101,11 @@ export const CsvImportScreen = () => {
 
       const asset = pickerResult.assets[0]
       if (!asset.name?.toLowerCase().endsWith('.csv')) {
-        Alert.alert('Format non reconnu', 'Sélectionnez un fichier dont l’extension est .csv.')
+        Alert.alert(t('Format non reconnu'), t('Sélectionnez un fichier dont l’extension est .csv.'))
         return
       }
       if (asset.size && asset.size > 5 * 1024 * 1024) {
-        Alert.alert('Fichier trop volumineux', 'Le fichier CSV doit peser moins de 5 Mo.')
+        Alert.alert(t('Fichier trop volumineux'), t('Le fichier CSV doit peser moins de 5 Mo.'))
         return
       }
 
@@ -117,13 +119,13 @@ export const CsvImportScreen = () => {
       setResult(null)
     } catch (error) {
       console.error('CSV picker error:', error)
-      Alert.alert('Erreur', 'Impossible de lire ce fichier CSV.')
+      Alert.alert(t('Erreur'), t('Impossible de lire ce fichier CSV.'))
     }
   }
 
   const runImport = async () => {
     if (!projectId) {
-      Alert.alert('Business requis', 'Sélectionnez un business avant de lancer l’import.')
+      Alert.alert(t('Business requis'), t('Sélectionnez un business avant de lancer l’import.'))
       return
     }
     if (!inspection?.valid || !csvContent) return
@@ -137,8 +139,8 @@ export const CsvImportScreen = () => {
     } catch (error) {
       console.error('CSV import error:', error)
       Alert.alert(
-        'Import impossible',
-        error.response?.data?.error || 'Le fichier n’a pas pu être importé. Vérifiez sa structure et réessayez.'
+        t('Import impossible'),
+        error.response?.data?.error || t('Le fichier n’a pas pu être importé. Vérifiez sa structure et réessayez.')
       )
     } finally {
       setSubmitting(false)
@@ -147,11 +149,11 @@ export const CsvImportScreen = () => {
 
   const confirmImport = () => {
     Alert.alert(
-      `Importer ${inspection?.rowCount || 0} ligne(s)`,
-      `Les données valides seront ajoutées à ${config.label.toLowerCase()}. Les lignes incorrectes seront signalées dans le bilan.`,
+      t('Importer {value} ligne(s)', { value: inspection?.rowCount || 0 }),
+      t('Les données valides seront ajoutées à {label}. Les lignes incorrectes seront signalées dans le bilan.', { label: t(config.label).toLowerCase() }),
       [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Importer', onPress: runImport },
+        { text: t('Annuler'), style: 'cancel' },
+        { text: t('Importer'), onPress: runImport },
       ]
     )
   }
@@ -168,14 +170,14 @@ export const CsvImportScreen = () => {
           <Ionicons name="document-text-outline" size={24} color={colors.primary} />
         </View>
         <View style={styles.introContent}>
-          <Text style={styles.introTitle}>Importer des données</Text>
-          <Text style={styles.introText}>Préparez votre CSV à partir d’un modèle, puis contrôlez-le avant l’ajout.</Text>
+          <Text style={styles.introTitle}>{t('Importer des données')}</Text>
+          <Text style={styles.introText}>{t('Préparez votre CSV à partir d’un modèle, puis contrôlez-le avant l’ajout.')}</Text>
         </View>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.stepLabel}>Étape 1</Text>
-        <Text style={styles.sectionTitle}>Données à ajouter</Text>
+        <Text style={styles.stepLabel}>{t('Étape 1')}</Text>
+        <Text style={styles.sectionTitle}>{t('Données à ajouter')}</Text>
         <View style={styles.typeGrid}>
           {IMPORT_TYPE_KEYS.map((type) => {
             const item = CSV_IMPORT_TYPES[type]
@@ -189,24 +191,24 @@ export const CsvImportScreen = () => {
                 accessibilityState={{ checked: selected }}
               >
                 <Ionicons name={item.icon} size={20} color={selected ? colors.onPrimary : colors.primary} />
-                <Text style={[styles.typeLabel, selected && styles.typeLabelSelected]}>{item.label}</Text>
+                <Text style={[styles.typeLabel, selected && styles.typeLabelSelected]}>{t(item.label)}</Text>
               </TouchableOpacity>
             )
           })}
         </View>
-        <Text style={styles.typeDescription}>{config.description}</Text>
+        <Text style={styles.typeDescription}>{t(config.description)}</Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.stepLabel}>Étape 2</Text>
+        <Text style={styles.stepLabel}>{t('Étape 2')}</Text>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionHeaderText}>
-            <Text style={styles.sectionTitle}>Préparer le fichier</Text>
-            <Text style={styles.sectionSubtitle}>{requiredCount} colonne(s) obligatoire(s)</Text>
+            <Text style={styles.sectionTitle}>{t('Préparer le fichier')}</Text>
+            <Text style={styles.sectionSubtitle}>{t('{requiredCount} colonne(s) obligatoire(s)', { requiredCount: requiredCount })}</Text>
           </View>
           <TouchableOpacity style={styles.templateButton} onPress={downloadTemplate} accessibilityRole="button">
             <Ionicons name="download-outline" size={18} color={colors.primary} />
-            <Text style={styles.templateButtonText}>Modèle</Text>
+            <Text style={styles.templateButtonText}>{t('Modèle')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -215,11 +217,11 @@ export const CsvImportScreen = () => {
             <View key={column.key} style={[styles.columnRow, index < config.columns.length - 1 && styles.rowBorder]}>
               <View style={styles.columnContent}>
                 <Text style={styles.columnName}>{column.label}</Text>
-                <Text style={styles.columnDetail}>{column.detail}</Text>
+                <Text style={styles.columnDetail}>{t(column.detail)}</Text>
               </View>
               <View style={[styles.requirementBadge, column.required ? styles.requiredBadge : styles.optionalBadge]}>
                 <Text style={[styles.requirementText, column.required ? styles.requiredText : styles.optionalText]}>
-                  {column.required ? 'Obligatoire' : 'Facultatif'}
+                  {column.required ? t('Obligatoire') : t('Facultatif')}
                 </Text>
               </View>
             </View>
@@ -229,41 +231,41 @@ export const CsvImportScreen = () => {
         <View style={styles.rulesBox}>
           <View style={styles.ruleRow}>
             <Ionicons name="create-outline" size={18} color={colors.primary} />
-            <Text style={styles.ruleText}>Le modèle contient deux exemples : remplacez-les ou supprimez-les avant l’import.</Text>
+            <Text style={styles.ruleText}>{t('Le modèle contient deux exemples : remplacez-les ou supprimez-les avant l’import.')}</Text>
           </View>
           <View style={styles.ruleRow}>
             <Ionicons name="checkmark-circle-outline" size={18} color={colors.success} />
-            <Text style={styles.ruleText}>Séparateur accepté : point-virgule ou virgule.</Text>
+            <Text style={styles.ruleText}>{t('Séparateur accepté : point-virgule ou virgule.')}</Text>
           </View>
           <View style={styles.ruleRow}>
             <Ionicons name="checkmark-circle-outline" size={18} color={colors.success} />
-            <Text style={styles.ruleText}>Nombres acceptés : 25,50 ou 25.50.</Text>
+            <Text style={styles.ruleText}>{t('Nombres acceptés : 25,50 ou 25.50.')}</Text>
           </View>
           <View style={styles.ruleRow}>
             <Ionicons name="checkmark-circle-outline" size={18} color={colors.success} />
-            <Text style={styles.ruleText}>Maximum : 2 000 lignes par fichier.</Text>
+            <Text style={styles.ruleText}>{t('Maximum : 2 000 lignes par fichier.')}</Text>
           </View>
           {config.notes.map((note) => (
             <View key={note} style={styles.ruleRow}>
               <Ionicons name="information-circle-outline" size={18} color={colors.warning} />
-              <Text style={styles.ruleText}>{note}</Text>
+              <Text style={styles.ruleText}>{t(note)}</Text>
             </View>
           ))}
         </View>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.stepLabel}>Étape 3</Text>
-        <Text style={styles.sectionTitle}>Choisir et contrôler le CSV</Text>
+        <Text style={styles.stepLabel}>{t('Étape 3')}</Text>
+        <Text style={styles.sectionTitle}>{t('Choisir et contrôler le CSV')}</Text>
 
         <TouchableOpacity style={styles.filePicker} onPress={pickFile} activeOpacity={0.75} accessibilityRole="button">
           <View style={styles.filePickerIcon}>
             <Ionicons name={file ? 'document-text' : 'cloud-upload-outline'} size={24} color={colors.primary} />
           </View>
           <View style={styles.filePickerContent}>
-            <Text style={styles.filePickerTitle} numberOfLines={1}>{file?.name || 'Sélectionner un fichier CSV'}</Text>
+            <Text style={styles.filePickerTitle} numberOfLines={1}>{file?.name || t('Sélectionner un fichier CSV')}</Text>
             <Text style={styles.filePickerText}>
-              {file ? `${formatFileSize(file.size)} · Touchez pour remplacer` : 'Depuis votre téléphone ou votre espace cloud'}
+              {file ? t('{fileSize} · Touchez pour remplacer', { fileSize: formatFileSize(file.size) }) : t('Depuis votre téléphone ou votre espace cloud')}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
@@ -283,9 +285,9 @@ export const CsvImportScreen = () => {
               </View>
               <View style={styles.validationContent}>
                 <Text style={styles.validationTitle}>
-                  {inspection.valid ? 'Structure reconnue' : 'Fichier à corriger'}
+                  {inspection.valid ? t('Structure reconnue') : t('Fichier à corriger')}
                 </Text>
-                <Text style={styles.validationSubtitle}>{inspection.rowCount} ligne(s) détectée(s)</Text>
+                <Text style={styles.validationSubtitle}>{t('{rowCount} ligne(s) détectée(s)', { rowCount: inspection.rowCount })}</Text>
               </View>
             </View>
 
@@ -304,7 +306,7 @@ export const CsvImportScreen = () => {
 
             {inspection.previewRows.length > 0 && (
               <View style={styles.previewSection}>
-                <Text style={styles.previewTitle}>Aperçu des premières lignes</Text>
+                <Text style={styles.previewTitle}>{t('Aperçu des premières lignes')}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View style={styles.previewTable}>
                     <View style={styles.previewHeaderRow}>
@@ -329,8 +331,8 @@ export const CsvImportScreen = () => {
         {selectedType === 'sales' && inspection?.valid && (
           <View style={styles.optionRow}>
             <View style={styles.optionContent}>
-              <Text style={styles.optionTitle}>Déduire les quantités du stock</Text>
-              <Text style={styles.optionDescription}>Activez seulement pour des ventes qui ne sont pas encore comptabilisées dans le stock.</Text>
+              <Text style={styles.optionTitle}>{t('Déduire les quantités du stock')}</Text>
+              <Text style={styles.optionDescription}>{t('Activez seulement pour des ventes qui ne sont pas encore comptabilisées dans le stock.')}</Text>
             </View>
             <Switch
               value={updateStock}
@@ -343,7 +345,7 @@ export const CsvImportScreen = () => {
 
         {inspection?.valid && !result && (
           <Button
-            title={`Importer ${inspection.rowCount} ligne(s)`}
+            title={t('Importer {rowCount} ligne(s)', { rowCount: inspection.rowCount })}
             icon="download-outline"
             onPress={confirmImport}
             loading={submitting}
@@ -355,7 +357,7 @@ export const CsvImportScreen = () => {
         {submitting && (
           <View style={styles.progressRow}>
             <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={styles.progressText}>Import en cours, gardez l’application ouverte…</Text>
+            <Text style={styles.progressText}>{t('Import en cours, gardez l’application ouverte…')}</Text>
           </View>
         )}
       </View>
@@ -367,46 +369,46 @@ export const CsvImportScreen = () => {
               <Ionicons name="checkmark-done" size={22} color={colors.success} />
             </View>
             <View style={styles.resultHeaderText}>
-              <Text style={styles.resultTitle}>Import terminé</Text>
-              <Text style={styles.resultSubtitle}>{result.total} ligne(s) traitée(s)</Text>
+              <Text style={styles.resultTitle}>{t('Import terminé')}</Text>
+              <Text style={styles.resultSubtitle}>{t('{total} ligne(s) traitée(s)', { total: result.total })}</Text>
             </View>
           </View>
 
           <View style={styles.resultMetrics}>
             <View style={styles.resultMetric}>
               <Text style={[styles.resultMetricValue, { color: colors.success }]}>{result.inserted || 0}</Text>
-              <Text style={styles.resultMetricLabel}>Ajoutées</Text>
+              <Text style={styles.resultMetricLabel}>{t('Ajoutées')}</Text>
             </View>
             <View style={styles.resultDivider} />
             <View style={styles.resultMetric}>
               <Text style={[styles.resultMetricValue, { color: colors.primary }]}>{result.updated || 0}</Text>
-              <Text style={styles.resultMetricLabel}>Mises à jour</Text>
+              <Text style={styles.resultMetricLabel}>{t('Mises à jour')}</Text>
             </View>
             <View style={styles.resultDivider} />
             <View style={styles.resultMetric}>
               <Text style={[styles.resultMetricValue, { color: (result.errors?.length || 0) ? colors.error : colors.textLight }]}>
                 {result.errors?.length || 0}
               </Text>
-              <Text style={styles.resultMetricLabel}>Ignorées</Text>
+              <Text style={styles.resultMetricLabel}>{t('Ignorées')}</Text>
             </View>
           </View>
 
           {result.errors?.length > 0 && (
             <View style={styles.errorList}>
-              <Text style={styles.errorListTitle}>Lignes à corriger</Text>
+              <Text style={styles.errorListTitle}>{t('Lignes à corriger')}</Text>
               {result.errors.slice(0, 20).map((error, index) => (
                 <View key={`${error.line}-${index}`} style={styles.importErrorRow}>
-                  <Text style={styles.errorLine}>Ligne {error.line}</Text>
+                  <Text style={styles.errorLine}>{t('Ligne {line}', { line: error.line })}</Text>
                   <Text style={styles.errorMessage}>{error.message}</Text>
                 </View>
               ))}
               {result.errors.length > 20 && (
-                <Text style={styles.moreErrors}>+ {result.errors.length - 20} autre(s) erreur(s)</Text>
+                <Text style={styles.moreErrors}>{t('+ {value} autre(s) erreur(s)', { value: result.errors.length - 20 })}</Text>
               )}
             </View>
           )}
 
-          <Button title="Importer un autre fichier" variant="outline" icon="refresh-outline" onPress={resetFile} />
+          <Button title={t('Importer un autre fichier')} variant="outline" icon="refresh-outline" onPress={resetFile} />
         </Card>
       )}
     </ScrollView>

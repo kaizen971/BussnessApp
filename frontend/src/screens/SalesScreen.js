@@ -28,10 +28,12 @@ import { MonthNavigator } from '../components/MonthNavigator';
 import { salesAPI, productsAPI, customersAPI, usersAPI } from '../services/api';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { getMonthBounds, MONTH_HISTORY_LIMIT, shiftMonth, startOfMonth } from '../utils/monthPeriod';
+import { t, useLanguage, getLocale } from '../i18n';
 
 const { width } = Dimensions.get('window');
 
 export const SalesScreen = () => {
+  useLanguage();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
@@ -101,7 +103,7 @@ export const SalesScreen = () => {
       setSellers(usersRes?.data || []);
     } catch (error) {
       console.error('Error loading data:', error);
-      Alert.alert('Erreur', 'Impossible de charger les données');
+      Alert.alert(t('Erreur'), t('Impossible de charger les données'));
     } finally {
       setLoading(false);
     }
@@ -210,12 +212,12 @@ export const SalesScreen = () => {
   // Vider le panier avec confirmation
   const handleClearCart = () => {
     Alert.alert(
-      'Vider le panier',
-      `Êtes-vous sûr de vouloir supprimer les ${cart.length} produit(s) du panier ?`,
+      t('Vider le panier'),
+      t('Êtes-vous sûr de vouloir supprimer les {length} produit(s) du panier ?', { length: cart.length }),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
         {
-          text: 'Vider',
+          text: t('Vider'),
           style: 'destructive',
           onPress: () => {
             setCart([]);
@@ -229,18 +231,18 @@ export const SalesScreen = () => {
   // Valider toutes les ventes du panier
   const handleValidateCart = async () => {
     if (cart.length === 0) {
-      Alert.alert('Panier vide', 'Ajoutez des produits avant de valider');
+      Alert.alert(t('Panier vide'), t('Ajoutez des produits avant de valider'));
       return;
     }
 
     // Validation obligatoire pour les managers : client + vendeur
     if (isAdmin) {
       if (!formData.customerId) {
-        Alert.alert('Client requis', 'En tant que manager, vous devez sélectionner un client pour la vente.');
+        Alert.alert(t('Client requis'), t('En tant que manager, vous devez sélectionner un client pour la vente.'));
         return;
       }
       if (!formData.sellerId) {
-        Alert.alert('Vendeur requis', 'En tant que manager, vous devez sélectionner le vendeur ayant réalisé la vente.');
+        Alert.alert(t('Vendeur requis'), t('En tant que manager, vous devez sélectionner le vendeur ayant réalisé la vente.'));
         return;
       }
     }
@@ -274,11 +276,11 @@ export const SalesScreen = () => {
       setModalVisible(false);
       await loadData();
       Alert.alert(
-        'Succès',
-        `${cartSnapshot.length} vente(s) enregistrée(s) avec succès`,
+        t('Succès'),
+        t('{length} vente(s) enregistrée(s) avec succès', { length: cartSnapshot.length }),
         [
           {
-            text: 'Partager le reçu',
+            text: t('Partager le reçu'),
             onPress: () => handleShareCart(cartSnapshot, customerSnapshot, sellerSnapshot),
           },
           { text: 'OK', style: 'cancel' },
@@ -287,7 +289,7 @@ export const SalesScreen = () => {
     } catch (error) {
       console.error('Error adding sales:', error);
       playSound('error');
-      Alert.alert('Erreur', error.response?.data?.error || 'Impossible d\'ajouter les ventes');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t("Impossible d'ajouter les ventes"));
     } finally {
       setSubmitting(false);
     }
@@ -314,10 +316,10 @@ export const SalesScreen = () => {
       setEditSaleModalVisible(false);
       setEditingSale(null);
       await loadData();
-      Alert.alert('Succès', 'Vente modifiée avec succès');
+      Alert.alert(t('Succès'), t('Vente modifiée avec succès'));
     } catch (error) {
       console.error('Error updating sale:', error);
-      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de modifier la vente');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Impossible de modifier la vente'));
     } finally {
       setLoading(false);
     }
@@ -325,18 +327,18 @@ export const SalesScreen = () => {
 
   // Fonction pour rembourser une vente
   const handleRefund = (sale) => {
-    const customerName = sale.customerId?.name || 'Client inconnu';
-    const sellerName = sale.employeeId?.fullName || sale.employeeId?.username || 'Vendeur inconnu';
-    const productName = sale.productId?.name || 'Produit';
+    const customerName = sale.customerId?.name || t('Client inconnu');
+    const sellerName = sale.employeeId?.fullName || sale.employeeId?.username || t('Vendeur inconnu');
+    const productName = sale.productId?.name || t('Produit');
     const amount = formatPrice(sale.amount || 0);
 
     Alert.alert(
-      'Confirmer le remboursement',
-      `Produit : ${productName} x${sale.quantity || 1}\nMontant : ${amount}\nClient : ${customerName}\nVendeur : ${sellerName}\n\nCette action créera une vente négative et remettra le stock.`,
+      t('Confirmer le remboursement'),
+      t('Produit : {productName} x{value}\nMontant : {amount}\nClient : {customerName}\nVendeur : {sellerName}\n\nCette action créera une vente négative et remettra le stock.', { productName: productName, value: sale.quantity || 1, amount: amount, customerName: customerName, sellerName: sellerName }),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
         {
-          text: 'Rembourser',
+          text: t('Rembourser'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -344,11 +346,11 @@ export const SalesScreen = () => {
               await salesAPI.refund(sale._id);
               playSound('success');
               await loadData();
-              Alert.alert('Succès', 'Remboursement effectué avec succès');
+              Alert.alert(t('Succès'), t('Remboursement effectué avec succès'));
             } catch (error) {
               console.error('Error refunding sale:', error);
               playSound('error');
-              Alert.alert('Erreur', error.response?.data?.error || 'Impossible de rembourser cette vente');
+              Alert.alert(t('Erreur'), error.response?.data?.error || t('Impossible de rembourser cette vente'));
             } finally {
               setLoading(false);
             }
@@ -359,36 +361,36 @@ export const SalesScreen = () => {
   };
 
   const buildReceiptMessage = (sale) => {
-    const productName = sale.productId?.name || 'Produit';
-    const customerName = sale.customerId?.name || 'Client inconnu';
-    const sellerName = sale.employeeId?.fullName || sale.employeeId?.username || 'Vendeur';
+    const productName = sale.productId?.name || t('Produit');
+    const customerName = sale.customerId?.name || t('Client inconnu');
+    const sellerName = sale.employeeId?.fullName || sale.employeeId?.username || t('Vendeur');
     const amount = formatPrice(sale.amount || 0);
     const unitPrice = formatPrice(sale.unitPrice || 0);
-    const date = new Date(sale.date).toLocaleDateString('fr-FR', {
+    const date = new Date(sale.date).toLocaleDateString(getLocale(), {
       day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
     const qty = sale.quantity || 1;
 
     return (
-      `🧾 *REÇU DE VENTE*\n` +
+      t('🧾 *REÇU DE VENTE*\n') +
       `━━━━━━━━━━━━━━━━━━\n\n` +
-      `📦 *Produit :* ${productName}\n` +
-      `📊 *Quantité :* ${qty}\n` +
-      `💵 *Prix unitaire :* ${unitPrice}\n` +
-      (sale.discount > 0 ? `🏷️ *Remise :* -${formatPrice(sale.discount)}\n` : '') +
-      `💰 *Total :* ${amount}\n\n` +
-      `👤 *Client :* ${customerName}\n` +
-      `🏪 *Vendeur :* ${sellerName}\n` +
-      `📅 *Date :* ${date}\n\n` +
+      t('📦 *Produit :* {productName}\n', { productName: productName }) +
+      t('📊 *Quantité :* {qty}\n', { qty: qty }) +
+      t('💵 *Prix unitaire :* {unitPrice}\n', { unitPrice: unitPrice }) +
+      (sale.discount > 0 ? t('🏷️ *Remise :* -{price}\n', { price: formatPrice(sale.discount) }) : '') +
+      t('💰 *Total :* {amount}\n\n', { amount: amount }) +
+      t('👤 *Client :* {customerName}\n', { customerName: customerName }) +
+      t('🏪 *Vendeur :* {sellerName}\n', { sellerName: sellerName }) +
+      t('📅 *Date :* {date}\n\n', { date: date }) +
       `━━━━━━━━━━━━━━━━━━\n` +
-      `Merci pour votre achat ! 🙏`
+      t('Merci pour votre achat ! 🙏')
     );
   };
 
   const buildCartReceiptMessage = (cartItems, customer, seller, receiptDate = new Date()) => {
-    const customerName = customer?.name || 'Client inconnu';
-    const sellerName = seller?.fullName || seller?.username || 'Vendeur';
-    const date = new Date(receiptDate).toLocaleDateString('fr-FR', {
+    const customerName = customer?.name || t('Client inconnu');
+    const sellerName = seller?.fullName || seller?.username || t('Vendeur');
+    const date = new Date(receiptDate).toLocaleDateString(getLocale(), {
       day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
 
@@ -406,32 +408,32 @@ export const SalesScreen = () => {
         `📦 *${item.productName}*\n` +
         `   ${item.quantity} x ${formatPrice(item.unitPrice)} = ${formatPrice(lineSubtotal)}\n`;
       if (lineDiscount > 0) {
-        productsLines += `   🏷️ Remise : -${formatPrice(lineDiscount)}\n`;
+        productsLines += t('   🏷️ Remise : -{price}\n', { price: formatPrice(lineDiscount) });
       }
     });
 
     return (
-      `🧾 *REÇU DE VENTE*\n` +
+      t('🧾 *REÇU DE VENTE*\n') +
       `━━━━━━━━━━━━━━━━━━\n\n` +
       productsLines +
       `\n` +
-      (totalDiscount > 0 ? `🏷️ *Remise totale :* -${formatPrice(totalDiscount)}\n` : '') +
-      `💰 *Total :* ${formatPrice(total)}\n\n` +
-      `👤 *Client :* ${customerName}\n` +
-      `🏪 *Vendeur :* ${sellerName}\n` +
-      `📅 *Date :* ${date}\n\n` +
+      (totalDiscount > 0 ? t('🏷️ *Remise totale :* -{price}\n', { price: formatPrice(totalDiscount) }) : '') +
+      t('💰 *Total :* {price}\n\n', { price: formatPrice(total) }) +
+      t('👤 *Client :* {customerName}\n', { customerName: customerName }) +
+      t('🏪 *Vendeur :* {sellerName}\n', { sellerName: sellerName }) +
+      t('📅 *Date :* {date}\n\n', { date: date }) +
       `━━━━━━━━━━━━━━━━━━\n` +
-      `Merci pour votre achat ! 🙏`
+      t('Merci pour votre achat ! 🙏')
     );
   };
 
   const shareReceiptMessage = (message, title) => {
     Alert.alert(
-      'Partager le reçu',
-      'Choisissez comment envoyer ce reçu',
+      t('Partager le reçu'),
+      t('Choisissez comment envoyer ce reçu'),
       [
         {
-          text: '💬 WhatsApp',
+          text: t('💬 WhatsApp'),
           onPress: async () => {
             const url = `whatsapp://send?text=${encodeURIComponent(message)}`;
             const canOpen = await Linking.canOpenURL(url).catch(() => false);
@@ -439,26 +441,26 @@ export const SalesScreen = () => {
               await Linking.openURL(url);
             } else {
               Alert.alert(
-                'WhatsApp non disponible',
-                'WhatsApp n\'est pas installé. Le reçu va s\'ouvrir dans d\'autres applications.',
+                t('WhatsApp non disponible'),
+                t("WhatsApp n'est pas installé. Le reçu va s'ouvrir dans d'autres applications."),
                 [{ text: 'OK', onPress: () => Share.share({ message, title }) }]
               );
             }
           },
         },
         {
-          text: '📤 Autres applications',
+          text: t('📤 Autres applications'),
           onPress: async () => {
             try {
               await Share.share({ message, title });
             } catch (error) {
               if (error.message !== 'User did not share') {
-                Alert.alert('Erreur', 'Impossible de partager le reçu.');
+                Alert.alert(t('Erreur'), t('Impossible de partager le reçu.'));
               }
             }
           },
         },
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
       ]
     );
   };
@@ -491,7 +493,7 @@ export const SalesScreen = () => {
   const buildCartItemsFromSales = (saleItems) => (
     saleItems.map(sale => ({
       productId: sale.productId?._id || sale.productId,
-      productName: sale.productId?.name || 'Produit',
+      productName: sale.productId?.name || t('Produit'),
       quantity: sale.quantity || 1,
       unitPrice: sale.unitPrice || 0,
       discount: sale.discount || 0,
@@ -510,22 +512,22 @@ export const SalesScreen = () => {
         seller,
         sale.date
       );
-      shareReceiptMessage(message, `Recu - ${saleItems.length} produit(s)`);
+      shareReceiptMessage(message, t('Recu - {length} produit(s)', { length: saleItems.length }));
       return;
     }
 
     const message = buildReceiptMessage(sale);
-    const productName = sale.productId?.name || 'Produit';
-    shareReceiptMessage(message, `Reçu - ${productName}`);
+    const productName = sale.productId?.name || t('Produit');
+    shareReceiptMessage(message, t('Reçu - {productName}', { productName: productName }));
   };
 
   const handleShareCart = (items = cart, customer = selectedCustomer, seller = (isAdmin ? selectedSeller : user)) => {
     if (!items || items.length === 0) {
-      Alert.alert('Panier vide', 'Ajoutez des produits au panier avant de partager');
+      Alert.alert(t('Panier vide'), t('Ajoutez des produits au panier avant de partager'));
       return;
     }
     const message = buildCartReceiptMessage(items, customer, seller);
-    shareReceiptMessage(message, `Reçu - ${items.length} produit(s)`);
+    shareReceiptMessage(message, t('Reçu - {length} produit(s)', { length: items.length }));
   };
 
   // Déterminer si l'utilisateur est admin/manager
@@ -567,7 +569,7 @@ export const SalesScreen = () => {
               </Text>
             ) : (
               <Text style={styles.saleProduct}>
-                Produit x{item.quantity || 1}
+                {t('Produit x')}{item.quantity || 1}
               </Text>
             )}
             {/* Client et vendeur */}
@@ -593,7 +595,7 @@ export const SalesScreen = () => {
               </Text>
             )}
             <Text style={styles.saleDate}>
-              {new Date(item.date).toLocaleDateString('fr-FR', {
+              {new Date(item.date).toLocaleDateString(getLocale(), {
                 day: '2-digit',
                 month: 'short',
                 year: 'numeric',
@@ -623,7 +625,7 @@ export const SalesScreen = () => {
                 >
                   <View style={styles.refundButtonInner}>
                     <Ionicons name="arrow-undo" size={18} color="#fff" />
-                    <Text style={styles.refundButtonText}>Rembourser</Text>
+                    <Text style={styles.refundButtonText}>{t('Rembourser')}</Text>
                   </View>
                 </TouchableOpacity>
               </>
@@ -688,12 +690,12 @@ export const SalesScreen = () => {
         <View style={styles.headerContent}>
           <View style={styles.titleSection}>
             <Text style={styles.headerTitle}>
-              {isAdmin ? 'Ventes' : 'Point de Vente'}
+              {isAdmin ? t('Ventes') : t('Point de Vente')}
             </Text>
             <Text style={styles.headerSubtitle}>
               {isAdmin
                 ? `${(sales && Array.isArray(sales)) ? sales.length : 0} vente(s)`
-                : 'Effectuez vos ventes rapidement'}
+                : t('Effectuez vos ventes rapidement')}
             </Text>
           </View>
         </View>
@@ -704,8 +706,8 @@ export const SalesScreen = () => {
               value={periodMode}
               onChange={setPeriodMode}
               options={[
-                { value: 'month', label: 'Ce mois', icon: 'calendar-outline' },
-                { value: 'all', label: 'Depuis le début', icon: 'infinite-outline' },
+                { value: 'month', label: t('Ce mois'), icon: 'calendar-outline' },
+                { value: 'all', label: t('Depuis le début'), icon: 'infinite-outline' },
               ]}
             />
             {periodMode === 'month' && (
@@ -725,7 +727,7 @@ export const SalesScreen = () => {
               <Ionicons name="wallet" size={32} color={colors.primary} />
               <View style={styles.totalTextContainer}>
                 <Text style={styles.totalLabel}>
-                  {periodMode === 'month' ? 'Ventes du mois' : 'Ventes depuis le début'}
+                  {periodMode === 'month' ? t('Ventes du mois') : t('Ventes depuis le début')}
                 </Text>
                 <Text style={styles.totalAmount}>{formatPrice(totalSales)}</Text>
               </View>
@@ -746,14 +748,14 @@ export const SalesScreen = () => {
           ListFooterComponent={loadingMore ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.loadingText}>Chargement...</Text>
+              <Text style={styles.loadingText}>{t('Chargement...')}</Text>
             </View>
           ) : null}
           ListEmptyComponent={
             <EmptyState
               icon="cart-outline"
-              title="Aucune vente enregistrée"
-              description="Créez une vente pour démarrer le suivi de votre activité."
+              title={t('Aucune vente enregistrée')}
+              description={t('Créez une vente pour démarrer le suivi de votre activité.')}
             />
           }
         />
@@ -767,9 +769,9 @@ export const SalesScreen = () => {
             <View style={styles.welcomeIconContainer}>
               <Ionicons name="cart" size={64} color={colors.primary} />
             </View>
-            <Text style={styles.welcomeTitle}>Bienvenue, {user?.fullName || user?.username}</Text>
+            <Text style={styles.welcomeTitle}>{t('Bienvenue,')}{' '}{user?.fullName || user?.username}</Text>
             <Text style={styles.welcomeText}>
-              Cliquez sur le bouton ci-dessous pour commencer une nouvelle vente
+              {t('Cliquez sur le bouton ci-dessous pour commencer une nouvelle vente')}
             </Text>
 
             <TouchableOpacity
@@ -781,7 +783,7 @@ export const SalesScreen = () => {
                 style={styles.mainSaleButton}
               >
                 <Ionicons name="add-circle" size={28} color={colors.onPrimary} />
-                <Text style={styles.mainSaleButtonText}>Nouvelle Vente</Text>
+                <Text style={styles.mainSaleButtonText}>{t('Nouvelle Vente')}</Text>
               </LinearGradient>
             </TouchableOpacity>
           </LinearGradient>
@@ -799,7 +801,7 @@ export const SalesScreen = () => {
                   return saleDate.toDateString() === today.toDateString();
                 }).length}
               </Text>
-              <Text style={styles.quickStatLabel}>Ventes aujourd'hui</Text>
+              <Text style={styles.quickStatLabel}>{t("Ventes aujourd'hui")}</Text>
             </LinearGradient>
           </View>
 
@@ -809,7 +811,7 @@ export const SalesScreen = () => {
 
 
       <FloatingActionButton
-        label="Créer une vente"
+        label={t('Créer une vente')}
         onPress={() => setModalVisible(true)}
         bottom={80}
       />
@@ -841,8 +843,8 @@ export const SalesScreen = () => {
                   </LinearGradient>
                 </View>
                 <View style={styles.modalTitleContainer}>
-                  <Text style={styles.modalTitle}>Nouvelle vente</Text>
-                  <Text style={styles.modalSubtitle}>Ajoutez des produits au panier</Text>
+                  <Text style={styles.modalTitle}>{t('Nouvelle vente')}</Text>
+                  <Text style={styles.modalSubtitle}>{t('Ajoutez des produits au panier')}</Text>
                 </View>
               </LinearGradient>
               <TouchableOpacity
@@ -865,7 +867,7 @@ export const SalesScreen = () => {
                 >
                   <Ionicons name="person-circle" size={24} color={colors.primary} />
                   <Text style={styles.employeeText}>
-                    Vendeur: {user?.fullName || user?.username}
+                    {t('Vendeur:')}{' '}{user?.fullName || user?.username}
                   </Text>
                 </LinearGradient>
               )}
@@ -876,8 +878,8 @@ export const SalesScreen = () => {
                     <Ionicons name="people-outline" size={20} color={colors.primary} />
                   </View>
                   <View style={styles.assignmentHeaderText}>
-                    <Text style={styles.assignmentTitle}>Attribution de la vente</Text>
-                    <Text style={styles.assignmentSubtitle}>Choisissez le client et la personne ayant réalisé la vente.</Text>
+                    <Text style={styles.assignmentTitle}>{t('Attribution de la vente')}</Text>
+                    <Text style={styles.assignmentSubtitle}>{t('Choisissez le client et la personne ayant réalisé la vente.')}</Text>
                   </View>
                 </View>
 
@@ -885,11 +887,11 @@ export const SalesScreen = () => {
                   <View style={styles.selectorLabelRow}>
                     <View style={styles.selectorLabelGroup}>
                       <Ionicons name="person-outline" size={18} color={colors.primary} />
-                      <Text style={styles.selectorLabel}>Client</Text>
+                      <Text style={styles.selectorLabel}>{t('Client')}</Text>
                     </View>
                     <View style={[styles.requirementBadge, !isAdmin && styles.optionalBadge]}>
                       <Text style={[styles.requirementText, !isAdmin && styles.optionalText]}>
-                        {isAdmin ? 'Requis' : 'Optionnel'}
+                        {isAdmin ? t('Requis') : t('Optionnel')}
                       </Text>
                     </View>
                   </View>
@@ -904,7 +906,7 @@ export const SalesScreen = () => {
                       <View style={styles.selectedPartyInfo}>
                         <Text style={styles.selectedPartyName} numberOfLines={1}>{selectedCustomer.name}</Text>
                         <Text style={styles.selectedPartyDetail} numberOfLines={1}>
-                          {selectedCustomer.phone || selectedCustomer.email || 'Aucune coordonnée'}
+                          {selectedCustomer.phone || selectedCustomer.email || t('Aucune coordonnée')}
                         </Text>
                       </View>
                       <TouchableOpacity
@@ -914,7 +916,7 @@ export const SalesScreen = () => {
                           setCustomerSearch('');
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel="Changer de client"
+                        accessibilityLabel={t('Changer de client')}
                       >
                         <Ionicons name="swap-horizontal" size={19} color={colors.primary} />
                       </TouchableOpacity>
@@ -924,7 +926,7 @@ export const SalesScreen = () => {
                       <SearchField
                         value={customerSearch}
                         onChangeText={setCustomerSearch}
-                        placeholder="Nom, téléphone ou email"
+                        placeholder={t('Nom, téléphone ou email')}
                         style={styles.selectorSearch}
                       />
                       {customerSearch.trim() ? (
@@ -945,27 +947,27 @@ export const SalesScreen = () => {
                                   </View>
                                   <View style={styles.autocompleteItemContent}>
                                     <Text style={styles.autocompleteItemName} numberOfLines={1}>{customer.name}</Text>
-                                    <Text style={styles.autocompleteItemSub} numberOfLines={1}>{customer.phone || customer.email || 'Aucune coordonnée'}</Text>
+                                    <Text style={styles.autocompleteItemSub} numberOfLines={1}>{customer.phone || customer.email || t('Aucune coordonnée')}</Text>
                                   </View>
                                   <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
                                 </TouchableOpacity>
                               ))}
                               {filteredCustomers.length > 4 && (
                                 <Text style={styles.moreResultsText}>
-                                  4 sur {filteredCustomers.length} résultats · affinez la recherche
+                                  {t('4 sur {length} résultats · affinez la recherche', { length: filteredCustomers.length })}
                                 </Text>
                               )}
                             </>
                           ) : (
                             <View style={styles.autocompleteEmpty}>
                               <Ionicons name="person-add-outline" size={20} color={colors.textLight} />
-                              <Text style={styles.autocompleteEmptyText}>Aucun client trouvé</Text>
+                              <Text style={styles.autocompleteEmptyText}>{t('Aucun client trouvé')}</Text>
                             </View>
                           )}
                         </View>
                       ) : customers.length > 0 ? (
                         <View style={styles.quickChoices}>
-                          <Text style={styles.quickChoicesLabel}>Suggestions · {customers.length} client(s)</Text>
+                          <Text style={styles.quickChoicesLabel}>{t('Suggestions · {length} client(s)', { length: customers.length })}</Text>
                           <ScrollView
                             horizontal
                             nestedScrollEnabled
@@ -987,7 +989,7 @@ export const SalesScreen = () => {
                             {customers.length > 6 && (
                               <View style={styles.quickChoiceMore}>
                                 <Text style={styles.quickChoiceMoreText}>+{customers.length - 6}</Text>
-                                <Text style={styles.quickChoiceMoreLabel}>Rechercher</Text>
+                                <Text style={styles.quickChoiceMoreLabel}>{t('Rechercher')}</Text>
                               </View>
                             )}
                           </ScrollView>
@@ -996,7 +998,7 @@ export const SalesScreen = () => {
                         <View style={styles.autocompleteList}>
                           <View style={styles.autocompleteEmpty}>
                             <Ionicons name="person-add-outline" size={20} color={colors.textLight} />
-                            <Text style={styles.autocompleteEmptyText}>Aucun client disponible</Text>
+                            <Text style={styles.autocompleteEmptyText}>{t('Aucun client disponible')}</Text>
                           </View>
                         </View>
                       )}
@@ -1009,10 +1011,10 @@ export const SalesScreen = () => {
                     <View style={styles.selectorLabelRow}>
                       <View style={styles.selectorLabelGroup}>
                         <Ionicons name="storefront-outline" size={18} color={colors.success} />
-                        <Text style={styles.selectorLabel}>Vendeur</Text>
+                        <Text style={styles.selectorLabel}>{t('Vendeur')}</Text>
                       </View>
                       <View style={[styles.requirementBadge, { backgroundColor: `${colors.success}16` }]}>
-                        <Text style={[styles.requirementText, { color: colors.success }]}>Requis</Text>
+                        <Text style={[styles.requirementText, { color: colors.success }]}>{t('Requis')}</Text>
                       </View>
                     </View>
 
@@ -1025,7 +1027,7 @@ export const SalesScreen = () => {
                         </View>
                         <View style={styles.selectedPartyInfo}>
                           <Text style={styles.selectedPartyName} numberOfLines={1}>{selectedSeller.fullName || selectedSeller.username}</Text>
-                          <Text style={styles.selectedPartyDetail} numberOfLines={1}>{selectedSeller.role || 'Vendeur'}</Text>
+                          <Text style={styles.selectedPartyDetail} numberOfLines={1}>{selectedSeller.role || t('Vendeur')}</Text>
                         </View>
                         <TouchableOpacity
                           style={[styles.changePartyButton, { backgroundColor: `${colors.success}14` }]}
@@ -1034,7 +1036,7 @@ export const SalesScreen = () => {
                             setSellerSearch('');
                           }}
                           accessibilityRole="button"
-                          accessibilityLabel="Changer de vendeur"
+                          accessibilityLabel={t('Changer de vendeur')}
                         >
                           <Ionicons name="swap-horizontal" size={19} color={colors.success} />
                         </TouchableOpacity>
@@ -1044,7 +1046,7 @@ export const SalesScreen = () => {
                         <SearchField
                           value={sellerSearch}
                           onChangeText={setSellerSearch}
-                          placeholder="Nom ou identifiant du vendeur"
+                          placeholder={t('Nom ou identifiant du vendeur')}
                           style={styles.selectorSearch}
                         />
                         {sellerSearch.trim() ? (
@@ -1067,27 +1069,27 @@ export const SalesScreen = () => {
                                     </View>
                                     <View style={styles.autocompleteItemContent}>
                                       <Text style={styles.autocompleteItemName} numberOfLines={1}>{seller.fullName || seller.username}</Text>
-                                      <Text style={styles.autocompleteItemSub} numberOfLines={1}>{seller.role || 'Vendeur'}</Text>
+                                      <Text style={styles.autocompleteItemSub} numberOfLines={1}>{seller.role || t('Vendeur')}</Text>
                                     </View>
                                     <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
                                   </TouchableOpacity>
                                 ))}
                                 {filteredSellers.length > 4 && (
                                   <Text style={styles.moreResultsText}>
-                                    4 sur {filteredSellers.length} résultats · affinez la recherche
+                                    {t('4 sur {length} résultats · affinez la recherche', { length: filteredSellers.length })}
                                   </Text>
                                 )}
                               </>
                             ) : (
                               <View style={styles.autocompleteEmpty}>
                                 <Ionicons name="people-outline" size={20} color={colors.textLight} />
-                                <Text style={styles.autocompleteEmptyText}>Aucun vendeur trouvé</Text>
+                                <Text style={styles.autocompleteEmptyText}>{t('Aucun vendeur trouvé')}</Text>
                               </View>
                             )}
                           </View>
                         ) : sellers.length > 0 ? (
                           <View style={styles.quickChoices}>
-                            <Text style={styles.quickChoicesLabel}>Suggestions · {sellers.length} vendeur(s)</Text>
+                            <Text style={styles.quickChoicesLabel}>{t('Suggestions · {length} vendeur(s)', { length: sellers.length })}</Text>
                             <ScrollView
                               horizontal
                               nestedScrollEnabled
@@ -1111,7 +1113,7 @@ export const SalesScreen = () => {
                               {sellers.length > 6 && (
                                 <View style={styles.quickChoiceMore}>
                                   <Text style={[styles.quickChoiceMoreText, { color: colors.success }]}>+{sellers.length - 6}</Text>
-                                  <Text style={styles.quickChoiceMoreLabel}>Rechercher</Text>
+                                  <Text style={styles.quickChoiceMoreLabel}>{t('Rechercher')}</Text>
                                 </View>
                               )}
                             </ScrollView>
@@ -1120,7 +1122,7 @@ export const SalesScreen = () => {
                           <View style={styles.autocompleteList}>
                             <View style={styles.autocompleteEmpty}>
                               <Ionicons name="people-outline" size={20} color={colors.textLight} />
-                              <Text style={styles.autocompleteEmptyText}>Aucun vendeur disponible</Text>
+                              <Text style={styles.autocompleteEmptyText}>{t('Aucun vendeur disponible')}</Text>
                             </View>
                           </View>
                         )}
@@ -1132,7 +1134,7 @@ export const SalesScreen = () => {
 
               {/* Sélection des produits */}
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Produits</Text>
+                <Text style={styles.sectionTitle}>{t('Produits')}</Text>
                 <View style={styles.viewModeToggle}>
                   <TouchableOpacity
                     style={[styles.viewModeButton, productViewMode === 'grid' && styles.viewModeButtonActive]}
@@ -1161,13 +1163,13 @@ export const SalesScreen = () => {
               <SearchField
                 value={productSearch}
                 onChangeText={setProductSearch}
-                placeholder="Rechercher un produit..."
+                placeholder={t('Rechercher un produit...')}
                 style={styles.searchContainer}
               />
 
               {productSearch && (
                 <Text style={styles.searchResultText}>
-                  {filteredProducts.length} produit(s) trouvé(s)
+                  {t('{length} produit(s) trouvé(s)', { length: filteredProducts.length })}
                 </Text>
               )}
 
@@ -1250,14 +1252,14 @@ export const SalesScreen = () => {
                     </Animated.View>
                   );
                 }}
-                ListEmptyComponent={<Text style={styles.emptyText}>Aucun produit disponible</Text>}
+                ListEmptyComponent={<Text style={styles.emptyText}>{t('Aucun produit disponible')}</Text>}
               />
 
               {/* Panier */}
               {cart.length > 0 && (
                 <>
                   <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Panier ({cart.length})</Text>
+                    <Text style={styles.sectionTitle}>{t('Panier ({length})', { length: cart.length })}</Text>
                   </View>
 
                   {cart.map((item) => (
@@ -1315,7 +1317,7 @@ export const SalesScreen = () => {
             {cart.length > 0 && (
               <View style={styles.validateOverlay}>
                 <View style={styles.validateOverlaySummary}>
-                  <Text style={styles.validateOverlayLabel}>Total panier</Text>
+                  <Text style={styles.validateOverlayLabel}>{t('Total panier')}</Text>
                   <Text style={styles.validateOverlayTotal}>{formatPrice(cartTotal)}</Text>
                 </View>
                 <TouchableOpacity
@@ -1333,7 +1335,7 @@ export const SalesScreen = () => {
                       <>
                         <Ionicons name="checkmark-circle" size={22} color={colors.onPrimary} />
                         <Text style={styles.validateButtonText}>
-                          Valider {cart.length} vente(s)
+                          {t('Valider {length} vente(s)', { length: cart.length })}
                         </Text>
                       </>
                     )}
@@ -1346,7 +1348,7 @@ export const SalesScreen = () => {
                     disabled={submitting}
                   >
                     <Ionicons name="share-social-outline" size={18} color={colors.primary} />
-                    <Text style={styles.shareCartButtonText}>Partager</Text>
+                    <Text style={styles.shareCartButtonText}>{t('Partager')}</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -1355,7 +1357,7 @@ export const SalesScreen = () => {
                     disabled={submitting}
                   >
                     <Ionicons name="trash-outline" size={18} color={colors.error} />
-                    <Text style={styles.clearButtonText}>Vider</Text>
+                    <Text style={styles.clearButtonText}>{t('Vider')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1384,7 +1386,7 @@ export const SalesScreen = () => {
               {/* Header */}
               <View style={styles.editModalHeader}>
                 <Ionicons name="create" size={24} color={colors.accent} />
-                <Text style={styles.editModalTitle}>Modifier la vente</Text>
+                <Text style={styles.editModalTitle}>{t('Modifier la vente')}</Text>
                 <TouchableOpacity onPress={() => setEditSaleModalVisible(false)}>
                   <Ionicons name="close-circle" size={28} color={colors.textSecondary} />
                 </TouchableOpacity>
@@ -1395,20 +1397,20 @@ export const SalesScreen = () => {
                   {/* Infos vente */}
                   <View style={styles.editSaleInfo}>
                     <Text style={styles.editSaleInfoText}>
-                      {editingSale.productId?.name || 'Produit'} x{editingSale.quantity || 1} — {formatPrice(editingSale.amount || 0)}
+                      {editingSale.productId?.name || t('Produit')} x{editingSale.quantity || 1} — {formatPrice(editingSale.amount || 0)}
                     </Text>
                     <Text style={styles.editSaleInfoDate}>
-                      {new Date(editingSale.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      {new Date(editingSale.date).toLocaleDateString(getLocale(), { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </Text>
                   </View>
 
                   {/* Sélection client */}
-                  <Text style={styles.editSectionLabel}>Client</Text>
+                  <Text style={styles.editSectionLabel}>{t('Client')}</Text>
                   {editCustomerId ? (
                     <View style={styles.editSelectedBadge}>
                       <Ionicons name="person" size={16} color={colors.primary} />
                       <Text style={styles.editSelectedText}>
-                        {customers.find(c => c._id === editCustomerId)?.name || 'Client sélectionné'}
+                        {customers.find(c => c._id === editCustomerId)?.name || t('Client sélectionné')}
                       </Text>
                       <TouchableOpacity onPress={() => setEditCustomerId('')}>
                         <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
@@ -1418,7 +1420,7 @@ export const SalesScreen = () => {
                     <View>
                       <TextInput
                         style={styles.editSearchInput}
-                        placeholder="Rechercher un client..."
+                        placeholder={t('Rechercher un client...')}
                         placeholderTextColor={colors.textSecondary}
                         value={editCustomerSearch}
                         onChangeText={setEditCustomerSearch}
@@ -1439,7 +1441,7 @@ export const SalesScreen = () => {
                               </TouchableOpacity>
                             ))}
                           {customers.filter(c => c.name?.toLowerCase().includes(editCustomerSearch.toLowerCase())).length === 0 && (
-                            <Text style={styles.editDropdownEmpty}>Aucun client trouvé</Text>
+                            <Text style={styles.editDropdownEmpty}>{t('Aucun client trouvé')}</Text>
                           )}
                         </View>
                       )}
@@ -1447,12 +1449,12 @@ export const SalesScreen = () => {
                   )}
 
                   {/* Sélection vendeur */}
-                  <Text style={styles.editSectionLabel}>Vendeur</Text>
+                  <Text style={styles.editSectionLabel}>{t('Vendeur')}</Text>
                   {editSellerId ? (
                     <View style={styles.editSelectedBadge}>
                       <Ionicons name="storefront" size={16} color={colors.success} />
                       <Text style={styles.editSelectedText}>
-                        {sellers.find(s => s._id === editSellerId)?.fullName || sellers.find(s => s._id === editSellerId)?.username || 'Vendeur sélectionné'}
+                        {sellers.find(s => s._id === editSellerId)?.fullName || sellers.find(s => s._id === editSellerId)?.username || t('Vendeur sélectionné')}
                       </Text>
                       <TouchableOpacity onPress={() => setEditSellerId('')}>
                         <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
@@ -1462,7 +1464,7 @@ export const SalesScreen = () => {
                     <View>
                       <TextInput
                         style={styles.editSearchInput}
-                        placeholder="Rechercher un vendeur..."
+                        placeholder={t('Rechercher un vendeur...')}
                         placeholderTextColor={colors.textSecondary}
                         value={editSellerSearch}
                         onChangeText={setEditSellerSearch}
@@ -1483,7 +1485,7 @@ export const SalesScreen = () => {
                               </TouchableOpacity>
                             ))}
                           {sellers.filter(s => (s.fullName || s.username || '').toLowerCase().includes(editSellerSearch.toLowerCase())).length === 0 && (
-                            <Text style={styles.editDropdownEmpty}>Aucun vendeur trouvé</Text>
+                            <Text style={styles.editDropdownEmpty}>{t('Aucun vendeur trouvé')}</Text>
                           )}
                         </View>
                       )}
@@ -1496,7 +1498,7 @@ export const SalesScreen = () => {
                       style={styles.editCancelBtn}
                       onPress={() => setEditSaleModalVisible(false)}
                     >
-                      <Text style={styles.editCancelBtnText}>Annuler</Text>
+                      <Text style={styles.editCancelBtnText}>{t('Annuler')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.editSaveBtn}
@@ -1507,7 +1509,7 @@ export const SalesScreen = () => {
                         style={styles.editSaveBtnGradient}
                       >
                         <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                        <Text style={styles.editSaveBtnText}>Enregistrer</Text>
+                        <Text style={styles.editSaveBtnText}>{t('Enregistrer')}</Text>
                       </LinearGradient>
                     </TouchableOpacity>
                   </View>

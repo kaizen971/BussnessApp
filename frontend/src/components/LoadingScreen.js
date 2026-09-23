@@ -2,10 +2,12 @@ import React from 'react'
 import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native'
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext'
 import { radius, spacing, typography } from '../utils/designSystem'
+import { t, useLanguage } from '../i18n'
 
 const logo = require('../assets/icon/dashboard.png')
 
-export const LoadingScreen = ({ label = 'Chargement…' }) => {
+export const LoadingScreen = ({ label = t('Chargement…') }) => {
+  useLanguage()
   const { colors } = useTheme()
   const styles = useThemedStyles(createStyles)
 

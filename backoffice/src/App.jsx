@@ -15,6 +15,7 @@ import AdminDetailPage from './pages/AdminDetailPage'
 import SubscriptionsPage from './pages/SubscriptionsPage'
 import PlansPage from './pages/PlansPage'
 import SuperAdminsPage from './pages/SuperAdminsPage'
+import PartnersPage from './pages/PartnersPage'
 import NotFoundPage from './pages/NotFoundPage'
 
 function ProtectedRoute({ children }) {
@@ -52,6 +53,7 @@ function AppRoutes() {
         <Route path="admins/:id" element={<AdminDetailPage />} />
         <Route path="plans" element={<PlansPage />} />
         <Route path="subscriptions" element={<SubscriptionsPage />} />
+        <Route path="partners" element={<PartnersPage />} />
         <Route path="super-admins" element={<SuperAdminsPage />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />

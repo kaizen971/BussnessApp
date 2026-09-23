@@ -41,17 +41,19 @@ import api, {
 } from '../services/api';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { getMonthBounds, MONTH_HISTORY_LIMIT, monthKey, shiftMonth, startOfMonth } from '../utils/monthPeriod';
+import { t, useLanguage, getLocale } from '../i18n';
 
 const screenWidth = Dimensions.get('window').width;
 const formatLocalDateKey = (date) => (
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 );
 
-const formatShiftDate = (dateKey) => new Date(`${dateKey}T12:00:00`).toLocaleDateString('fr-FR', {
+const formatShiftDate = (dateKey) => new Date(`${dateKey}T12:00:00`).toLocaleDateString(getLocale(), {
   weekday: 'long', day: 'numeric', month: 'long',
 });
 
 export const DashboardScreen = ({ navigation }) => {
+  useLanguage();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { user, logout, deleteAccount, selectedProjectId, availableProjects, loadAvailableProjects, selectProject } = useAuth();
@@ -185,7 +187,7 @@ export const DashboardScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Error loading dashboard:', error);
-      Alert.alert('Erreur', 'Impossible de charger les données');
+      Alert.alert(t('Erreur'), t('Impossible de charger les données'));
     } finally {
       setLoading(false);
     }
@@ -238,7 +240,7 @@ export const DashboardScreen = ({ navigation }) => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission requise', 'Nous avons besoin d\'accéder à vos photos pour changer votre photo de profil.');
+        Alert.alert(t('Permission requise'), t("Nous avons besoin d'accéder à vos photos pour changer votre photo de profil."));
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -250,23 +252,23 @@ export const DashboardScreen = ({ navigation }) => {
       if (!result.canceled && result.assets[0]) {
         const response = await authAPI.updateProfilePhoto(result.assets[0].uri);
         if (response.data) {
-          Alert.alert('Succès', 'Photo de profil mise à jour !');
+          Alert.alert(t('Succès'), t('Photo de profil mise à jour !'));
           onRefresh();
         }
       }
     } catch (error) {
       console.error('Error changing profile photo:', error);
-      Alert.alert('Erreur', 'Impossible de mettre à jour la photo de profil.');
+      Alert.alert(t('Erreur'), t('Impossible de mettre à jour la photo de profil.'));
     }
   };
 
   const handleLogout = () => {
     Alert.alert(
-      'Déconnexion',
-      'Êtes-vous sûr de vouloir vous déconnecter ?',
+      t('Déconnexion'),
+      t('Êtes-vous sûr de vouloir vous déconnecter ?'),
       [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Déconnexion', onPress: logout, style: 'destructive' },
+        { text: t('Annuler'), style: 'cancel' },
+        { text: t('Déconnexion'), onPress: logout, style: 'destructive' },
       ]
     );
   };
@@ -281,7 +283,7 @@ export const DashboardScreen = ({ navigation }) => {
 
   const handleDeleteAccountConfirm = async () => {
     if (!deletePassword) {
-      Alert.alert('Erreur', 'Veuillez saisir votre mot de passe pour confirmer.');
+      Alert.alert(t('Erreur'), t('Veuillez saisir votre mot de passe pour confirmer.'));
       return;
     }
     setDeleteLoading(true);
@@ -290,7 +292,7 @@ export const DashboardScreen = ({ navigation }) => {
     if (result.success) {
       setDeleteModalVisible(false);
     } else {
-      Alert.alert('Erreur', result.error);
+      Alert.alert(t('Erreur'), result.error);
     }
   };
 
@@ -358,7 +360,7 @@ export const DashboardScreen = ({ navigation }) => {
     const projectId = selectedProjectId || user?.projectId;
 
     if (!projectId) {
-      Alert.alert('Erreur', 'Aucun projet sélectionné');
+      Alert.alert(t('Erreur'), t('Aucun projet sélectionné'));
       return;
     }
 
@@ -394,7 +396,7 @@ export const DashboardScreen = ({ navigation }) => {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Erreur serveur: ${response.status}`);
+        throw new Error(t('Erreur serveur: {status}', { status: response.status }));
       }
 
       const arrayBuffer = await response.arrayBuffer();
@@ -412,18 +414,18 @@ export const DashboardScreen = ({ navigation }) => {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, {
           mimeType,
-          dialogTitle: 'Exporter les données',
+          dialogTitle: t('Exporter les données'),
           UTI: uti
         });
-        Alert.alert('Succès', `Export ${label} créé avec succès !`);
+        Alert.alert(t('Succès'), t('Export {label} créé avec succès !', { label: label }));
       } else {
-        Alert.alert('Succès', `Fichier sauvegardé : ${fileUri}`);
+        Alert.alert(t('Succès'), t('Fichier sauvegardé : {fileUri}', { fileUri: fileUri }));
       }
 
       closeExportModal();
     } catch (error) {
       console.error(`Erreur export ${label}:`, error);
-      Alert.alert('Erreur', `Impossible de générer l'export ${label}. Vérifiez votre connexion et réessayez.`);
+      Alert.alert(t('Erreur'), t("Impossible de générer l'export {label}. Vérifiez votre connexion et réessayez.", { label: label }));
     } finally {
       setExportLoading(false);
     }
@@ -596,11 +598,11 @@ export const DashboardScreen = ({ navigation }) => {
                 </View>
               </TouchableOpacity>
               <View style={styles.headerInfo}>
-                <Text style={styles.greeting}>Bonjour</Text>
+                <Text style={styles.greeting}>{t('Bonjour')}</Text>
                 <Text style={styles.userName}>{user?.fullName || user?.username}</Text>
                 <View style={styles.roleContainer}>
                   <Text style={styles.userRole}>
-                    {user?.role === 'admin' ? 'Administrateur' : isAdmin ? 'Responsable' : 'Salarié'}
+                    {user?.role === 'admin' ? t('Administrateur') : isAdmin ? t('Responsable') : t('Salarié')}
                   </Text>
                 </View>
               </View>
@@ -625,7 +627,7 @@ export const DashboardScreen = ({ navigation }) => {
             <View style={styles.projectInfoContent}>
               <Ionicons name="briefcase" size={20} color={colors.primary} />
               <Text style={styles.projectInfoText}>
-                Projet: {availableProjects.find(p => p._id === selectedProjectId)?.name || currentProject?.name || 'Chargement...'}
+                {t('Projet:')}{' '}{availableProjects.find(p => p._id === selectedProjectId)?.name || currentProject?.name || t('Chargement...')}
               </Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -646,8 +648,8 @@ export const DashboardScreen = ({ navigation }) => {
           <Card style={styles.monthlyOverviewCard}>
             <View style={styles.monthlyOverviewHeader}>
               <View>
-                <Text style={styles.monthlyEyebrow}>Activité mensuelle</Text>
-                <Text style={styles.monthlyTitle}>Situation du mois</Text>
+                <Text style={styles.monthlyEyebrow}>{t('Activité mensuelle')}</Text>
+                <Text style={styles.monthlyTitle}>{t('Situation du mois')}</Text>
               </View>
               <View style={[styles.monthlyStatus, {
                 backgroundColor: displayedMonthlyStats.profit >= 0 ? colors.success + '18' : colors.error + '18',
@@ -669,21 +671,21 @@ export const DashboardScreen = ({ navigation }) => {
 
             <View style={styles.monthlyMetrics}>
               <View style={styles.monthlyMetric}>
-                <Text style={styles.monthlyMetricLabel}>Ventes</Text>
+                <Text style={styles.monthlyMetricLabel}>{t('Ventes')}</Text>
                 <Text style={[styles.monthlyMetricValue, { color: colors.success }]} numberOfLines={1} adjustsFontSizeToFit>
                   {formatPrice(displayedMonthlyStats.sales || 0)}
                 </Text>
               </View>
               <View style={styles.monthlyMetricDivider} />
               <View style={styles.monthlyMetric}>
-                <Text style={styles.monthlyMetricLabel}>Charges</Text>
+                <Text style={styles.monthlyMetricLabel}>{t('Charges')}</Text>
                 <Text style={[styles.monthlyMetricValue, { color: colors.error }]} numberOfLines={1} adjustsFontSizeToFit>
                   {formatPrice(selectedMonthlyCharges)}
                 </Text>
               </View>
               <View style={styles.monthlyMetricDivider} />
               <View style={styles.monthlyMetric}>
-                <Text style={styles.monthlyMetricLabel}>Bénéfice estimé</Text>
+                <Text style={styles.monthlyMetricLabel}>{t('Bénéfice estimé')}</Text>
                 <Text
                   style={[styles.monthlyMetricValue, {
                     color: displayedMonthlyStats.profit >= 0 ? colors.success : colors.error,
@@ -707,8 +709,8 @@ export const DashboardScreen = ({ navigation }) => {
                     <Ionicons name="stats-chart" size={21} color={colors.primary} />
                   </View>
                   <View style={styles.statsButtonTextContainer}>
-                    <Text style={styles.statsButtonTitle}>Statistiques détaillées</Text>
-                    <Text style={styles.statsButtonSubtitle}>Voir toutes les analyses</Text>
+                    <Text style={styles.statsButtonTitle}>{t('Statistiques détaillées')}</Text>
+                    <Text style={styles.statsButtonSubtitle}>{t('Voir toutes les analyses')}</Text>
                   </View>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
@@ -734,12 +736,12 @@ export const DashboardScreen = ({ navigation }) => {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>
-                  {isPremium ? `Plan ${subscription.planLabel || 'Premium'}` : 'Passer au Premium'}
+                  {isPremium ? t('Plan {value}', { value: subscription.planLabel || t('Premium') }) : t('Passer au Premium')}
                 </Text>
                 <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 2 }}>
                   {isPremium
-                    ? (subscription.daysLeft !== null ? `${subscription.daysLeft}j restants · ${subscription.maxProjects} business` : 'Abonnement actif')
-                    : 'Débloquez toutes les fonctionnalités'}
+                    ? (subscription.daysLeft !== null ? t('{daysLeft}j restants · {maxProjects} business', { daysLeft: subscription.daysLeft, maxProjects: subscription.maxProjects }) : t('Abonnement actif'))
+                    : t('Débloquez toutes les fonctionnalités')}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.7)" />
@@ -755,17 +757,17 @@ export const DashboardScreen = ({ navigation }) => {
                   <Ionicons name="calendar-outline" size={21} color={colors.primary} />
                 </View>
                 <View style={styles.employeeCardHeading}>
-                  <Text style={styles.employeeEyebrow}>Mon planning</Text>
-                  <Text style={styles.employeeCardTitle}>Mes prochains services</Text>
+                  <Text style={styles.employeeEyebrow}>{t('Mon planning')}</Text>
+                  <Text style={styles.employeeCardTitle}>{t('Mes prochains services')}</Text>
                 </View>
-                <TouchableOpacity onPress={() => navigation.navigate('Planning')} accessibilityLabel="Voir mon planning">
+                <TouchableOpacity onPress={() => navigation.navigate('Planning')} accessibilityLabel={t('Voir mon planning')}>
                   <Ionicons name="arrow-forward" size={20} color={colors.primary} />
                 </TouchableOpacity>
               </View>
               {employeeLoading ? (
                 <ActivityIndicator style={styles.employeeLoading} color={colors.primary} />
               ) : employeeScheduleError ? (
-                <Text style={styles.employeeEmpty}>Planning indisponible. Réessayez en actualisant l'accueil.</Text>
+                <Text style={styles.employeeEmpty}>{t("Planning indisponible. Réessayez en actualisant l'accueil.")}</Text>
               ) : nextShifts.length ? nextShifts.map((schedule) => (
                 <View key={schedule._id} style={styles.employeeShiftRow}>
                   <View style={styles.employeeShiftDot} />
@@ -777,7 +779,7 @@ export const DashboardScreen = ({ navigation }) => {
                   </Text>
                 </View>
               )) : (
-                <Text style={styles.employeeEmpty}>Aucun service prévu dans les 14 prochains jours.</Text>
+                <Text style={styles.employeeEmpty}>{t('Aucun service prévu dans les 14 prochains jours.')}</Text>
               )}
             </Card>
 
@@ -787,28 +789,28 @@ export const DashboardScreen = ({ navigation }) => {
                   <Ionicons name="cart-outline" size={21} color={colors.success} />
                 </View>
                 <View style={styles.employeeCardHeading}>
-                  <Text style={styles.employeeEyebrow}>Mon activité</Text>
-                  <Text style={styles.employeeCardTitle}>Mes ventes</Text>
+                  <Text style={styles.employeeEyebrow}>{t('Mon activité')}</Text>
+                  <Text style={styles.employeeCardTitle}>{t('Mes ventes')}</Text>
                 </View>
-                <TouchableOpacity onPress={() => navigation.navigate('Sales')} accessibilityLabel="Voir mes ventes">
+                <TouchableOpacity onPress={() => navigation.navigate('Sales')} accessibilityLabel={t('Voir mes ventes')}>
                   <Ionicons name="arrow-forward" size={20} color={colors.primary} />
                 </TouchableOpacity>
               </View>
               {employeeLoading ? (
                 <ActivityIndicator style={styles.employeeLoading} color={colors.primary} />
               ) : employeeSalesError ? (
-                <Text style={styles.employeeEmpty}>Ventes indisponibles. Réessayez en actualisant l'accueil.</Text>
+                <Text style={styles.employeeEmpty}>{t("Ventes indisponibles. Réessayez en actualisant l'accueil.")}</Text>
               ) : (
                 <View style={styles.employeeSalesMetrics}>
                   <View style={styles.employeeSalesMetric}>
-                    <Text style={styles.employeeMetricLabel}>Aujourd'hui</Text>
-                    <Text style={styles.employeeMetricCount}>{todaySales.length} vente{todaySales.length > 1 ? 's' : ''}</Text>
+                    <Text style={styles.employeeMetricLabel}>{t("Aujourd'hui")}</Text>
+                    <Text style={styles.employeeMetricCount}>{todaySales.length > 1 ? t('{count} ventes', { count: todaySales.length }) : t('{count} vente', { count: todaySales.length })}</Text>
                     <Text style={styles.employeeMetricAmount} numberOfLines={1} adjustsFontSizeToFit>{formatPrice(sumSales(todaySales))}</Text>
                   </View>
                   <View style={styles.employeeMetricDivider} />
                   <View style={styles.employeeSalesMetric}>
-                    <Text style={styles.employeeMetricLabel}>Ce mois</Text>
-                    <Text style={styles.employeeMetricCount}>{ownSales.length} vente{ownSales.length > 1 ? 's' : ''}</Text>
+                    <Text style={styles.employeeMetricLabel}>{t('Ce mois')}</Text>
+                    <Text style={styles.employeeMetricCount}>{ownSales.length > 1 ? t('{count} ventes', { count: ownSales.length }) : t('{count} vente', { count: ownSales.length })}</Text>
                     <Text style={styles.employeeMetricAmount} numberOfLines={1} adjustsFontSizeToFit>{formatPrice(sumSales(ownSales))}</Text>
                   </View>
                 </View>
@@ -817,17 +819,17 @@ export const DashboardScreen = ({ navigation }) => {
           </>
         )}
 
-        <Text style={styles.sectionTitle}>{isAdmin ? 'Raccourcis' : 'Accès rapides'}</Text>
+        <Text style={styles.sectionTitle}>{isAdmin ? t('Raccourcis') : t('Accès rapides')}</Text>
         <View style={styles.actionsGrid}>
           {!isAdmin && <>
-            <QuickActionButton title="Ventes" icon="cart-outline" color={colors.success} onPress={() => navigation.navigate('Sales')} />
-            <QuickActionButton title="Planning" icon="calendar-outline" color={colors.primary} onPress={() => navigation.navigate('Planning')} />
-            <QuickActionButton title="Commissions" icon="cash-outline" color={colors.warning} onPress={() => navigation.navigate('Commissions')} />
-            <QuickActionButton title="Produits" icon="pricetag-outline" color={colors.info} onPress={() => navigation.navigate('Products')} />
+            <QuickActionButton title={t('Ventes')} icon="cart-outline" color={colors.success} onPress={() => navigation.navigate('Sales')} />
+            <QuickActionButton title={t('Planning')} icon="calendar-outline" color={colors.primary} onPress={() => navigation.navigate('Planning')} />
+            <QuickActionButton title={t('Commissions')} icon="cash-outline" color={colors.warning} onPress={() => navigation.navigate('Commissions')} />
+            <QuickActionButton title={t('Produits')} icon="pricetag-outline" color={colors.info} onPress={() => navigation.navigate('Products')} />
           </>}
           {isAdmin && (
             <QuickActionButton
-              title="Dépenses"
+              title={t('Dépenses')}
               icon="wallet-outline"
               color={colors.error}
               onPress={() => navigation.navigate('Expenses')}
@@ -835,28 +837,28 @@ export const DashboardScreen = ({ navigation }) => {
           )}
           {isAdmin && (
             <QuickActionButton
-              title="Stock"
+              title={t('Stock')}
               icon="cube-outline"
               color={colors.info}
               onPress={() => navigation.navigate('Stock')}
             />
           )}
           {isAdmin && <QuickActionButton
-            title="Équipe"
+            title={t('Équipe')}
             icon="people"
             color={colors.info}
             onPress={() => navigation.navigate('Team')}
           />}
           {isAdmin && (
             <QuickActionButton
-              title="Catégories"
+              title={t('Catégories')}
               icon="grid-outline"
               color={colors.warning}
               onPress={() => navigation.navigate('Categories')}
             />
           )}
           <QuickActionButton
-            title="Commerce"
+            title={t('Commerce')}
             icon="business-outline"
             color={colors.primary}
             onPress={openCommerceModal}
@@ -896,7 +898,7 @@ export const DashboardScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>💼 Outils Commerce</Text>
+              <Text style={styles.modalTitle}>{t('💼 Outils Commerce')}</Text>
               <TouchableOpacity onPress={closeCommerceModal} style={styles.closeButton}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -905,7 +907,7 @@ export const DashboardScreen = ({ navigation }) => {
             <View style={styles.modalContent}>
               <View style={styles.actionsGrid}>
                 {isAdmin && <QuickActionButton
-                  title="Simulation"
+                  title={t('Simulation')}
                   icon="calculator-outline"
                   color={colors.primary}
                   onPress={() => {
@@ -914,7 +916,7 @@ export const DashboardScreen = ({ navigation }) => {
                   }}
                 />}
                 <QuickActionButton
-                  title="Planning"
+                  title={t('Planning')}
                   icon="calendar"
                   color={colors.primary}
                   onPress={() => {
@@ -923,7 +925,7 @@ export const DashboardScreen = ({ navigation }) => {
                   }}
                 />
                 <QuickActionButton
-                  title="Commissions"
+                  title={t('Commissions')}
                   icon="cash"
                   color={colors.success}
                   onPress={() => {
@@ -932,7 +934,7 @@ export const DashboardScreen = ({ navigation }) => {
                   }}
                 />
                 <QuickActionButton
-                  title="Feedback"
+                  title={t('Feedback')}
                   icon="chatbubble-outline"
                   color={colors.primary}
                   onPress={() => {
@@ -941,7 +943,7 @@ export const DashboardScreen = ({ navigation }) => {
                   }}
                 />
                 {isAdmin && <QuickActionButton
-                  title="Exporter"
+                  title={t('Exporter')}
                   icon="cloud-download-outline"
                   color={colors.accent}
                   onPress={() => {
@@ -987,7 +989,7 @@ export const DashboardScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>📊 Statistiques complètes</Text>
+              <Text style={styles.modalTitle}>{t('📊 Statistiques complètes')}</Text>
               <TouchableOpacity onPress={closeStatsModal} style={styles.closeButton}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -1001,16 +1003,16 @@ export const DashboardScreen = ({ navigation }) => {
                 <>
                   <View style={styles.statsRow}>
                     <StatCard
-                      title="Ventes totales"
+                      title={t('Ventes totales')}
                       value={formatPrice(stats.totalSales || 0)}
                       subtitle={`${stats.salesCount || 0} ventes`}
                       icon="cash"
                       color={colors.success}
                     />
                     <StatCard
-                      title="Dépenses"
+                      title={t('Dépenses')}
                       value={formatPrice(stats.totalExpenses || 0)}
-                      subtitle={`${stats.expensesCount || 0} dépenses`}
+                      subtitle={t('{value} dépenses', { value: stats.expensesCount || 0 })}
                       icon="trending-down"
                       color={colors.error}
                     />
@@ -1018,14 +1020,14 @@ export const DashboardScreen = ({ navigation }) => {
 
                   <View style={styles.statsRow}>
                     <StatCard
-                      title="Masse salariale"
+                      title={t('Masse salariale')}
                       value={formatPrice((stats.totalSalaries || 0) + (stats.totalCommissions || 0))}
-                      subtitle={`Salaires + Commissions`}
+                      subtitle={t('Salaires + Commissions')}
                       icon="people"
                       color={colors.warning}
                     />
                     <StatCard
-                      title="Valeur Stock"
+                      title={t('Valeur Stock')}
                       value={formatPrice(stats.totalStock || 0)}
                       subtitle={`${stats.stockItems || 0} articles`}
                       icon="cube"
@@ -1035,9 +1037,9 @@ export const DashboardScreen = ({ navigation }) => {
 
                   <View style={styles.statsRow}>
                     <StatCard
-                      title="Bénéfice Net"
+                      title={t('Bénéfice Net')}
                       value={formatPrice(stats.netProfit || 0)}
-                      subtitle="Ventes - Dépenses - Salaires"
+                      subtitle={t('Ventes - Dépenses - Salaires')}
                       icon="analytics"
                       color={stats.netProfit >= 0 ? colors.success : colors.error}
                     />
@@ -1045,7 +1047,7 @@ export const DashboardScreen = ({ navigation }) => {
 
                   <Card style={styles.summaryCard}>
                     <View style={styles.summaryHeader}>
-                      <Text style={styles.summaryTitle}>Aperçu détaillé</Text>
+                      <Text style={styles.summaryTitle}>{t('Aperçu détaillé')}</Text>
                       <View style={styles.summaryIcon}>
                         <Ionicons name="bar-chart" size={24} color={colors.primary} />
                       </View>
@@ -1054,35 +1056,35 @@ export const DashboardScreen = ({ navigation }) => {
                     <View style={styles.summaryRow}>
                       <View style={styles.summaryRowLeft}>
                         <View style={[styles.summaryDot, { backgroundColor: colors.success }]} />
-                        <Text style={styles.summaryLabel}>Nombre de ventes</Text>
+                        <Text style={styles.summaryLabel}>{t('Nombre de ventes')}</Text>
                       </View>
                       <Text style={styles.summaryValue}>{stats.salesCount || 0}</Text>
                     </View>
                     <View style={styles.summaryRow}>
                       <View style={styles.summaryRowLeft}>
                         <View style={[styles.summaryDot, { backgroundColor: colors.error }]} />
-                        <Text style={styles.summaryLabel}>Nombre de dépenses</Text>
+                        <Text style={styles.summaryLabel}>{t('Nombre de dépenses')}</Text>
                       </View>
                       <Text style={styles.summaryValue}>{stats.expensesCount || 0}</Text>
                     </View>
                     <View style={styles.summaryRow}>
                       <View style={styles.summaryRowLeft}>
                         <View style={[styles.summaryDot, { backgroundColor: colors.warning }]} />
-                        <Text style={styles.summaryLabel}>Salaires</Text>
+                        <Text style={styles.summaryLabel}>{t('Salaires')}</Text>
                       </View>
                       <Text style={styles.summaryValue}>{formatPrice(stats.totalSalaries || 0)}</Text>
                     </View>
                     <View style={styles.summaryRow}>
                       <View style={styles.summaryRowLeft}>
                         <View style={[styles.summaryDot, { backgroundColor: colors.accent }]} />
-                        <Text style={styles.summaryLabel}>Commissions</Text>
+                        <Text style={styles.summaryLabel}>{t('Commissions')}</Text>
                       </View>
                       <Text style={styles.summaryValue}>{formatPrice(stats.totalCommissions || 0)}</Text>
                     </View>
                     <View style={styles.summaryRow}>
                       <View style={styles.summaryRowLeft}>
                         <View style={[styles.summaryDot, { backgroundColor: colors.primary }]} />
-                        <Text style={styles.summaryLabel}>Articles en stock</Text>
+                        <Text style={styles.summaryLabel}>{t('Articles en stock')}</Text>
                       </View>
                       <Text style={styles.summaryValue}>{stats.stockItems || 0}</Text>
                     </View>
@@ -1090,9 +1092,9 @@ export const DashboardScreen = ({ navigation }) => {
 
                   {stats.monthlyData && stats.monthlyData.length > 0 && (
                     <>
-                      <Text style={styles.sectionTitleModal}>Évolution mensuelle</Text>
+                      <Text style={styles.sectionTitleModal}>{t('Évolution mensuelle')}</Text>
                       <Card style={styles.chartCard}>
-                        <Text style={styles.chartTitle}>Ventes vs Charges (6 derniers mois)</Text>
+                        <Text style={styles.chartTitle}>{t('Ventes vs Charges (6 derniers mois)')}</Text>
                         <LineChart
                           data={{
                             labels: chartMonthlyData.map(d => d.month.split(' ')[0]),
@@ -1108,7 +1110,7 @@ export const DashboardScreen = ({ navigation }) => {
                                 strokeWidth: 3
                               }
                             ],
-                            legend: ['Ventes', 'Charges']
+                            legend: [t('Ventes'), t('Charges')]
                           }}
                           width={screenWidth - 64}
                           height={220}
@@ -1132,7 +1134,7 @@ export const DashboardScreen = ({ navigation }) => {
                       </Card>
 
                       <Card style={styles.chartCard}>
-                        <Text style={styles.chartTitle}>Bénéfices mensuels</Text>
+                        <Text style={styles.chartTitle}>{t('Bénéfices mensuels')}</Text>
                         <BarChart
                           data={{
                             labels: chartMonthlyData.map(d => d.month.split(' ')[0]),
@@ -1161,32 +1163,32 @@ export const DashboardScreen = ({ navigation }) => {
 
                   {stats.expensesByCategory && (
                     <Card style={styles.chartCard}>
-                      <Text style={styles.chartTitle}>Répartition des charges</Text>
+                      <Text style={styles.chartTitle}>{t('Répartition des charges')}</Text>
                       <PieChart
                         data={[
                           {
-                            name: 'Achats',
+                            name: t('Achats'),
                             population: stats.expensesByCategory.purchase || 0,
                             color: colors.primary,
                             legendFontColor: colors.textSecondary,
                             legendFontSize: 13
                           },
                           {
-                            name: 'Variables',
+                            name: t('Variables'),
                             population: stats.expensesByCategory.variable || 0,
                             color: colors.accent,
                             legendFontColor: colors.textSecondary,
                             legendFontSize: 13
                           },
                           {
-                            name: 'Fixes',
+                            name: t('Fixes'),
                             population: stats.expensesByCategory.fixed || 0,
                             color: colors.error,
                             legendFontColor: colors.textSecondary,
                             legendFontSize: 13
                           },
                           {
-                            name: 'Salaires',
+                            name: t('Salaires'),
                             population: stats.expensesByCategory.salaries || 0,
                             color: colors.warning,
                             legendFontColor: colors.textSecondary,
@@ -1209,7 +1211,7 @@ export const DashboardScreen = ({ navigation }) => {
                   {stats.topProducts && stats.topProducts.length > 0 && (
                     <Card style={styles.summaryCard}>
                       <View style={styles.summaryHeader}>
-                        <Text style={styles.summaryTitle}>Top 5 Produits</Text>
+                        <Text style={styles.summaryTitle}>{t('Top 5 Produits')}</Text>
                         <View style={styles.summaryIcon}>
                           <Ionicons name="trophy" size={24} color={colors.accent} />
                         </View>
@@ -1223,7 +1225,7 @@ export const DashboardScreen = ({ navigation }) => {
                             </View>
                             <View style={styles.productInfo}>
                               <Text style={styles.productName} numberOfLines={1}>{product.productName}</Text>
-                              <Text style={styles.productQuantity}>{product.quantity} ventes</Text>
+                              <Text style={styles.productQuantity}>{t('{count} ventes', { count: product.quantity })}</Text>
                             </View>
                           </View>
                           <Text style={styles.productRevenue} numberOfLines={1}>{formatPrice(product.revenue)}</Text>
@@ -1271,7 +1273,7 @@ export const DashboardScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>📊 Export des données</Text>
+              <Text style={styles.modalTitle}>{t('📊 Export des données')}</Text>
               <TouchableOpacity onPress={closeExportModal} style={styles.closeButton}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -1282,19 +1284,19 @@ export const DashboardScreen = ({ navigation }) => {
               showsVerticalScrollIndicator={false}
             >
               <Text style={styles.exportDescription}>
-                Sélectionnez la période et le format d'export (Excel ou PDF) pour toutes les données : ventes, dépenses, stocks, salaires, employés, commissions, bilan et clients.
+                {t("Sélectionnez la période et le format d'export (Excel ou PDF) pour toutes les données : ventes, dépenses, stocks, salaires, employés, commissions, bilan et clients.")}
               </Text>
 
               <Card style={styles.dateCard}>
                 <View style={styles.dateRow}>
-                  <Text style={styles.dateLabel}>Date de début :</Text>
+                  <Text style={styles.dateLabel}>{t('Date de début :')}</Text>
                   <TouchableOpacity
                     style={styles.dateButton}
                     onPress={() => setShowStartDatePicker(true)}
                   >
                     <Ionicons name="calendar-outline" size={20} color={colors.primary} />
                     <Text style={styles.dateText}>
-                      {startDate.toLocaleDateString('fr-FR')}
+                      {startDate.toLocaleDateString(getLocale())}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1312,14 +1314,14 @@ export const DashboardScreen = ({ navigation }) => {
 
               <Card style={styles.dateCard}>
                 <View style={styles.dateRow}>
-                  <Text style={styles.dateLabel}>Date de fin :</Text>
+                  <Text style={styles.dateLabel}>{t('Date de fin :')}</Text>
                   <TouchableOpacity
                     style={styles.dateButton}
                     onPress={() => setShowEndDatePicker(true)}
                   >
                     <Ionicons name="calendar-outline" size={20} color={colors.primary} />
                     <Text style={styles.dateText}>
-                      {endDate.toLocaleDateString('fr-FR')}
+                      {endDate.toLocaleDateString(getLocale())}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1339,41 +1341,41 @@ export const DashboardScreen = ({ navigation }) => {
               <Card style={styles.infoCard}>
                 <View style={styles.infoHeader}>
                   <Ionicons name="information-circle" size={24} color={colors.info} />
-                  <Text style={styles.infoTitle}>Contenu de l'export</Text>
+                  <Text style={styles.infoTitle}>{t("Contenu de l'export")}</Text>
                 </View>
-                <Text style={styles.infoText}>Le fichier Excel contiendra les feuilles suivantes :</Text>
+                <Text style={styles.infoText}>{t('Le fichier Excel contiendra les feuilles suivantes :')}</Text>
                 <View style={styles.infoList}>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Ventes</Text>
+                    <Text style={styles.infoItemText}>{t('Ventes')}</Text>
                   </View>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Dépenses</Text>
+                    <Text style={styles.infoItemText}>{t('Dépenses')}</Text>
                   </View>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Stocks</Text>
+                    <Text style={styles.infoItemText}>{t('Stocks')}</Text>
                   </View>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Employés</Text>
+                    <Text style={styles.infoItemText}>{t('Employés')}</Text>
                   </View>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Commissions</Text>
+                    <Text style={styles.infoItemText}>{t('Commissions')}</Text>
                   </View>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Salaires</Text>
+                    <Text style={styles.infoItemText}>{t('Salaires')}</Text>
                   </View>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Clients</Text>
+                    <Text style={styles.infoItemText}>{t('Clients')}</Text>
                   </View>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Bilan</Text>
+                    <Text style={styles.infoItemText}>{t('Bilan')}</Text>
                   </View>
                 </View>
               </Card>
@@ -1394,12 +1396,12 @@ export const DashboardScreen = ({ navigation }) => {
                     {exportLoading ? (
                       <>
                         <ActivityIndicator color={colors.background} size="small" />
-                        <Text style={styles.exportButtonText}>Export...</Text>
+                        <Text style={styles.exportButtonText}>{t('Export...')}</Text>
                       </>
                     ) : (
                       <>
                         <Ionicons name="grid-outline" size={22} color={colors.background} />
-                        <Text style={styles.exportButtonText}>Excel</Text>
+                        <Text style={styles.exportButtonText}>{t('Excel')}</Text>
                       </>
                     )}
                   </LinearGradient>
@@ -1420,7 +1422,7 @@ export const DashboardScreen = ({ navigation }) => {
                     {exportLoading ? (
                       <>
                         <ActivityIndicator color={colors.background} size="small" />
-                        <Text style={styles.exportButtonText}>Export...</Text>
+                        <Text style={styles.exportButtonText}>{t('Export...')}</Text>
                       </>
                     ) : (
                       <>
@@ -1451,7 +1453,7 @@ export const DashboardScreen = ({ navigation }) => {
           />
           <View style={styles.currencyModalContainer}>
             <View style={styles.currencyModalHeader}>
-              <Text style={styles.currencyModalTitle}>Paramètres</Text>
+              <Text style={styles.currencyModalTitle}>{t('Paramètres')}</Text>
               <TouchableOpacity onPress={() => setSettingsModalVisible(false)}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -1469,8 +1471,8 @@ export const DashboardScreen = ({ navigation }) => {
                   <Ionicons name="diamond-outline" size={22} color={colors.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.settingsOptionTitle}>Mon abonnement</Text>
-                  <Text style={styles.settingsOptionDesc}>Gérer votre plan</Text>
+                  <Text style={styles.settingsOptionTitle}>{t('Mon abonnement')}</Text>
+                  <Text style={styles.settingsOptionDesc}>{t('Gérer votre plan')}</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
               </TouchableOpacity>
@@ -1486,8 +1488,8 @@ export const DashboardScreen = ({ navigation }) => {
                   <Ionicons name="log-out-outline" size={22} color={colors.warning} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.settingsOptionTitle}>Déconnexion</Text>
-                  <Text style={styles.settingsOptionDesc}>Se déconnecter de l'application</Text>
+                  <Text style={styles.settingsOptionTitle}>{t('Déconnexion')}</Text>
+                  <Text style={styles.settingsOptionDesc}>{t("Se déconnecter de l'application")}</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
               </TouchableOpacity>
@@ -1502,8 +1504,8 @@ export const DashboardScreen = ({ navigation }) => {
                   <Ionicons name="trash-outline" size={22} color={colors.error} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.settingsOptionTitle, { color: colors.error }]}>Supprimer mon compte</Text>
-                  <Text style={styles.settingsOptionDesc}>Supprimer votre profil et votre accès</Text>
+                  <Text style={[styles.settingsOptionTitle, { color: colors.error }]}>{t('Supprimer mon compte')}</Text>
+                  <Text style={styles.settingsOptionDesc}>{t('Supprimer votre profil et votre accès')}</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.error} />
               </TouchableOpacity>
@@ -1529,15 +1531,15 @@ export const DashboardScreen = ({ navigation }) => {
             <View style={styles.deleteModalIconWrap}>
               <Ionicons name="warning" size={40} color={colors.error} />
             </View>
-            <Text style={styles.deleteModalTitle}>Supprimer votre compte ?</Text>
+            <Text style={styles.deleteModalTitle}>{t('Supprimer votre compte ?')}</Text>
             <Text style={styles.deleteModalDesc}>
-              Votre compte et votre profil seront supprimés définitivement. Les projets, ventes, plannings et autres données de l'entreprise seront conservés.
+              {t("Votre compte et votre profil seront supprimés définitivement. Les projets, ventes, plannings et autres données de l'entreprise seront conservés.")}
             </Text>
 
-            <Text style={styles.deleteModalLabel}>Saisissez votre mot de passe pour confirmer :</Text>
+            <Text style={styles.deleteModalLabel}>{t('Saisissez votre mot de passe pour confirmer :')}</Text>
             <TextInput
               style={styles.deleteModalInput}
-              placeholder="Votre mot de passe"
+              placeholder={t('Votre mot de passe')}
               placeholderTextColor={colors.textLight}
               secureTextEntry
               value={deletePassword}
@@ -1553,7 +1555,7 @@ export const DashboardScreen = ({ navigation }) => {
               {deleteLoading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.deleteConfirmBtnText}>Supprimer définitivement</Text>
+                <Text style={styles.deleteConfirmBtnText}>{t('Supprimer définitivement')}</Text>
               )}
             </TouchableOpacity>
 
@@ -1562,7 +1564,7 @@ export const DashboardScreen = ({ navigation }) => {
               onPress={() => setDeleteModalVisible(false)}
               disabled={deleteLoading}
             >
-              <Text style={styles.deleteCancelBtnText}>Annuler</Text>
+              <Text style={styles.deleteCancelBtnText}>{t('Annuler')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1583,7 +1585,7 @@ export const DashboardScreen = ({ navigation }) => {
           />
           <View style={styles.currencyModalContainer}>
             <View style={styles.currencyModalHeader}>
-              <Text style={styles.currencyModalTitle}>💱 Choisir la devise</Text>
+              <Text style={styles.currencyModalTitle}>{t('💱 Choisir la devise')}</Text>
               <TouchableOpacity onPress={() => setCurrencyModalVisible(false)}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -1600,7 +1602,7 @@ export const DashboardScreen = ({ navigation }) => {
                     try {
                       const projectId = selectedProjectId || user?.projectId;
                       if (!projectId) {
-                        Alert.alert('Erreur', 'Aucun projet sélectionné');
+                        Alert.alert(t('Erreur'), t('Aucun projet sélectionné'));
                         return;
                       }
 
@@ -1623,22 +1625,22 @@ export const DashboardScreen = ({ navigation }) => {
 
                       setCurrencyModalVisible(false);
                       Alert.alert(
-                        'Devise changée',
-                        `La devise du projet a été changée en ${curr.name} (${curr.symbol}). Toute l'équipe verra cette devise.`
+                        t('Devise changée'),
+                        t("La devise du projet a été changée en {name} ({symbol}). Toute l'équipe verra cette devise.", { name: curr.name, symbol: curr.symbol })
                       );
 
                       // Recharger les données du dashboard
                       loadDashboardData();
                     } catch (error) {
                       console.error('Error updating currency:', error);
-                      Alert.alert('Erreur', 'Impossible de changer la devise');
+                      Alert.alert(t('Erreur'), t('Impossible de changer la devise'));
                     }
                   }}
                 >
                   <View style={styles.currencyOptionContent}>
                     <Text style={styles.currencySymbol}>{curr.symbol}</Text>
                     <View style={styles.currencyInfo}>
-                      <Text style={styles.currencyName}>{curr.name}</Text>
+                      <Text style={styles.currencyName}>{t(curr.name)}</Text>
                       <Text style={styles.currencyCode}>{curr.code}</Text>
                     </View>
                   </View>
@@ -1650,7 +1652,7 @@ export const DashboardScreen = ({ navigation }) => {
             </View>
             <View style={styles.currencyModalFooter}>
               <Text style={styles.currencyModalNote}>
-                ℹ️ La devise sera appliquée à ce projet. Toute l'équipe verra les montants dans cette devise.
+                {t("ℹ️ La devise sera appliquée à ce projet. Toute l'équipe verra les montants dans cette devise.")}
               </Text>
             </View>
           </View>

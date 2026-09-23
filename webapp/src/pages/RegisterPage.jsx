@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   UserPlus, User, AtSign, Mail, Lock, Check, CheckCircle2, Tag, Clock,
@@ -129,10 +129,13 @@ export function CguModal({ open, onClose, onAccept, onDecline }) {
 }
 
 export default function RegisterPage() {
+  const [searchParams] = useSearchParams()
   const [step, setStep] = useState(1)
-  const [formData, setFormData] = useState({
+  // Lien partenaire : /register?code=XYZ (ou ?ref=XYZ) pré-remplit le code
+  const [formData, setFormData] = useState(() => ({
     username: '', email: '', password: '', confirmPassword: '', fullName: '',
-  })
+    partnerCode: (searchParams.get('code') || searchParams.get('ref') || '').replace(/\s+/g, '').toUpperCase().slice(0, 32),
+  }))
   const [showPassword, setShowPassword] = useState(false)
   const [selectedPlanId, setSelectedPlanId] = useState(null)
   const [plans, setPlans] = useState([])
@@ -172,6 +175,11 @@ export default function RegisterPage() {
       toast.error('Le mot de passe doit contenir au moins 6 caractères')
       return false
     }
+    const partnerCode = formData.partnerCode.replace(/\s+/g, '')
+    if (partnerCode && !/^[A-Za-z0-9_-]{2,32}$/.test(partnerCode)) {
+      toast.error('Code partenaire invalide (lettres, chiffres, - ou _ ; 2 à 32 caractères)')
+      return false
+    }
     return true
   }
 
@@ -197,11 +205,12 @@ export default function RegisterPage() {
 
     setLoading(true)
     const { username, email, password, fullName } = formData
+    const partnerCode = formData.partnerCode.replace(/\s+/g, '').toUpperCase() || undefined
     // Plan payant : inscription sans plan (compte auto-activé), puis paiement
     // Stripe self-service depuis la page Abonnement.
     const payload = isPaidPlan
-      ? { username, email, password, fullName }
-      : { username, email, password, fullName, selectedPlanId }
+      ? { username, email, password, fullName, partnerCode }
+      : { username, email, password, fullName, partnerCode, selectedPlanId }
     const result = await register(payload)
     setLoading(false)
 
@@ -289,6 +298,13 @@ export default function RegisterPage() {
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                 <input type={showPassword ? 'text' : 'password'} value={formData.confirmPassword} onChange={updateField('confirmPassword')} placeholder="Retapez votre mot de passe" autoComplete="new-password" className="input-field pl-10" />
+              </div>
+            </div>
+            <div>
+              <label className="input-label">Code promo / Code partenaire <span className="text-gray-500 font-normal">(facultatif)</span></label>
+              <div className="relative">
+                <Tag className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input type="text" value={formData.partnerCode} onChange={(e) => setFormData(prev => ({ ...prev, partnerCode: e.target.value.toUpperCase() }))} placeholder="Ex : EAS-PARTENAIRE" autoCapitalize="characters" autoComplete="off" spellCheck={false} maxLength={32} className="input-field pl-10" />
               </div>
             </div>
 

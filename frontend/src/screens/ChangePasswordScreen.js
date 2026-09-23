@@ -15,10 +15,12 @@ import { Input } from '../components/Input';
 import { authAPI } from '../services/api';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { radius, spacing, typography } from '../utils/designSystem';
+import { t, useLanguage } from '../i18n';
 
 const MIN_PASSWORD_LENGTH = 6;
 
 export const ChangePasswordScreen = ({ navigation }) => {
+  useLanguage();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [form, setForm] = useState({
@@ -40,19 +42,19 @@ export const ChangePasswordScreen = ({ navigation }) => {
     const nextErrors = {};
 
     if (!form.currentPassword) {
-      nextErrors.currentPassword = 'Saisissez votre mot de passe actuel.';
+      nextErrors.currentPassword = t('Saisissez votre mot de passe actuel.');
     }
     if (!form.newPassword) {
-      nextErrors.newPassword = 'Saisissez un nouveau mot de passe.';
+      nextErrors.newPassword = t('Saisissez un nouveau mot de passe.');
     } else if (form.newPassword.length < MIN_PASSWORD_LENGTH) {
-      nextErrors.newPassword = `Utilisez au moins ${MIN_PASSWORD_LENGTH} caractères.`;
+      nextErrors.newPassword = t('Utilisez au moins {MIN_PASSWORD_LENGTH} caractères.', { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH });
     } else if (form.newPassword === form.currentPassword) {
-      nextErrors.newPassword = 'Le nouveau mot de passe doit être différent de l’ancien.';
+      nextErrors.newPassword = t('Le nouveau mot de passe doit être différent de l’ancien.');
     }
     if (!form.confirmPassword) {
-      nextErrors.confirmPassword = 'Confirmez le nouveau mot de passe.';
+      nextErrors.confirmPassword = t('Confirmez le nouveau mot de passe.');
     } else if (form.confirmPassword !== form.newPassword) {
-      nextErrors.confirmPassword = 'Les mots de passe ne correspondent pas.';
+      nextErrors.confirmPassword = t('Les mots de passe ne correspondent pas.');
     }
 
     setErrors(nextErrors);
@@ -68,15 +70,15 @@ export const ChangePasswordScreen = ({ navigation }) => {
       setForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setErrors({});
       Alert.alert(
-        'Mot de passe modifié',
-        'Votre nouveau mot de passe est maintenant actif.',
+        t('Mot de passe modifié'),
+        t('Votre nouveau mot de passe est maintenant actif.'),
         [{ text: 'OK', onPress: () => navigation.goBack() }],
       );
     } catch (error) {
       const status = error.response?.status;
       const message = status === 401
-        ? 'Le mot de passe actuel est incorrect.'
-        : error.response?.data?.error || 'Impossible de modifier le mot de passe. Réessayez.';
+        ? t('Le mot de passe actuel est incorrect.')
+        : error.response?.data?.error || t('Impossible de modifier le mot de passe. Réessayez.');
       setErrors({ submit: message });
     } finally {
       setLoading(false);
@@ -97,18 +99,18 @@ export const ChangePasswordScreen = ({ navigation }) => {
           <View style={styles.iconContainer}>
             <Ionicons name="lock-closed-outline" size={28} color={colors.primary} />
           </View>
-          <Text style={styles.title}>Sécurisez votre compte</Text>
+          <Text style={styles.title}>{t('Sécurisez votre compte')}</Text>
           <Text style={styles.description}>
-            Choisissez un mot de passe différent de l’actuel et contenant au moins {MIN_PASSWORD_LENGTH} caractères.
+            {t('Choisissez un mot de passe différent de l’actuel et contenant au moins {MIN_PASSWORD_LENGTH} caractères.', { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH })}
           </Text>
         </View>
 
         <Card style={styles.formCard}>
           <Input
-            label="Mot de passe actuel"
+            label={t('Mot de passe actuel')}
             value={form.currentPassword}
             onChangeText={(value) => updateField('currentPassword', value)}
-            placeholder="Saisissez votre mot de passe actuel"
+            placeholder={t('Saisissez votre mot de passe actuel')}
             secureTextEntry
             icon="key-outline"
             autoCapitalize="none"
@@ -118,10 +120,10 @@ export const ChangePasswordScreen = ({ navigation }) => {
             error={errors.currentPassword}
           />
           <Input
-            label="Nouveau mot de passe"
+            label={t('Nouveau mot de passe')}
             value={form.newPassword}
             onChangeText={(value) => updateField('newPassword', value)}
-            placeholder={`Au moins ${MIN_PASSWORD_LENGTH} caractères`}
+            placeholder={t('Au moins {MIN_PASSWORD_LENGTH} caractères', { MIN_PASSWORD_LENGTH: MIN_PASSWORD_LENGTH })}
             secureTextEntry
             icon="lock-closed-outline"
             autoCapitalize="none"
@@ -131,10 +133,10 @@ export const ChangePasswordScreen = ({ navigation }) => {
             error={errors.newPassword}
           />
           <Input
-            label="Confirmer le nouveau mot de passe"
+            label={t('Confirmer le nouveau mot de passe')}
             value={form.confirmPassword}
             onChangeText={(value) => updateField('confirmPassword', value)}
-            placeholder="Retapez le nouveau mot de passe"
+            placeholder={t('Retapez le nouveau mot de passe')}
             secureTextEntry
             icon="shield-checkmark-outline"
             autoCapitalize="none"
@@ -154,7 +156,7 @@ export const ChangePasswordScreen = ({ navigation }) => {
           ) : null}
 
           <Button
-            title="Modifier le mot de passe"
+            title={t('Modifier le mot de passe')}
             icon="shield-checkmark-outline"
             onPress={handleSubmit}
             loading={loading}

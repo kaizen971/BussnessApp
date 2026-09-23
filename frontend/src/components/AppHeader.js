@@ -3,8 +3,10 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext'
 import { control, radius, spacing } from '../utils/designSystem'
+import { t, useLanguage } from '../i18n'
 
 export function AppHeader({ title, subtitle, onBack, rightIcon, onRightPress, rightLabel }) {
+  useLanguage()
   const { colors } = useTheme()
   const styles = useThemedStyles(createStyles)
 
@@ -16,7 +18,7 @@ export function AppHeader({ title, subtitle, onBack, rightIcon, onRightPress, ri
             style={styles.iconButton}
             onPress={onBack}
             accessibilityRole="button"
-            accessibilityLabel="Retour"
+            accessibilityLabel={t('Retour')}
           >
             <Ionicons name="arrow-back" size={21} color={colors.text} />
           </TouchableOpacity>

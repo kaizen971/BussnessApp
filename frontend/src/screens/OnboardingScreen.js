@@ -4,8 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import logo from '../assets/icon/dashboard.png';
+import { t, useLanguage } from '../i18n';
 
 export const OnboardingScreen = ({ navigation }) => {
+  useLanguage();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
@@ -26,14 +28,14 @@ export const OnboardingScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Image source={logo} style={styles.logo} />
-          <Text style={styles.appName}>Entreprendre avec succès - EAS</Text>
+          <Text style={styles.appName}>{t('Entreprendre avec succès - EAS')}</Text>
           {isAdmin && (
-            <Text style={styles.slogan}>Valide ton idée. Pilote ton business. Simplement.</Text>
+            <Text style={styles.slogan}>{t('Valide ton idée. Pilote ton business. Simplement.')}</Text>
           )}
         </View>
 
         <View style={styles.content}>
-          <Text style={styles.question}>Que veux-tu faire aujourd'hui ?</Text>
+          <Text style={styles.question}>{t("Que veux-tu faire aujourd'hui ?")}</Text>
           {isAdmin && (
             <TouchableOpacity
               style={styles.card}
@@ -44,8 +46,8 @@ export const OnboardingScreen = ({ navigation }) => {
                 <Ionicons name="school-outline" size={22} color={colors.primary} />
               </View>
               <View style={styles.cardContent}>
-                <Text style={styles.cardTitle}>Guide de démarrage</Text>
-                <Text style={styles.cardDescription}>Configurez votre business étape par étape</Text>
+                <Text style={styles.cardTitle}>{t('Guide de démarrage')}</Text>
+                <Text style={styles.cardDescription}>{t('Configurez votre business étape par étape')}</Text>
               </View>
               <View style={styles.cardArrow}>
                 <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
@@ -62,8 +64,8 @@ export const OnboardingScreen = ({ navigation }) => {
                 <Ionicons name="calculator-outline" size={22} color={colors.primary} />
               </View>
               <View style={styles.cardContent}>
-                <Text style={styles.cardTitle}>Simuler une activité</Text>
-                <Text style={styles.cardDescription}>Rentabilité, point mort et business plan</Text>
+                <Text style={styles.cardTitle}>{t('Simuler une activité')}</Text>
+                <Text style={styles.cardDescription}>{t('Rentabilité, point mort et business plan')}</Text>
               </View>
               <View style={styles.cardArrow}>
                 <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
@@ -80,8 +82,8 @@ export const OnboardingScreen = ({ navigation }) => {
               <Ionicons name="analytics-outline" size={22} color={colors.primary} />
             </View>
             <View style={styles.cardContent}>
-              <Text style={styles.cardTitle}>Accéder à mon activité</Text>
-              <Text style={styles.cardDescription}>Ventes, dépenses, stock et clients</Text>
+              <Text style={styles.cardTitle}>{t('Accéder à mon activité')}</Text>
+              <Text style={styles.cardDescription}>{t('Ventes, dépenses, stock et clients')}</Text>
             </View>
             <View style={styles.cardArrow}>
               <Ionicons name="chevron-forward" size={20} color={colors.textLight} />

@@ -2,6 +2,7 @@ import React, { createContext, useState, useContext, useEffect, useCallback } fr
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI, setCachedToken, clearCachedToken, setOnSessionInvalidated } from '../services/api';
+import { t, useLanguage } from '../i18n';
 
 const AuthContext = createContext();
 
@@ -14,6 +15,7 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
+  useLanguage();
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -125,7 +127,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.log('Login error details:', error.response?.data);
       const errorData = error.response?.data;
-      const errorMessage = errorData?.error || 'Échec de la connexion - vérifiez votre connexion';
+      const errorMessage = errorData?.error || t('Échec de la connexion - vérifiez votre connexion');
       const errorCode = errorData?.code || 'UNKNOWN';
       const errorField = errorData?.field;
 
@@ -169,7 +171,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.log('Registration error details:', error.response?.data);
       const errorData = error.response?.data;
-      const errorMessage = errorData?.error || 'Échec de l\'inscription - vérifiez votre connexion';
+      const errorMessage = errorData?.error || t("Échec de l'inscription - vérifiez votre connexion");
       const errorCode = errorData?.code || 'UNKNOWN';
       const errorField = errorData?.field;
 
@@ -227,7 +229,7 @@ export const AuthProvider = ({ children }) => {
       setAvailableProjects([]);
       return { success: true };
     } catch (error) {
-      const errorMessage = error.response?.data?.error || 'Impossible de supprimer le compte.';
+      const errorMessage = error.response?.data?.error || t('Impossible de supprimer le compte.');
       return { success: false, error: errorMessage };
     }
   };

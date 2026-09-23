@@ -21,31 +21,32 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { t, useLanguage } from '../i18n';
 
 const { width } = Dimensions.get('window');
 
-const CGU_DATA = {
+const getCguData = () => ({
   version: '1.0',
   updatedAt: '2025-01-01',
-  title: "Conditions Générales d'Utilisation (CGU)",
+  title: t("Conditions Générales d'Utilisation (CGU)"),
   appName: "EAS – Entreprendre avec Succès",
   sections: [
-    { id: 1, title: "Objet", content: "Les présentes Conditions Générales d'Utilisation (CGU) ont pour objet de définir les modalités d'accès et d'utilisation de l'application mobile EAS – Entreprendre avec Succès (ci-après « l'Application »).\nL'Application permet aux utilisateurs de gérer, suivre et analyser leur activité commerciale (ventes, dépenses, stock, équipes, rentabilité, etc.)." },
-    { id: 2, title: "Éditeur de l'application", content: "L'Application est éditée par : SASU COD&COV" },
-    { id: 3, title: "Accès au service", content: "L'accès à l'Application est possible via téléchargement sur les stores (Google Play / App Store).\nL'utilisateur doit créer un compte pour accéder aux fonctionnalités.\nL'éditeur se réserve le droit de modifier, suspendre ou interrompre l'accès au service à tout moment." },
-    { id: 4, title: "Description des services", content: "L'Application propose notamment les fonctionnalités suivantes :\n• Gestion des ventes\n• Suivi des dépenses\n• Gestion du stock\n• Gestion des employés et commissions\n• Calcul de la rentabilité\n• Module de simulation de business (business plan)\n• Export de données (selon abonnement)\n• Gestion multi-business\n\nLes fonctionnalités disponibles dépendent du plan d'abonnement souscrit." },
-    { id: 5, title: "Compte utilisateur", content: "L'utilisateur est responsable des informations fournies lors de la création de son compte.\nIl est seul responsable de la confidentialité de ses identifiants.\nToute utilisation du compte est réputée faite par l'utilisateur." },
-    { id: 6, title: "Abonnements et paiements", content: "L'Application propose plusieurs formules d'abonnement (Basic, Standard, Premium).\nLes tarifs peuvent être modifiés à tout moment.\nLes abonnements sont généralement annuels et renouvelables.\nAucun remboursement ne pourra être exigé sauf disposition légale contraire." },
-    { id: 7, title: "Responsabilité", content: "L'Application est un outil d'aide à la gestion.\nL'éditeur ne garantit pas l'exactitude des résultats financiers générés, ceux-ci dépendant des données saisies par l'utilisateur.\nL'utilisateur reste seul responsable de :\n• La gestion de son activité\n• Ses décisions commerciales\n• La conformité de ses obligations légales et fiscales\n\nL'éditeur ne saurait être tenu responsable de pertes financières, erreurs de gestion ou décisions prises sur la base des données de l'Application." },
-    { id: 8, title: "Données", content: "Les données saisies dans l'Application appartiennent à l'utilisateur.\nL'éditeur s'engage à mettre en œuvre des moyens raisonnables pour assurer la sécurité des données.\nToutefois, l'utilisateur est responsable de la sauvegarde de ses informations." },
-    { id: 9, title: "Disponibilité", content: "L'éditeur s'efforce d'assurer un accès continu à l'Application.\nCependant, des interruptions peuvent survenir (maintenance, incident technique, réseau…).\nAucune garantie de disponibilité permanente n'est fournie." },
-    { id: 10, title: "Utilisation conforme", content: "L'utilisateur s'engage à utiliser l'Application conformément à sa destination.\nIl est interdit de :\n• Utiliser l'Application à des fins frauduleuses\n• Tenter d'accéder aux systèmes de manière non autorisée\n• Porter atteinte au bon fonctionnement du service" },
-    { id: 11, title: "Propriété intellectuelle", content: "L'ensemble des éléments de l'Application (code, design, contenu) est protégé.\nToute reproduction, modification ou exploitation sans autorisation est interdite." },
-    { id: 12, title: "Résiliation", content: "L'utilisateur peut cesser d'utiliser l'Application à tout moment.\nL'éditeur peut suspendre ou supprimer un compte en cas de non-respect des CGU." },
-    { id: 13, title: "Évolution des CGU", content: "Les présentes CGU peuvent être modifiées à tout moment.\nL'utilisateur sera informé en cas de modification importante." },
-    { id: 14, title: "Droit applicable", content: "Les présentes CGU sont régies par le droit applicable du pays de l'éditeur." },
+    { id: 1, title: t('Objet'), content: t("Les présentes Conditions Générales d'Utilisation (CGU) ont pour objet de définir les modalités d'accès et d'utilisation de l'application mobile EAS – Entreprendre avec Succès (ci-après « l'Application »).\nL'Application permet aux utilisateurs de gérer, suivre et analyser leur activité commerciale (ventes, dépenses, stock, équipes, rentabilité, etc.).") },
+    { id: 2, title: t("Éditeur de l'application"), content: t("L'Application est éditée par : SASU COD&COV") },
+    { id: 3, title: t('Accès au service'), content: t("L'accès à l'Application est possible via téléchargement sur les stores (Google Play / App Store).\nL'utilisateur doit créer un compte pour accéder aux fonctionnalités.\nL'éditeur se réserve le droit de modifier, suspendre ou interrompre l'accès au service à tout moment.") },
+    { id: 4, title: t('Description des services'), content: t("L'Application propose notamment les fonctionnalités suivantes :\n• Gestion des ventes\n• Suivi des dépenses\n• Gestion du stock\n• Gestion des employés et commissions\n• Calcul de la rentabilité\n• Module de simulation de business (business plan)\n• Export de données (selon abonnement)\n• Gestion multi-business\n\nLes fonctionnalités disponibles dépendent du plan d'abonnement souscrit.") },
+    { id: 5, title: t('Compte utilisateur'), content: t("L'utilisateur est responsable des informations fournies lors de la création de son compte.\nIl est seul responsable de la confidentialité de ses identifiants.\nToute utilisation du compte est réputée faite par l'utilisateur.") },
+    { id: 6, title: t('Abonnements et paiements'), content: t("L'Application propose plusieurs formules d'abonnement (Basic, Standard, Premium).\nLes tarifs peuvent être modifiés à tout moment.\nLes abonnements sont généralement annuels et renouvelables.\nAucun remboursement ne pourra être exigé sauf disposition légale contraire.") },
+    { id: 7, title: t('Responsabilité'), content: t("L'Application est un outil d'aide à la gestion.\nL'éditeur ne garantit pas l'exactitude des résultats financiers générés, ceux-ci dépendant des données saisies par l'utilisateur.\nL'utilisateur reste seul responsable de :\n• La gestion de son activité\n• Ses décisions commerciales\n• La conformité de ses obligations légales et fiscales\n\nL'éditeur ne saurait être tenu responsable de pertes financières, erreurs de gestion ou décisions prises sur la base des données de l'Application.") },
+    { id: 8, title: t('Données'), content: t("Les données saisies dans l'Application appartiennent à l'utilisateur.\nL'éditeur s'engage à mettre en œuvre des moyens raisonnables pour assurer la sécurité des données.\nToutefois, l'utilisateur est responsable de la sauvegarde de ses informations.") },
+    { id: 9, title: t('Disponibilité'), content: t("L'éditeur s'efforce d'assurer un accès continu à l'Application.\nCependant, des interruptions peuvent survenir (maintenance, incident technique, réseau…).\nAucune garantie de disponibilité permanente n'est fournie.") },
+    { id: 10, title: t('Utilisation conforme'), content: t("L'utilisateur s'engage à utiliser l'Application conformément à sa destination.\nIl est interdit de :\n• Utiliser l'Application à des fins frauduleuses\n• Tenter d'accéder aux systèmes de manière non autorisée\n• Porter atteinte au bon fonctionnement du service") },
+    { id: 11, title: t('Propriété intellectuelle'), content: t("L'ensemble des éléments de l'Application (code, design, contenu) est protégé.\nToute reproduction, modification ou exploitation sans autorisation est interdite.") },
+    { id: 12, title: t('Résiliation'), content: t("L'utilisateur peut cesser d'utiliser l'Application à tout moment.\nL'éditeur peut suspendre ou supprimer un compte en cas de non-respect des CGU.") },
+    { id: 13, title: t('Évolution des CGU'), content: t("Les présentes CGU peuvent être modifiées à tout moment.\nL'utilisateur sera informé en cas de modification importante.") },
+    { id: 14, title: t('Droit applicable'), content: t("Les présentes CGU sont régies par le droit applicable du pays de l'éditeur.") },
   ],
-};
+});
 const DURATION_LABELS = { days: 'jour(s)', months: 'mois', years: 'an(s)', lifetime: 'À vie' };
 
 const TIER_ICONS = {
@@ -68,11 +69,12 @@ function getTier(plan) {
 }
 
 function getDurationLabel(plan) {
-  if (plan.durationType === 'lifetime') return 'À vie';
-  return `${plan.duration} ${DURATION_LABELS[plan.durationType] || plan.durationType}`;
+  if (plan.durationType === 'lifetime') return t('À vie');
+  return `${plan.duration} ${t(DURATION_LABELS[plan.durationType] || plan.durationType)}`;
 }
 
 export const RegisterScreen = ({ navigation }) => {
+  useLanguage();
   const { colors, gradients } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [step, setStep] = useState(1);
@@ -82,6 +84,7 @@ export const RegisterScreen = ({ navigation }) => {
     password: '',
     confirmPassword: '',
     fullName: '',
+    partnerCode: '',
   });
   const [selectedPlanId, setSelectedPlanId] = useState(null);
   const [plans, setPlans] = useState([]);
@@ -120,7 +123,7 @@ export const RegisterScreen = ({ navigation }) => {
       setPlans(response.data || []);
     } catch (error) {
       console.error('Erreur chargement plans:', error);
-      Alert.alert('Erreur', 'Impossible de charger les plans. Veuillez réessayer.');
+      Alert.alert(t('Erreur'), t('Impossible de charger les plans. Veuillez réessayer.'));
     } finally {
       setLoadingPlans(false);
     }
@@ -130,17 +133,23 @@ export const RegisterScreen = ({ navigation }) => {
     const { username, email, password, confirmPassword, fullName } = formData;
 
     if (!username || !email || !password || !fullName) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs');
+      Alert.alert(t('Erreur'), t('Veuillez remplir tous les champs'));
       return false;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Erreur', 'Les mots de passe ne correspondent pas');
+      Alert.alert(t('Erreur'), t('Les mots de passe ne correspondent pas'));
       return false;
     }
 
     if (password.length < 6) {
-      Alert.alert('Erreur', 'Le mot de passe doit contenir au moins 6 caractères');
+      Alert.alert(t('Erreur'), t('Le mot de passe doit contenir au moins 6 caractères'));
+      return false;
+    }
+
+    const partnerCode = formData.partnerCode.replace(/\s+/g, '');
+    if (partnerCode && !/^[A-Za-z0-9_-]{2,32}$/.test(partnerCode)) {
+      Alert.alert(t('Erreur'), t('Code partenaire invalide (lettres, chiffres, - ou _ ; 2 à 32 caractères)'));
       return false;
     }
 
@@ -148,14 +157,14 @@ export const RegisterScreen = ({ navigation }) => {
   };
 
   const openCGU = () => {
-    setCguData(CGU_DATA);
+    setCguData(getCguData());
     setCguModalVisible(true);
   };
 
   const goToStep2 = () => {
     if (!validateStep1()) return;
     if (!cguAccepted) {
-      Alert.alert('CGU requises', 'Vous devez accepter les Conditions Générales d\'Utilisation pour continuer.');
+      Alert.alert(t('CGU requises'), t("Vous devez accepter les Conditions Générales d'Utilisation pour continuer."));
       return;
     }
     fetchPlans();
@@ -164,20 +173,21 @@ export const RegisterScreen = ({ navigation }) => {
 
   const handleRegister = async () => {
     if (!selectedPlanId) {
-      Alert.alert('Erreur', 'Veuillez choisir un plan d\'accompagnement');
+      Alert.alert(t('Erreur'), t("Veuillez choisir un plan d'accompagnement"));
       return;
     }
 
     setLoading(true);
     const { username, email, password, fullName } = formData;
-    const result = await register({ username, email, password, fullName, selectedPlanId });
+    const partnerCode = formData.partnerCode.replace(/\s+/g, '').toUpperCase() || undefined;
+    const result = await register({ username, email, password, fullName, partnerCode, selectedPlanId });
     setLoading(false);
 
     if (result.success) {
       if (result.autoActivated) {
         Alert.alert(
-          'Essai activé !',
-          result.message || 'Votre compte essai est actif. Vous êtes connecté automatiquement.'
+          t('Essai activé !'),
+          result.message || t('Votre compte essai est actif. Vous êtes connecté automatiquement.')
         );
         return;
       }
@@ -185,10 +195,10 @@ export const RegisterScreen = ({ navigation }) => {
       animateTransition(3);
     } else {
       let errorMessage = result.error;
-      if (result.code) errorMessage += `\n\nCode: ${result.code}`;
-      if (result.field) errorMessage += `\nChamp concerné: ${result.field}`;
-      if (result.details) errorMessage += `\n\nDétails techniques: ${result.details}`;
-      Alert.alert('Erreur d\'inscription', errorMessage);
+      if (result.code) errorMessage += t('\n\nCode: {code}', { code: result.code });
+      if (result.field) errorMessage += t('\nChamp concerné: {field}', { field: result.field });
+      if (result.details) errorMessage += t('\n\nDétails techniques: {details}', { details: result.details });
+      Alert.alert(t("Erreur d'inscription"), errorMessage);
     }
   };
 
@@ -216,22 +226,22 @@ export const RegisterScreen = ({ navigation }) => {
   const renderStep1 = () => (
     <Card style={styles.registerCard}>
       <Input
-        label="Nom complet"
+        label={t('Nom complet')}
         value={formData.fullName}
         onChangeText={(value) => updateField('fullName', value)}
-        placeholder="Entrez votre nom complet"
+        placeholder={t('Entrez votre nom complet')}
         icon="person-outline"
       />
       <Input
-        label="Nom d'utilisateur"
+        label={t("Nom d'utilisateur")}
         value={formData.username}
         onChangeText={(value) => updateField('username', value)}
-        placeholder="Choisissez un nom d'utilisateur"
+        placeholder={t("Choisissez un nom d'utilisateur")}
         icon="at-outline"
         autoCapitalize="none"
       />
       <Input
-        label="Email"
+        label={t('Email')}
         value={formData.email}
         onChangeText={(value) => updateField('email', value)}
         placeholder="votre.email@exemple.com"
@@ -240,20 +250,29 @@ export const RegisterScreen = ({ navigation }) => {
         autoCapitalize="none"
       />
       <Input
-        label="Mot de passe"
+        label={t('Mot de passe')}
         value={formData.password}
         onChangeText={(value) => updateField('password', value)}
-        placeholder="Minimum 6 caractères"
+        placeholder={t('Minimum 6 caractères')}
         icon="lock-closed-outline"
         secureTextEntry
       />
       <Input
-        label="Confirmer le mot de passe"
+        label={t('Confirmer le mot de passe')}
         value={formData.confirmPassword}
         onChangeText={(value) => updateField('confirmPassword', value)}
-        placeholder="Retapez votre mot de passe"
+        placeholder={t('Retapez votre mot de passe')}
         icon="lock-closed-outline"
         secureTextEntry
+      />
+      <Input
+        label={t('Code promo / Code partenaire (facultatif)')}
+        value={formData.partnerCode}
+        onChangeText={(value) => updateField('partnerCode', value.toUpperCase())}
+        placeholder={t('Ex : EAS-PARTENAIRE')}
+        icon="pricetag-outline"
+        autoCapitalize="characters"
+        autoCorrect={false}
       />
       <TouchableOpacity
         style={styles.cguRow}
@@ -264,20 +283,20 @@ export const RegisterScreen = ({ navigation }) => {
           {cguAccepted && <Ionicons name="checkmark" size={14} color={colors.onPrimary} />}
         </View>
         <Text style={styles.cguText}>
-          J'accepte les{' '}
+          {t("J'accepte les")}{' '}
           <Text style={styles.cguLink} onPress={openCGU}>
-            Conditions Générales d'Utilisation
+            {t("Conditions Générales d'Utilisation")}
           </Text>
         </Text>
       </TouchableOpacity>
 
       <Button
-        title="Suivant - Choisir un plan"
+        title={t('Suivant - Choisir un plan')}
         onPress={goToStep2}
         style={styles.registerButton}
       />
       <Button
-        title="Retour à la connexion"
+        title={t('Retour à la connexion')}
         onPress={() => navigation.goBack()}
         variant="ghost"
         style={styles.backButton}
@@ -329,14 +348,14 @@ export const RegisterScreen = ({ navigation }) => {
             </View>
             {plan.isRecurring && (
               <View style={[styles.planBadge, isSelected && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                <Text style={styles.planBadgeText}>récurrent</Text>
+                <Text style={styles.planBadgeText}>{t('récurrent')}</Text>
               </View>
             )}
           </View>
 
           <View style={styles.planMetaItem}>
             <Ionicons name="business-outline" size={14} color="rgba(255,255,255,0.6)" />
-            <Text style={styles.planMetaText}>{plan.maxProjects} business max</Text>
+            <Text style={styles.planMetaText}>{t('{maxProjects} business max', { maxProjects: plan.maxProjects })}</Text>
           </View>
 
           {plan.features && plan.features.length > 0 && (
@@ -360,8 +379,8 @@ export const RegisterScreen = ({ navigation }) => {
         <View style={styles.planSectionHeader}>
           <Ionicons name="pricetags-outline" size={24} color={colors.primary} />
           <View style={{ marginLeft: 12, flex: 1 }}>
-            <Text style={styles.planSectionTitle}>Plan d'accompagnement</Text>
-            <Text style={styles.planSectionSubtitle}>Choisissez le plan adapté à vos besoins</Text>
+            <Text style={styles.planSectionTitle}>{t("Plan d'accompagnement")}</Text>
+            <Text style={styles.planSectionSubtitle}>{t('Choisissez le plan adapté à vos besoins')}</Text>
           </View>
         </View>
       </Card>
@@ -369,13 +388,13 @@ export const RegisterScreen = ({ navigation }) => {
       {loadingPlans ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Chargement des plans...</Text>
+          <Text style={styles.loadingText}>{t('Chargement des plans...')}</Text>
         </View>
       ) : plans.length === 0 ? (
         <Card style={styles.emptyCard}>
           <Ionicons name="alert-circle-outline" size={40} color={colors.textLight} />
-          <Text style={styles.emptyText}>Aucun plan disponible pour le moment</Text>
-          <Button title="Réessayer" onPress={fetchPlans} variant="ghost" />
+          <Text style={styles.emptyText}>{t('Aucun plan disponible pour le moment')}</Text>
+          <Button title={t('Réessayer')} onPress={fetchPlans} variant="ghost" />
         </Card>
       ) : (
         plans.map(renderPlanCard)
@@ -398,7 +417,7 @@ export const RegisterScreen = ({ navigation }) => {
               <>
                 <Ionicons name="checkmark-circle" size={22} color={selectedPlanId ? colors.onPrimary : '#999'} />
                 <Text style={[styles.validateBtnText, !selectedPlanId && styles.validateBtnTextDisabled]}>
-                  Valider l'inscription
+                  {t("Valider l'inscription")}
                 </Text>
               </>
             )}
@@ -410,7 +429,7 @@ export const RegisterScreen = ({ navigation }) => {
           onPress={() => animateTransition(1)}
           activeOpacity={0.7}
         >
-          <Text style={styles.backBtnText}>Retour</Text>
+          <Text style={styles.backBtnText}>{t('Retour')}</Text>
         </TouchableOpacity>
       </Card>
     </View>
@@ -423,28 +442,28 @@ export const RegisterScreen = ({ navigation }) => {
           <Ionicons name="checkmark" size={50} color="#fff" />
         </LinearGradient>
       </View>
-      <Text style={styles.successTitle}>Inscription réussie !</Text>
+      <Text style={styles.successTitle}>{t('Inscription réussie !')}</Text>
       <Text style={styles.successSubtitle}>
-        Votre demande a bien été enregistrée. Un administrateur vous contactera prochainement pour finaliser votre accompagnement et activer votre compte.
+        {t('Votre demande a bien été enregistrée. Un administrateur vous contactera prochainement pour finaliser votre accompagnement et activer votre compte.')}
       </Text>
 
       <Card style={styles.successInfoCard}>
         <View style={styles.successInfoRow}>
           <Ionicons name="mail-outline" size={20} color={colors.primary} />
-          <Text style={styles.successInfoText}>Un email a été envoyé à notre équipe</Text>
+          <Text style={styles.successInfoText}>{t('Un email a été envoyé à notre équipe')}</Text>
         </View>
         <View style={styles.successInfoRow}>
           <Ionicons name="time-outline" size={20} color={colors.primary} />
-          <Text style={styles.successInfoText}>Délai de réponse : sous 24h</Text>
+          <Text style={styles.successInfoText}>{t('Délai de réponse : sous 24h')}</Text>
         </View>
         <View style={styles.successInfoRow}>
           <Ionicons name="call-outline" size={20} color={colors.primary} />
-          <Text style={styles.successInfoText}>Nous vous contacterons par email ou téléphone</Text>
+          <Text style={styles.successInfoText}>{t('Nous vous contacterons par email ou téléphone')}</Text>
         </View>
       </Card>
 
       <Button
-        title="Retour à la connexion"
+        title={t('Retour à la connexion')}
         onPress={() => navigation.goBack()}
         style={styles.successButton}
       />
@@ -452,8 +471,8 @@ export const RegisterScreen = ({ navigation }) => {
   );
 
   const stepTitles = {
-    1: { title: 'Créer un compte', subtitle: 'Rejoignez EAS dès aujourd\'hui' },
-    2: { title: 'Choisir votre plan', subtitle: 'Sélectionnez l\'offre qui vous convient' },
+    1: { title: t('Créer un compte'), subtitle: t("Rejoignez EAS dès aujourd'hui") },
+    2: { title: t('Choisir votre plan'), subtitle: t("Sélectionnez l'offre qui vous convient") },
     3: { title: '', subtitle: '' },
   };
 
@@ -495,7 +514,7 @@ export const RegisterScreen = ({ navigation }) => {
           <View style={styles.cguModalContent}>
             <View style={styles.cguModalHeader}>
               <Text style={styles.cguModalTitle}>
-                {cguData?.title || "Conditions Générales d'Utilisation"}
+                {cguData?.title || t("Conditions Générales d'Utilisation")}
               </Text>
               <TouchableOpacity onPress={() => setCguModalVisible(false)} style={styles.cguModalClose}>
                 <Ionicons name="close-circle" size={28} color={colors.textSecondary} />
@@ -520,7 +539,7 @@ export const RegisterScreen = ({ navigation }) => {
                     ))}
                     {cguData.updatedAt && (
                       <Text style={styles.cguUpdatedAt}>
-                        Dernière mise à jour : {cguData.updatedAt}
+                        {t('Dernière mise à jour : {updatedAt}', { updatedAt: cguData.updatedAt })}
                       </Text>
                     )}
                   </>
@@ -535,7 +554,7 @@ export const RegisterScreen = ({ navigation }) => {
                   setCguModalVisible(false);
                 }}
               >
-                <Text style={styles.cguDeclineBtnText}>Refuser</Text>
+                <Text style={styles.cguDeclineBtnText}>{t('Refuser')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.cguAcceptBtn}
@@ -549,7 +568,7 @@ export const RegisterScreen = ({ navigation }) => {
                   style={styles.cguAcceptBtnGradient}
                 >
                   <Ionicons name="checkmark-circle" size={18} color={colors.onPrimary} />
-                  <Text style={styles.cguAcceptBtnText}>Accepter</Text>
+                  <Text style={styles.cguAcceptBtnText}>{t('Accepter')}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>

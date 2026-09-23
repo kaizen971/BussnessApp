@@ -623,16 +623,20 @@ router.put('/super-admins/:id/status', authenticateSuperAdmin, async (req, res) 
 
 router.get('/admins', authenticateSuperAdmin, async (req, res) => {
   try {
-    const { status, search } = req.query;
+    const { status, search, partnerCode } = req.query;
     let query = { role: 'admin' };
 
     if (status === 'active') query.isActive = true;
     if (status === 'inactive') query.isActive = false;
+    if (partnerCode === '__any__') query.partnerCode = { $exists: true, $nin: [null, ''] };
+    else if (partnerCode === '__none__') query.partnerCode = { $in: [null, ''] };
+    else if (typeof partnerCode === 'string' && partnerCode.trim()) query.partnerCode = partnerCode.trim().toUpperCase();
     if (search) {
       query.$or = [
         { fullName: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
-        { username: { $regex: search, $options: 'i' } }
+        { username: { $regex: search, $options: 'i' } },
+        { partnerCode: { $regex: search, $options: 'i' } }
       ];
     }
 
@@ -1451,6 +1455,59 @@ router.get('/activity-logs', authenticateSuperAdmin, async (req, res) => {
 });
 
 // ============= DASHBOARD STATS =============
+
+// ============= PARTNER CODES (attribution des inscriptions) =============
+
+router.get('/partners/stats', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const match = { role: 'admin', partnerCode: { $exists: true, $nin: [null, ''] } };
+    const createdAt = {};
+    if (from && !isNaN(Date.parse(from))) createdAt.$gte = new Date(from);
+    if (to && !isNaN(Date.parse(to))) {
+      const end = new Date(to);
+      end.setHours(23, 59, 59, 999);
+      createdAt.$lte = end;
+    }
+    if (Object.keys(createdAt).length) match.createdAt = createdAt;
+
+    const partners = await User.aggregate([
+      { $match: match },
+      {
+        $lookup: {
+          from: Subscription.collection.name,
+          let: { uid: '$_id' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$adminId', '$$uid'] }, status: 'active' } },
+            { $limit: 1 }
+          ],
+          as: 'activeSub'
+        }
+      },
+      {
+        $group: {
+          _id: '$partnerCode',
+          signups: { $sum: 1 },
+          activeAccounts: { $sum: { $cond: ['$isActive', 1, 0] } },
+          activeSubscriptions: { $sum: { $cond: [{ $gt: [{ $size: '$activeSub' }, 0] }, 1, 0] } },
+          firstSignup: { $min: '$createdAt' },
+          lastSignup: { $max: '$createdAt' }
+        }
+      },
+      { $sort: { signups: -1, _id: 1 } },
+      { $project: { _id: 0, code: '$_id', signups: 1, activeAccounts: 1, activeSubscriptions: 1, firstSignup: 1, lastSignup: 1 } }
+    ]);
+
+    const totalMatch = { role: 'admin' };
+    if (match.createdAt) totalMatch.createdAt = match.createdAt;
+    const totalSignups = await User.countDocuments(totalMatch);
+    const partnerSignups = partners.reduce((sum, p) => sum + p.signups, 0);
+
+    res.json({ partners, totalSignups, partnerSignups });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 router.get('/dashboard/stats', authenticateSuperAdmin, async (req, res) => {
   try {

@@ -1,3 +1,5 @@
+import { t } from '../i18n'
+
 export const CSV_IMPORT_TYPES = {
   products: {
     label: 'Produits',
@@ -154,10 +156,10 @@ export function inspectCsv(text, type) {
   const rowCount = Math.max(rows.length - 1, 0)
   const errors = []
 
-  if (rows.length === 0) errors.push('Le fichier est vide.')
-  else if (rowCount === 0) errors.push('Ajoutez au moins une ligne sous les en-têtes.')
-  if (missingColumns.length) errors.push(`Colonnes obligatoires manquantes : ${missingColumns.join(', ')}.`)
-  if (rowCount > 2000) errors.push('Le fichier dépasse la limite de 2 000 lignes.')
+  if (rows.length === 0) errors.push(t('Le fichier est vide.'))
+  else if (rowCount === 0) errors.push(t('Ajoutez au moins une ligne sous les en-têtes.'))
+  if (missingColumns.length) errors.push(t('Colonnes obligatoires manquantes : {join}.', { join: missingColumns.join(', ') }))
+  if (rowCount > 2000) errors.push(t('Le fichier dépasse la limite de 2 000 lignes.'))
 
   return {
     valid: errors.length === 0,
@@ -167,7 +169,7 @@ export function inspectCsv(text, type) {
     previewRows: rows.slice(1, 4),
     rowCount,
     errors,
-    warnings: unknownColumns.length ? [`Colonnes non reconnues et ignorées : ${unknownColumns.join(', ')}.`] : [],
+    warnings: unknownColumns.length ? [t('Colonnes non reconnues et ignorées : {join}.', { join: unknownColumns.join(', ') })] : [],
   }
 }
 

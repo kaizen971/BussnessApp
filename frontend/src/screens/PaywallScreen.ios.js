@@ -8,14 +8,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useIAP } from '../contexts/IAPContext';
 import { TERMS_OF_USE_URL, PRIVACY_POLICY_URL } from '../config/iap';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { t, useLanguage } from '../i18n';
 
-const PREMIUM_FEATURES = [
-  { icon: 'analytics-outline', label: 'Simulation Business Plan', desc: 'Simulez et planifiez votre activité' },
-  { icon: 'people-outline', label: 'Gestion d\'équipe', desc: 'Gérez votre personnel et la paie' },
-  { icon: 'cube-outline', label: 'Gestion de stock avancée', desc: 'Mouvements, alertes et historique' },
-  { icon: 'person-outline', label: 'CRM Clients', desc: 'Gérez vos relations clients' },
-  { icon: 'calendar-outline', label: 'Planning', desc: 'Organisez votre agenda professionnel' },
-  { icon: 'cash-outline', label: 'Commissions', desc: 'Calcul automatique des commissions' },
+const getPremiumFeatures = () => [
+  { icon: 'analytics-outline', label: t('Simulation Business Plan'), desc: t('Simulez et planifiez votre activité') },
+  { icon: 'people-outline', label: t("Gestion d'équipe"), desc: t('Gérez votre personnel et la paie') },
+  { icon: 'cube-outline', label: t('Gestion de stock avancée'), desc: t('Mouvements, alertes et historique') },
+  { icon: 'person-outline', label: t('CRM Clients'), desc: t('Gérez vos relations clients') },
+  { icon: 'calendar-outline', label: t('Planning'), desc: t('Organisez votre agenda professionnel') },
+  { icon: 'cash-outline', label: t('Commissions'), desc: t('Calcul automatique des commissions') },
 ];
 
 function formatIAPPrice(product) {
@@ -28,12 +29,13 @@ function formatIAPPrice(product) {
 function getSubscriptionPeriod(product) {
   if (!product) return '';
   const id = product.productId || '';
-  if (id.includes('yearly') || id.includes('annual')) return '/an';
-  if (id.includes('monthly')) return '/mois';
+  if (id.includes('yearly') || id.includes('annual')) return t('/an');
+  if (id.includes('monthly')) return t('/mois');
   return '';
 }
 
 export const PaywallScreen = ({ navigation, route }) => {
+  useLanguage();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { featureName } = route.params || {};
@@ -62,18 +64,18 @@ export const PaywallScreen = ({ navigation, route }) => {
             <LinearGradient colors={['#8B5CF6', '#6D28D9']} style={styles.iconCircle}>
               <Ionicons name="lock-closed" size={36} color="#fff" />
             </LinearGradient>
-            <Text style={styles.title}>Fonctionnalité Premium</Text>
+            <Text style={styles.title}>{t('Fonctionnalité Premium')}</Text>
             <Text style={styles.subtitle}>
               {featureName
-                ? `"${featureName}" est disponible avec l'abonnement Premium.`
-                : 'Cette fonctionnalité nécessite un abonnement Premium.'}
+                ? t('"{featureName}" est disponible avec l\'abonnement Premium.', { featureName: featureName })
+                : t('Cette fonctionnalité nécessite un abonnement Premium.')}
             </Text>
           </View>
 
           {/* Features list */}
           <View style={styles.featuresSection}>
-            <Text style={styles.featuresTitle}>Débloquez toutes ces fonctionnalités :</Text>
-            {PREMIUM_FEATURES.map((f, i) => (
+            <Text style={styles.featuresTitle}>{t('Débloquez toutes ces fonctionnalités :')}</Text>
+            {getPremiumFeatures().map((f, i) => (
               <View key={i} style={styles.featureItem}>
                 <LinearGradient colors={['rgba(139,92,246,0.15)', 'rgba(109,40,217,0.08)']} style={styles.featureIcon}>
                   <Ionicons name={f.icon} size={20} color="#8B5CF6" />
@@ -112,10 +114,10 @@ export const PaywallScreen = ({ navigation, route }) => {
                       )}
                       <View style={styles.planOptionContent}>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.planOptionName}>{info.label || product.title}</Text>
+                          <Text style={styles.planOptionName}>{t(info.label) || product.title}</Text>
                           <View style={styles.planOptionMeta}>
                             <Ionicons name="business" size={14} color="rgba(255,255,255,0.7)" />
-                            <Text style={styles.planOptionMetaText}>Toutes les fonctionnalités</Text>
+                            <Text style={styles.planOptionMetaText}>{t('Toutes les fonctionnalités')}</Text>
                           </View>
                         </View>
                         <View style={styles.planOptionPriceWrap}>
@@ -127,7 +129,7 @@ export const PaywallScreen = ({ navigation, route }) => {
                         <ActivityIndicator color="#fff" style={{ marginTop: 12 }} />
                       ) : (
                         <View style={styles.planOptionCTA}>
-                          <Text style={styles.planOptionCTAText}>S'abonner maintenant</Text>
+                          <Text style={styles.planOptionCTAText}>{t("S'abonner maintenant")}</Text>
                           <Ionicons name="arrow-forward" size={16} color="#8B5CF6" />
                         </View>
                       )}
@@ -140,7 +142,7 @@ export const PaywallScreen = ({ navigation, route }) => {
             <TouchableOpacity style={styles.ctaButton} onPress={() => navigation.navigate('Subscription')}>
               <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.ctaGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                 <Ionicons name="diamond" size={20} color="#fff" />
-                <Text style={styles.ctaButtonText}>Voir les abonnements</Text>
+                <Text style={styles.ctaButtonText}>{t('Voir les abonnements')}</Text>
               </LinearGradient>
             </TouchableOpacity>
           )}
@@ -149,26 +151,26 @@ export const PaywallScreen = ({ navigation, route }) => {
           <View style={styles.ctaSection}>
             <TouchableOpacity style={styles.restoreButton} onPress={handleRestorePurchases}>
               <Ionicons name="refresh-outline" size={16} color={colors.primary} />
-              <Text style={styles.restoreButtonText}>Restaurer mes achats</Text>
+              <Text style={styles.restoreButtonText}>{t('Restaurer mes achats')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-              <Text style={styles.backButtonText}>Retour</Text>
+              <Text style={styles.backButtonText}>{t('Retour')}</Text>
             </TouchableOpacity>
 
             <Text style={styles.ctaHint}>
               {Platform.OS === 'ios'
-                ? 'Paiement via votre compte Apple. Abonnement renouvelable automatiquement. Annulable à tout moment dans les réglages.'
-                : 'Paiement via Google Play. Abonnement renouvelable automatiquement.'}
+                ? t('Paiement via votre compte Apple. Abonnement renouvelable automatiquement. Annulable à tout moment dans les réglages.')
+                : t('Paiement via Google Play. Abonnement renouvelable automatiquement.')}
             </Text>
 
             <View style={styles.legalLinksRow}>
               <TouchableOpacity onPress={() => Linking.openURL(TERMS_OF_USE_URL)}>
-                <Text style={styles.legalLinkText}>Conditions d'utilisation</Text>
+                <Text style={styles.legalLinkText}>{t("Conditions d'utilisation")}</Text>
               </TouchableOpacity>
               <Text style={styles.legalSeparator}>•</Text>
               <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
-                <Text style={styles.legalLinkText}>Politique de confidentialité</Text>
+                <Text style={styles.legalLinkText}>{t('Politique de confidentialité')}</Text>
               </TouchableOpacity>
             </View>
           </View>

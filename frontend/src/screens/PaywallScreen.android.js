@@ -9,19 +9,21 @@ import { useSubscription } from '../contexts/SubscriptionContext';
 import { useAuth } from '../contexts/AuthContext';
 import { feedbackAPI } from '../services/api';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { t, useLanguage } from '../i18n';
 
 const { width } = Dimensions.get('window');
 
-const PREMIUM_FEATURES = [
-  { icon: 'analytics-outline', label: 'Simulation Business Plan', desc: 'Simulez et planifiez votre activité' },
-  { icon: 'people-outline', label: 'Gestion d\'équipe', desc: 'Gérez votre personnel et la paie' },
-  { icon: 'cube-outline', label: 'Gestion de stock avancée', desc: 'Mouvements, alertes et historique' },
-  { icon: 'person-outline', label: 'CRM Clients', desc: 'Gérez vos relations clients' },
-  { icon: 'calendar-outline', label: 'Planning', desc: 'Organisez votre agenda professionnel' },
-  { icon: 'cash-outline', label: 'Commissions', desc: 'Calcul automatique des commissions' },
+const getPremiumFeatures = () => [
+  { icon: 'analytics-outline', label: t('Simulation Business Plan'), desc: t('Simulez et planifiez votre activité') },
+  { icon: 'people-outline', label: t("Gestion d'équipe"), desc: t('Gérez votre personnel et la paie') },
+  { icon: 'cube-outline', label: t('Gestion de stock avancée'), desc: t('Mouvements, alertes et historique') },
+  { icon: 'person-outline', label: t('CRM Clients'), desc: t('Gérez vos relations clients') },
+  { icon: 'calendar-outline', label: t('Planning'), desc: t('Organisez votre agenda professionnel') },
+  { icon: 'cash-outline', label: t('Commissions'), desc: t('Calcul automatique des commissions') },
 ];
 
 export const PaywallScreen = ({ navigation, route }) => {
+  useLanguage();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { featureName } = route.params || {};
@@ -46,15 +48,16 @@ export const PaywallScreen = ({ navigation, route }) => {
       const planLabel = premiumPlan ? premiumPlan.name : 'Premium';
       await feedbackAPI.create({
         type: 'other',
+        // message destiné au back-office : toujours en français
         message: `Demande de passage au plan "${planLabel}"${featureName ? ` (souhaite accéder à la fonctionnalité "${featureName}")` : ''}.`,
         projectId: user?.projectId,
       });
       Alert.alert(
-        'Demande envoyée !',
-        'Votre demande de passage au Premium a bien été transmise. Un administrateur vous contactera sous 24h.'
+        t('Demande envoyée !'),
+        t('Votre demande de passage au Premium a bien été transmise. Un administrateur vous contactera sous 24h.')
       );
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible d\'envoyer la demande. Veuillez réessayer.');
+      Alert.alert(t('Erreur'), t("Impossible d'envoyer la demande. Veuillez réessayer."));
     } finally {
       setRequesting(false);
     }
@@ -69,18 +72,18 @@ export const PaywallScreen = ({ navigation, route }) => {
             <LinearGradient colors={['#8B5CF6', '#6D28D9']} style={styles.iconCircle}>
               <Ionicons name="lock-closed" size={36} color="#fff" />
             </LinearGradient>
-            <Text style={styles.title}>Fonctionnalité Premium</Text>
+            <Text style={styles.title}>{t('Fonctionnalité Premium')}</Text>
             <Text style={styles.subtitle}>
               {featureName
-                ? `"${featureName}" est disponible avec l'abonnement Premium.`
-                : 'Cette fonctionnalité nécessite un abonnement Premium.'}
+                ? t('"{featureName}" est disponible avec l\'abonnement Premium.', { featureName: featureName })
+                : t('Cette fonctionnalité nécessite un abonnement Premium.')}
             </Text>
           </View>
 
           {/* Features list */}
           <View style={styles.featuresSection}>
-            <Text style={styles.featuresTitle}>Débloquez toutes ces fonctionnalités :</Text>
-            {PREMIUM_FEATURES.map((f, i) => (
+            <Text style={styles.featuresTitle}>{t('Débloquez toutes ces fonctionnalités :')}</Text>
+            {getPremiumFeatures().map((f, i) => (
               <Animated.View
                 key={i}
                 style={[styles.featureItem, {
@@ -111,18 +114,18 @@ export const PaywallScreen = ({ navigation, route }) => {
                 <View style={styles.planPromoPrice}>
                   <Text style={styles.planPromoPriceAmount}>{premiumPlan.price}€</Text>
                   <Text style={styles.planPromoPricePeriod}>
-                    /{premiumPlan.durationType === 'lifetime' ? 'à vie' : `${premiumPlan.duration} ${premiumPlan.durationType === 'months' ? 'mois' : premiumPlan.durationType}`}
+                    /{premiumPlan.durationType === 'lifetime' ? t('à vie') : `${premiumPlan.duration} ${premiumPlan.durationType === 'months' ? t('mois') : premiumPlan.durationType}`}
                   </Text>
                 </View>
               </View>
               <View style={styles.planPromoStats}>
                 <View style={styles.planPromoStat}>
                   <Ionicons name="business" size={16} color="rgba(255,255,255,0.8)" />
-                  <Text style={styles.planPromoStatText}>{premiumPlan.maxProjects} business</Text>
+                  <Text style={styles.planPromoStatText}>{t('{count} business', { count: premiumPlan.maxProjects })}</Text>
                 </View>
                 <View style={styles.planPromoStat}>
                   <Ionicons name="infinite" size={16} color="rgba(255,255,255,0.8)" />
-                  <Text style={styles.planPromoStatText}>Toutes les fonctionnalités</Text>
+                  <Text style={styles.planPromoStatText}>{t('Toutes les fonctionnalités')}</Text>
                 </View>
               </View>
             </LinearGradient>
@@ -141,7 +144,7 @@ export const PaywallScreen = ({ navigation, route }) => {
                 ) : (
                   <>
                     <Ionicons name="paper-plane" size={20} color="#fff" />
-                    <Text style={styles.ctaButtonText}>Demander le Premium</Text>
+                    <Text style={styles.ctaButtonText}>{t('Demander le Premium')}</Text>
                   </>
                 )}
               </LinearGradient>
@@ -149,14 +152,14 @@ export const PaywallScreen = ({ navigation, route }) => {
 
             <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Subscription')}>
               <Ionicons name="list-outline" size={16} color={colors.primary} />
-              <Text style={styles.secondaryButtonText}>Voir tous les plans</Text>
+              <Text style={styles.secondaryButtonText}>{t('Voir tous les plans')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-              <Text style={styles.backButtonText}>Retour</Text>
+              <Text style={styles.backButtonText}>{t('Retour')}</Text>
             </TouchableOpacity>
 
-            <Text style={styles.ctaHint}>Un administrateur vous contactera sous 24h</Text>
+            <Text style={styles.ctaHint}>{t('Un administrateur vous contactera sous 24h')}</Text>
           </View>
         </Animated.View>
       </ScrollView>

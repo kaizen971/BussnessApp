@@ -10,6 +10,7 @@ import { useIAP } from '../contexts/IAPContext';
 import { useAuth } from '../contexts/AuthContext';
 import { TERMS_OF_USE_URL, PRIVACY_POLICY_URL } from '../config/iap';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { t, useLanguage, getLocale } from '../i18n';
 
 const { width } = Dimensions.get('window');
 
@@ -30,12 +31,13 @@ function formatIAPPrice(product) {
 function getSubscriptionPeriod(product) {
   if (!product) return '';
   const id = product.productId || '';
-  if (id.includes('yearly') || id.includes('annual')) return '/an';
-  if (id.includes('monthly')) return '/mois';
+  if (id.includes('yearly') || id.includes('annual')) return t('/an');
+  if (id.includes('monthly')) return t('/mois');
   return '';
 }
 
 export const SubscriptionScreen = ({ navigation }) => {
+  useLanguage();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { subscription, loading: subLoading, isPremium, refreshSubscription } = useSubscription();
@@ -86,12 +88,12 @@ export const SubscriptionScreen = ({ navigation }) => {
               <Ionicons name={tierCfg.icon} size={28} color="#fff" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.currentPlanLabel}>Votre plan actuel</Text>
-              <Text style={styles.currentPlanName}>{subscription?.planLabel || tierCfg.label}</Text>
+              <Text style={styles.currentPlanLabel}>{t('Votre plan actuel')}</Text>
+              <Text style={styles.currentPlanName}>{subscription?.planLabel || t(tierCfg.label)}</Text>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: isPremium ? 'rgba(52,211,153,0.25)' : 'rgba(255,255,255,0.15)' }]}>
               <View style={[styles.statusDot, { backgroundColor: isPremium ? '#34d399' : '#fff' }]} />
-              <Text style={styles.statusText}>{isPremium ? 'Actif' : subscription?.status === 'pending_payment' ? 'En attente' : 'Inactif'}</Text>
+              <Text style={styles.statusText}>{isPremium ? t('Actif') : subscription?.status === 'pending_payment' ? t('En attente') : t('Inactif')}</Text>
             </View>
           </View>
 
@@ -100,12 +102,12 @@ export const SubscriptionScreen = ({ navigation }) => {
               <View style={styles.detailRow}>
                 <Ionicons name="calendar-outline" size={16} color="rgba(255,255,255,0.7)" />
                 <Text style={styles.detailText}>
-                  {subscription.daysLeft !== null ? `${subscription.daysLeft} jours restants` : 'Illimité'}
+                  {subscription.daysLeft !== null ? t('{daysLeft} jours restants', { daysLeft: subscription.daysLeft }) : t('Illimité')}
                 </Text>
               </View>
               <View style={styles.detailRow}>
                 <Ionicons name="business-outline" size={16} color="rgba(255,255,255,0.7)" />
-                <Text style={styles.detailText}>{subscription.maxProjects} business max</Text>
+                <Text style={styles.detailText}>{t('{maxProjects} business max', { maxProjects: subscription.maxProjects })}</Text>
               </View>
               {subscription.endDate && (
                 <View style={styles.progressBarContainer}>
@@ -117,7 +119,7 @@ export const SubscriptionScreen = ({ navigation }) => {
                     }]} />
                   </View>
                   <Text style={styles.progressLabel}>
-                    Expire le {new Date(subscription.endDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {t('Expire le {toLocaleDateString}', { toLocaleDateString: new Date(subscription.endDate).toLocaleDateString(getLocale(), { day: '2-digit', month: 'short', year: 'numeric' }) })}
                   </Text>
                 </View>
               )}
@@ -127,7 +129,7 @@ export const SubscriptionScreen = ({ navigation }) => {
           {!subscription?.hasSubscription && (
             <View style={styles.currentPlanDetails}>
               <Text style={styles.noPlanText}>
-                Vous n'avez pas d'abonnement actif. Choisissez un plan ci-dessous pour débloquer toutes les fonctionnalités.
+                {t("Vous n'avez pas d'abonnement actif. Choisissez un plan ci-dessous pour débloquer toutes les fonctionnalités.")}
               </Text>
             </View>
           )}
@@ -136,7 +138,7 @@ export const SubscriptionScreen = ({ navigation }) => {
         {/* Features section */}
         {subscription?.features?.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Fonctionnalités incluses</Text>
+            <Text style={styles.sectionTitle}>{t('Fonctionnalités incluses')}</Text>
             <View style={styles.featuresCard}>
               {subscription.features.map((f, i) => (
                 <View key={i} style={styles.featureRow}>
@@ -152,8 +154,8 @@ export const SubscriptionScreen = ({ navigation }) => {
 
         {/* IAP Subscription Plans */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Plans disponibles</Text>
-          <Text style={styles.sectionSubtitle}>Choisissez l'offre adaptée à vos besoins</Text>
+          <Text style={styles.sectionTitle}>{t('Plans disponibles')}</Text>
+          <Text style={styles.sectionSubtitle}>{t("Choisissez l'offre adaptée à vos besoins")}</Text>
 
           {products.length > 0 ? (
             products.map((product) => {
@@ -167,7 +169,7 @@ export const SubscriptionScreen = ({ navigation }) => {
                   <LinearGradient colors={cfg.gradient} style={styles.planCardHeader} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                     <View style={styles.planCardHeaderContent}>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.planCardName}>{info.label || product.title || product.productId}</Text>
+                        <Text style={styles.planCardName}>{t(info.label) || product.title || product.productId}</Text>
                         {info.badge && (
                           <View style={styles.bestOfferBadge}>
                             <Text style={styles.bestOfferText}>{info.badge}</Text>
@@ -182,7 +184,7 @@ export const SubscriptionScreen = ({ navigation }) => {
                     {isCurrent && (
                       <View style={styles.currentBadge}>
                         <Ionicons name="checkmark-circle" size={14} color="#fff" />
-                        <Text style={styles.currentBadgeText}>Plan actuel</Text>
+                        <Text style={styles.currentBadgeText}>{t('Plan actuel')}</Text>
                       </View>
                     )}
                   </LinearGradient>
@@ -212,7 +214,7 @@ export const SubscriptionScreen = ({ navigation }) => {
                           ) : (
                             <>
                               <Ionicons name="cart-outline" size={18} color="#fff" />
-                              <Text style={styles.purchaseButtonText}>S'abonner</Text>
+                              <Text style={styles.purchaseButtonText}>{t("S'abonner")}</Text>
                             </>
                           )}
                         </LinearGradient>
@@ -227,8 +229,8 @@ export const SubscriptionScreen = ({ navigation }) => {
               <Ionicons name="cloud-offline-outline" size={40} color={colors.textLight} />
               <Text style={styles.noProductsText}>
                 {connected
-                  ? 'Les plans seront bientôt disponibles.'
-                  : 'Connexion au store en cours...'}
+                  ? t('Les plans seront bientôt disponibles.')
+                  : t('Connexion au store en cours...')}
               </Text>
             </View>
           )}
@@ -237,7 +239,7 @@ export const SubscriptionScreen = ({ navigation }) => {
         {/* Restore purchases */}
         <TouchableOpacity style={styles.restoreButton} onPress={handleRestorePurchases}>
           <Ionicons name="refresh-outline" size={18} color={colors.primary} />
-          <Text style={styles.restoreButtonText}>Restaurer mes achats</Text>
+          <Text style={styles.restoreButtonText}>{t('Restaurer mes achats')}</Text>
         </TouchableOpacity>
 
         {/* Subscription info */}
@@ -245,22 +247,22 @@ export const SubscriptionScreen = ({ navigation }) => {
           <Ionicons name="information-circle-outline" size={20} color={colors.textLight} />
           <Text style={styles.infoText}>
             {Platform.OS === 'ios'
-              ? 'Les abonnements sont gérés via votre compte Apple. Vous pouvez les modifier dans les réglages de votre appareil > votre identifiant Apple > Abonnements.'
-              : 'Les abonnements sont gérés via votre compte Google Play. Vous pouvez les modifier dans les paramètres de Google Play.'}
+              ? t('Les abonnements sont gérés via votre compte Apple. Vous pouvez les modifier dans les réglages de votre appareil > votre identifiant Apple > Abonnements.')
+              : t('Les abonnements sont gérés via votre compte Google Play. Vous pouvez les modifier dans les paramètres de Google Play.')}
           </Text>
         </View>
 
         <Text style={styles.legalNote}>
-          Abonnement renouvelé automatiquement sauf annulation au moins 24 h avant la fin de la période. Le paiement est débité sur votre compte Apple à la confirmation.
+          {t('Abonnement renouvelé automatiquement sauf annulation au moins 24 h avant la fin de la période. Le paiement est débité sur votre compte Apple à la confirmation.')}
         </Text>
 
         <View style={styles.legalLinksRow}>
           <TouchableOpacity onPress={() => Linking.openURL(TERMS_OF_USE_URL)}>
-            <Text style={styles.legalLinkText}>Conditions d'utilisation</Text>
+            <Text style={styles.legalLinkText}>{t("Conditions d'utilisation")}</Text>
           </TouchableOpacity>
           <Text style={styles.legalSeparator}>•</Text>
           <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
-            <Text style={styles.legalLinkText}>Politique de confidentialité</Text>
+            <Text style={styles.legalLinkText}>{t('Politique de confidentialité')}</Text>
           </TouchableOpacity>
         </View>
 

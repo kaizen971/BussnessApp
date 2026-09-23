@@ -9,11 +9,13 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext'
+import { useI18n } from '../i18n'
 
 export function ThemePicker({ mode = 'icon' }) {
   const { theme, themes, colors, setTheme } = useTheme()
   const styles = useThemedStyles(createStyles)
   const [visible, setVisible] = useState(false)
+  const { t } = useI18n()
 
   return (
     <>
@@ -21,7 +23,7 @@ export function ThemePicker({ mode = 'icon' }) {
         style={mode === 'row' ? styles.rowTrigger : styles.trigger}
         onPress={() => setVisible(true)}
         accessibilityRole="button"
-        accessibilityLabel="Changer le thème"
+        accessibilityLabel={t('Changer le thème')}
         activeOpacity={0.75}
       >
         {mode === 'row' ? (
@@ -30,8 +32,8 @@ export function ThemePicker({ mode = 'icon' }) {
               <Ionicons name="color-palette-outline" size={20} color={colors.primary} />
             </View>
             <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>Apparence</Text>
-              <Text style={styles.rowValue}>{theme.name}</Text>
+              <Text style={styles.rowLabel}>{t('Apparence')}</Text>
+              <Text style={styles.rowValue}>{t(theme.name)}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
           </>
@@ -52,14 +54,14 @@ export function ThemePicker({ mode = 'icon' }) {
           <View style={styles.sheet}>
             <View style={styles.header}>
               <View>
-                <Text style={styles.title}>Apparence</Text>
-                <Text style={styles.subtitle}>Thème de l’application</Text>
+                <Text style={styles.title}>{t('Apparence')}</Text>
+                <Text style={styles.subtitle}>{t('Thème de l’application')}</Text>
               </View>
               <TouchableOpacity
                 style={styles.closeButton}
                 onPress={() => setVisible(false)}
                 accessibilityRole="button"
-                accessibilityLabel="Fermer"
+                accessibilityLabel={t('Fermer')}
               >
                 <Ionicons name="close" size={22} color={colors.textLight} />
               </TouchableOpacity>
@@ -83,8 +85,8 @@ export function ThemePicker({ mode = 'icon' }) {
                     <View style={[styles.swatchAccent, { backgroundColor: item.preview[1] }]} />
                   </View>
                   <View style={styles.optionText}>
-                    <Text style={[styles.optionName, selected && styles.optionNameSelected]}>{item.name}</Text>
-                    <Text style={styles.optionDescription}>{item.description}</Text>
+                    <Text style={[styles.optionName, selected && styles.optionNameSelected]}>{t(item.name)}</Text>
+                    <Text style={styles.optionDescription}>{t(item.description)}</Text>
                   </View>
                   {selected && <Ionicons name="checkmark-circle" size={22} color={colors.primary} />}
                 </TouchableOpacity>

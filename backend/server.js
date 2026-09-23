@@ -268,9 +268,11 @@ const UserSchema = new mongoose.Schema({
   commissionRate: { type: Number, default: 0 }, // Taux de commission en % (ex: 5 pour 5%)
   totalCommissions: { type: Number, default: 0 }, // Total des commissions gagnées
   hourlyRate: { type: Number, default: 0 }, // Salaire horaire en € (ex: 15 pour 15€/h)
+  partnerCode: { type: String, trim: true, uppercase: true }, // Code promo / partenaire saisi à l'inscription (attribution)
   createdAt: { type: Date, default: Date.now }
 });
 UserSchema.index({ projectId: 1 });
+UserSchema.index({ partnerCode: 1 }, { sparse: true });
 
 const FeedbackSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -420,6 +422,22 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
   try {
     const { username, email, password, fullName, role, projectId, selectedPlanId } = req.body;
 
+    // Code promo / partenaire (facultatif) : normalisé en majuscules, sans espaces
+    let partnerCode;
+    if (req.body.partnerCode !== undefined && req.body.partnerCode !== null) {
+      if (typeof req.body.partnerCode !== 'string') {
+        return res.status(400).json({ error: 'Code partenaire invalide', field: 'partnerCode', code: 'INVALID_PARTNER_CODE' });
+      }
+      partnerCode = req.body.partnerCode.replace(/\s+/g, '').toUpperCase() || undefined;
+      if (partnerCode && !/^[A-Z0-9_-]{2,32}$/.test(partnerCode)) {
+        return res.status(400).json({
+          error: 'Code partenaire invalide (lettres, chiffres, - ou _ ; 2 à 32 caractères)',
+          field: 'partnerCode',
+          code: 'INVALID_PARTNER_CODE'
+        });
+      }
+    }
+
     if (!username || username.trim() === '') {
       return res.status(400).json({
         error: 'Nom d\'utilisateur requis',
@@ -513,7 +531,8 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
       role: userRole,
       isActive: false,
       projectId,
-      projectIds: []
+      projectIds: [],
+      partnerCode
     });
 
     await user.save();
@@ -530,7 +549,7 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
     user.projectIds = [defaultProject._id];
     await user.save();
 
-    console.log(`Nouvelle inscription: ${user.username} - Plan choisi: ${selectedPlan ? selectedPlan.name : 'Aucun (IAP)'}`);
+    console.log(`Nouvelle inscription: ${user.username} - Plan choisi: ${selectedPlan ? selectedPlan.name : 'Aucun (IAP)'}${partnerCode ? ` - Code partenaire: ${partnerCode}` : ''}`);
 
     // Inscription sans plan sélectionné : compte activé, abonnement via IAP
     if (!selectedPlan) {
@@ -558,6 +577,7 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
                 <tr><td style="padding: 8px 0; color: #888; width: 140px;">Nom</td><td style="padding: 8px 0; color: #333; font-weight: 600;">${fullName.trim()}</td></tr>
                 <tr><td style="padding: 8px 0; color: #888;">Email</td><td style="padding: 8px 0; color: #333;">${email.trim()}</td></tr>
                 <tr><td style="padding: 8px 0; color: #888;">Plan</td><td style="padding: 8px 0; color: #333;">Abonnement via l'application (In-App Purchase)</td></tr>
+                ${partnerCode ? `<tr><td style="padding: 8px 0; color: #888;">Code partenaire</td><td style="padding: 8px 0; color: #333; font-weight: 600;">${partnerCode}</td></tr>` : ''}
               </table>
             </div>
           </div>
@@ -694,6 +714,7 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
                 <tr><td style="padding: 8px 0; color: #888; width: 140px;">Nom</td><td style="padding: 8px 0; color: #333; font-weight: 600;">${fullName.trim()}</td></tr>
                 <tr><td style="padding: 8px 0; color: #888;">Email</td><td style="padding: 8px 0; color: #333;">${email.trim()}</td></tr>
                 <tr><td style="padding: 8px 0; color: #888;">Plan</td><td style="padding: 8px 0; color: #333;">${selectedPlan.name} (${durationLabel})</td></tr>
+                ${partnerCode ? `<tr><td style="padding: 8px 0; color: #888;">Code partenaire</td><td style="padding: 8px 0; color: #333; font-weight: 600;">${partnerCode}</td></tr>` : ''}
               </table>
               <div style="margin-top: 16px; padding: 12px; background: #e8f5e9; border-radius: 8px;">
                 <p style="margin: 0; color: #2e7d32; font-size: 13px;">Compte activé automatiquement — aucune action requise de votre part.</p>
@@ -754,6 +775,10 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
                   <a href="mailto:${email.trim()}" style="color: #6C63FF; text-decoration: none;">${email.trim()}</a>
                 </td>
               </tr>
+              ${partnerCode ? `<tr>
+                <td style="padding: 10px 0; color: #888;">Code partenaire</td>
+                <td style="padding: 10px 0; color: #333; font-weight: 600;">${partnerCode}</td>
+              </tr>` : ''}
             </table>
 
             <div style="margin-top: 20px; padding: 20px; background: linear-gradient(135deg, #f0f0ff, #e8e6ff); border-radius: 10px; border-left: 4px solid #6C63FF;">

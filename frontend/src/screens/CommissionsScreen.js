@@ -17,8 +17,10 @@ import { Card } from '../components/Card';
 import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import api from '../services/api';
+import { t, useLanguage, getLocale } from '../i18n';
 
 export const CommissionsScreen = ({ navigation }) => {
+  useLanguage();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { user, selectedProjectId } = useAuth();
@@ -48,7 +50,7 @@ export const CommissionsScreen = ({ navigation }) => {
       setStats(response.data.stats || null);
     } catch (error) {
       console.error('Erreur chargement commissions:', error);
-      Alert.alert('Erreur', 'Impossible de charger les commissions');
+      Alert.alert(t('Erreur'), t('Impossible de charger les commissions'));
     } finally {
       setLoading(false);
     }
@@ -56,19 +58,19 @@ export const CommissionsScreen = ({ navigation }) => {
 
   const handleMarkAsPaid = async (id) => {
     Alert.alert(
-      'Confirmation',
-      'Marquer cette commission comme payée ?',
+      t('Confirmation'),
+      t('Marquer cette commission comme payée ?'),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
         {
-          text: 'Confirmer',
+          text: t('Confirmer'),
           onPress: async () => {
             try {
               await api.put(`/commissions/${id}/pay`);
               loadCommissions();
-              Alert.alert('Succès', 'Commission marquée comme payée');
+              Alert.alert(t('Succès'), t('Commission marquée comme payée'));
             } catch (error) {
-              Alert.alert('Erreur', 'Impossible de mettre à jour la commission');
+              Alert.alert(t('Erreur'), t('Impossible de mettre à jour la commission'));
             }
           },
         },
@@ -79,16 +81,16 @@ export const CommissionsScreen = ({ navigation }) => {
   const getStatusInfo = (status) => {
     switch (status) {
       case 'pending':
-        return { label: 'En attente', color: colors.warning, icon: 'time' };
+        return { label: t('En attente'), color: colors.warning, icon: 'time' };
       case 'paid':
-        return { label: 'Payée', color: colors.success, icon: 'checkmark-circle' };
+        return { label: t('Payée'), color: colors.success, icon: 'checkmark-circle' };
       default:
         return { label: status, color: colors.textSecondary, icon: 'help-circle' };
     }
   };
 
   const formatDate = (date) => {
-    return new Date(date).toLocaleDateString('fr-FR', {
+    return new Date(date).toLocaleDateString(getLocale(), {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
@@ -97,7 +99,7 @@ export const CommissionsScreen = ({ navigation }) => {
 
   const renderCommissionItem = ({ item }) => {
     const statusInfo = getStatusInfo(item.status);
-    const userName = item.userId?.fullName || item.userId?.username || 'Inconnu';
+    const userName = item.userId?.fullName || item.userId?.username || t('Inconnu');
 
     return (
       <Card style={styles.commissionCard}>
@@ -122,16 +124,16 @@ export const CommissionsScreen = ({ navigation }) => {
         <View style={styles.commissionDetails}>
           <View style={styles.detailRow}>
             <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Montant de la vente</Text>
+              <Text style={styles.detailLabel}>{t('Montant de la vente')}</Text>
               <Text style={styles.detailValue}>{formatPrice(item.saleAmount || 0)}</Text>
             </View>
             <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Taux</Text>
+              <Text style={styles.detailLabel}>{t('Taux')}</Text>
               <Text style={styles.detailValue}>{item.rate}%</Text>
             </View>
           </View>
           <View style={styles.commissionAmountContainer}>
-            <Text style={styles.commissionAmountLabel}>Commission</Text>
+            <Text style={styles.commissionAmountLabel}>{t('Commission')}</Text>
             <Text style={styles.commissionAmount}>{formatPrice(item.amount || 0)}</Text>
           </View>
         </View>
@@ -147,7 +149,7 @@ export const CommissionsScreen = ({ navigation }) => {
                 style={styles.payButtonGradient}
               >
                 <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                <Text style={styles.payButtonText}>Marquer comme payée</Text>
+                <Text style={styles.payButtonText}>{t('Marquer comme payée')}</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -159,8 +161,8 @@ export const CommissionsScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <AppHeader
-        title="Commissions"
-        subtitle={isAdmin ? `${commissions.length} commission(s)` : 'Mes commissions'}
+        title={t('Commissions')}
+        subtitle={isAdmin ? `${commissions.length} commission(s)` : t('Mes commissions')}
         onBack={() => navigation.goBack()}
       />
 
@@ -175,7 +177,7 @@ export const CommissionsScreen = ({ navigation }) => {
           >
             <Ionicons name="cash" size={28} color={colors.success} />
             <Text style={styles.statValue}>{formatPrice(stats.total || 0)}</Text>
-            <Text style={styles.statLabel}>Total</Text>
+            <Text style={styles.statLabel}>{t('Total')}</Text>
           </LinearGradient>
           <LinearGradient
             colors={[colors.warning + '25', colors.warning + '10']}
@@ -183,7 +185,7 @@ export const CommissionsScreen = ({ navigation }) => {
           >
             <Ionicons name="time" size={28} color={colors.warning} />
             <Text style={styles.statValue}>{formatPrice(stats.pending || 0)}</Text>
-            <Text style={styles.statLabel}>En attente</Text>
+            <Text style={styles.statLabel}>{t('En attente')}</Text>
           </LinearGradient>
           <LinearGradient
             colors={[colors.primary + '25', colors.primary + '10']}
@@ -191,7 +193,7 @@ export const CommissionsScreen = ({ navigation }) => {
           >
             <Ionicons name="checkmark-circle" size={28} color={colors.primary} />
             <Text style={styles.statValue}>{formatPrice(stats.paid || 0)}</Text>
-            <Text style={styles.statLabel}>Payées</Text>
+            <Text style={styles.statLabel}>{t('Payées')}</Text>
           </LinearGradient>
         </LinearGradient>
       )}
@@ -211,8 +213,8 @@ export const CommissionsScreen = ({ navigation }) => {
           ListEmptyComponent={
             <EmptyState
               icon="cash-outline"
-              title="Aucune commission"
-              description="Les commissions apparaîtront après les premières ventes."
+              title={t('Aucune commission')}
+              description={t('Les commissions apparaîtront après les premières ventes.')}
             />
           }
         />

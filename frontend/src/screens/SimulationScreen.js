@@ -14,10 +14,12 @@ import { Input } from '../components/Input';
 import { Card } from '../components/Card';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { simulationAPI } from '../services/api';
+import { t, useLanguage } from '../i18n';
 
 const STORAGE_KEY = '@simulation_last_business_plan';
 
 export const SimulationScreen = () => {
+  useLanguage();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const [formData, setFormData] = useState({
@@ -73,11 +75,11 @@ export const SimulationScreen = () => {
       if (savedData) {
         const parsedData = JSON.parse(savedData);
         setFormData(parsedData);
-        Alert.alert('Succès', 'Business plan précédent chargé avec succès');
+        Alert.alert(t('Succès'), t('Business plan précédent chargé avec succès'));
       }
     } catch (error) {
       console.error('Erreur lors du chargement:', error);
-      Alert.alert('Erreur', 'Impossible de charger le business plan précédent');
+      Alert.alert(t('Erreur'), t('Impossible de charger le business plan précédent'));
     }
   };
 
@@ -93,7 +95,7 @@ export const SimulationScreen = () => {
     } = formData;
 
     if (!unitPrice || !costPrice || !estimatedMonthlySales) {
-      Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires (*)');
+      Alert.alert(t('Erreur'), t('Veuillez remplir les champs obligatoires (*)'));
       return;
     }
 
@@ -101,7 +103,7 @@ export const SimulationScreen = () => {
     try {
       // Préparer les données pour l'API
       const simulationData = {
-        productName: formData.productName || 'Mon produit',
+        productName: formData.productName || t('Mon produit'),
         unitPrice: parseFloat(formData.unitPrice) || 0,
         costPrice: parseFloat(formData.costPrice) || 0,
         variableCosts: parseFloat(formData.variableCosts) || 0,
@@ -124,10 +126,10 @@ export const SimulationScreen = () => {
       // Sauvegarder les données du formulaire après un calcul réussi
       await saveFormData(formData);
       
-      Alert.alert('Succès', 'Simulation calculée avec succès');
+      Alert.alert(t('Succès'), t('Simulation calculée avec succès'));
     } catch (error) {
       console.error('Error calculating simulation:', error);
-      Alert.alert('Erreur', 'Impossible de calculer la simulation');
+      Alert.alert(t('Erreur'), t('Impossible de calculer la simulation'));
     } finally {
       setLoading(false);
     }
@@ -172,9 +174,9 @@ export const SimulationScreen = () => {
         <View style={styles.headerIcon}>
           <Ionicons name="calculator-outline" size={32} color={colors.primary} />
         </View>
-        <Text style={styles.headerTitle}>Simulation Business Plan</Text>
+        <Text style={styles.headerTitle}>{t('Simulation Business Plan')}</Text>
         <Text style={styles.headerSubtitle}>
-          Validez la rentabilité de votre projet
+          {t('Validez la rentabilité de votre projet')}
         </Text>
       </Card>
 
@@ -184,11 +186,11 @@ export const SimulationScreen = () => {
             <View style={styles.savedDataInfo}>
               <Ionicons name="save-outline" size={24} color={colors.info} />
               <Text style={styles.savedDataText}>
-                Un business plan précédent est disponible
+                {t('Un business plan précédent est disponible')}
               </Text>
             </View>
             <Button
-              title="Charger"
+              title={t('Charger')}
               onPress={loadSavedData}
               variant="outline"
               style={styles.loadButton}
@@ -198,18 +200,18 @@ export const SimulationScreen = () => {
       )}
 
       <Card style={styles.formCard}>
-        <Text style={styles.sectionTitle}>📦 Informations produit</Text>
+        <Text style={styles.sectionTitle}>{t('📦 Informations produit')}</Text>
 
         <Input
-          label="Nom du produit/service"
+          label={t('Nom du produit/service')}
           value={formData.productName}
           onChangeText={(value) => updateField('productName', value)}
-          placeholder="Ex: T-shirt personnalisé"
+          placeholder={t('Ex: T-shirt personnalisé')}
           icon="pricetag-outline"
         />
 
         <Input
-          label="Prix de vente unitaire *"
+          label={t('Prix de vente unitaire *')}
           value={formData.unitPrice}
           onChangeText={(value) => updateField('unitPrice', value)}
           placeholder="0.00"
@@ -218,7 +220,7 @@ export const SimulationScreen = () => {
         />
 
         <Input
-          label="Coût de fabrication/achat unitaire *"
+          label={t('Coût de fabrication/achat unitaire *')}
           value={formData.costPrice}
           onChangeText={(value) => updateField('costPrice', value)}
           placeholder="0.00"
@@ -227,7 +229,7 @@ export const SimulationScreen = () => {
         />
 
         <Input
-          label="Coûts variables unitaires (livraison, emballage...)"
+          label={t('Coûts variables unitaires (livraison, emballage...)')}
           value={formData.variableCosts}
           onChangeText={(value) => updateField('variableCosts', value)}
           placeholder="0.00"
@@ -235,10 +237,10 @@ export const SimulationScreen = () => {
           icon="trending-down-outline"
         />
 
-        <Text style={styles.sectionTitle}>💰 Investissement initial</Text>
+        <Text style={styles.sectionTitle}>{t('💰 Investissement initial')}</Text>
 
         <Input
-          label="Budget de lancement (caution, matériel, frais admin...)"
+          label={t('Budget de lancement (caution, matériel, frais admin...)')}
           value={formData.initialInvestment}
           onChangeText={(value) => updateField('initialInvestment', value)}
           placeholder="0.00"
@@ -246,10 +248,10 @@ export const SimulationScreen = () => {
           icon="wallet-outline"
         />
 
-        <Text style={styles.sectionTitle}>🔄 Charges mensuelles récurrentes</Text>
+        <Text style={styles.sectionTitle}>{t('🔄 Charges mensuelles récurrentes')}</Text>
 
         <Input
-          label="Loyer"
+          label={t('Loyer')}
           value={formData.monthlyRent}
           onChangeText={(value) => updateField('monthlyRent', value)}
           placeholder="0.00"
@@ -258,7 +260,7 @@ export const SimulationScreen = () => {
         />
 
         <Input
-          label="Salaires / Commissions"
+          label={t('Salaires / Commissions')}
           value={formData.monthlySalaries}
           onChangeText={(value) => updateField('monthlySalaries', value)}
           placeholder="0.00"
@@ -267,7 +269,7 @@ export const SimulationScreen = () => {
         />
 
         <Input
-          label="Publicité / Marketing"
+          label={t('Publicité / Marketing')}
           value={formData.monthlyMarketing}
           onChangeText={(value) => updateField('monthlyMarketing', value)}
           placeholder="0.00"
@@ -276,7 +278,7 @@ export const SimulationScreen = () => {
         />
 
         <Input
-          label="Fournitures / Réassort"
+          label={t('Fournitures / Réassort')}
           value={formData.monthlySupplies}
           onChangeText={(value) => updateField('monthlySupplies', value)}
           placeholder="0.00"
@@ -285,7 +287,7 @@ export const SimulationScreen = () => {
         />
 
         <Input
-          label="Abonnements (internet, logiciels...)"
+          label={t('Abonnements (internet, logiciels...)')}
           value={formData.monthlySubscriptions}
           onChangeText={(value) => updateField('monthlySubscriptions', value)}
           placeholder="0.00"
@@ -294,7 +296,7 @@ export const SimulationScreen = () => {
         />
 
         <Input
-          label="Entretien / Énergie"
+          label={t('Entretien / Énergie')}
           value={formData.monthlyUtilities}
           onChangeText={(value) => updateField('monthlyUtilities', value)}
           placeholder="0.00"
@@ -303,7 +305,7 @@ export const SimulationScreen = () => {
         />
 
         <Input
-          label="Autres charges fixes"
+          label={t('Autres charges fixes')}
           value={formData.otherMonthlyCosts}
           onChangeText={(value) => updateField('otherMonthlyCosts', value)}
           placeholder="0.00"
@@ -311,19 +313,19 @@ export const SimulationScreen = () => {
           icon="ellipsis-horizontal-outline"
         />
 
-        <Text style={styles.sectionTitle}>📊 Prévisions de vente</Text>
+        <Text style={styles.sectionTitle}>{t('📊 Prévisions de vente')}</Text>
 
         <Input
-          label="Quantité prévue à vendre par mois *"
+          label={t('Quantité prévue à vendre par mois *')}
           value={formData.estimatedMonthlySales}
           onChangeText={(value) => updateField('estimatedMonthlySales', value)}
-          placeholder="Nombre d'unités"
+          placeholder={t("Nombre d'unités")}
           keyboardType="numeric"
           icon="stats-chart-outline"
         />
 
         <Input
-          label="Durée d'analyse (en mois)"
+          label={t("Durée d'analyse (en mois)")}
           value={formData.analysisPeriodMonths}
           onChangeText={(value) => updateField('analysisPeriodMonths', value)}
           placeholder="6"
@@ -333,13 +335,13 @@ export const SimulationScreen = () => {
 
         <View style={styles.buttonRow}>
           <Button
-            title={loading ? "Calcul..." : "Calculer"}
+            title={loading ? t('Calcul...') : t('Calculer')}
             onPress={calculateSimulation}
             style={styles.calculateButton}
             disabled={loading}
           />
           <Button
-            title="Réinitialiser"
+            title={t('Réinitialiser')}
             onPress={reset}
             variant="outline"
             style={styles.resetButton}
@@ -350,7 +352,7 @@ export const SimulationScreen = () => {
         {loading && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Calcul en cours...</Text>
+            <Text style={styles.loadingText}>{t('Calcul en cours...')}</Text>
           </View>
         )}
       </Card>
@@ -360,30 +362,30 @@ export const SimulationScreen = () => {
           <Card style={styles.resultsCard}>
             <View style={styles.resultsHeader}>
               <Ionicons name="analytics-outline" size={28} color={colors.success} />
-              <Text style={styles.resultsTitle}>Résumé</Text>
+              <Text style={styles.resultsTitle}>{t('Résumé')}</Text>
             </View>
             
             {results?.summary && (
               <>
                 <ResultRow
-                  label="Marge unitaire"
+                  label={t('Marge unitaire')}
                   value={`${formatNumber(results.summary.unitMargin)} €`}
                   color={Number(results.summary.unitMargin || 0) >= 0 ? colors.success : colors.error}
                 />
 
                 <ResultRow
-                  label="Pourcentage de marge"
+                  label={t('Pourcentage de marge')}
                   value={`${formatNumber(results.summary.marginPercentage)}%`}
                   color={Number(results.summary.marginPercentage || 0) >= 0 ? colors.success : colors.error}
                 />
 
                 <ResultRow
-                  label="Charges fixes totales"
-                  value={`${formatNumber(results.summary.totalFixedCosts)} €/mois`}
+                  label={t('Charges fixes totales')}
+                  value={t('{amount} €/mois', { amount: formatNumber(results.summary.totalFixedCosts) })}
                 />
 
                 <ResultRow
-                  label="Budget de lancement"
+                  label={t('Budget de lancement')}
                   value={`${formatNumber(results.summary.initialInvestment)} €`}
                 />
               </>
@@ -394,24 +396,23 @@ export const SimulationScreen = () => {
             <Card style={styles.resultsCard}>
               <View style={styles.resultsHeader}>
                 <Ionicons name="trending-up-outline" size={28} color={colors.warning} />
-                <Text style={styles.resultsTitle}>Point mort</Text>
+                <Text style={styles.resultsTitle}>{t('Point mort')}</Text>
               </View>
 
               <ResultRow
-                label="Ventes nécessaires"
-                value={`${results.breakEven.unitsNeeded || 0} unités/mois`}
+                label={t('Ventes nécessaires')}
+                value={t('{value} unités/mois', { value: results.breakEven.unitsNeeded || 0 })}
               />
 
               <ResultRow
-                label="CA minimum mensuel"
+                label={t('CA minimum mensuel')}
                 value={`${formatNumber(results.breakEven.revenueNeeded)} €`}
               />
 
               <View style={styles.infoBox}>
                 <Ionicons name="information-circle-outline" size={20} color={colors.info} />
                 <Text style={styles.infoText}>
-                  Vous devez vendre au moins {results.breakEven.unitsNeeded || 0} unités
-                  par mois pour couvrir vos charges fixes.
+                  {t('Vous devez vendre au moins')}{' '}{results.breakEven.unitsNeeded || 0}{' '}{t('unités par mois pour couvrir vos charges fixes.')}
                 </Text>
               </View>
             </Card>
@@ -421,28 +422,28 @@ export const SimulationScreen = () => {
             <Card style={styles.resultsCard}>
               <View style={styles.resultsHeader}>
                 <Ionicons name="calendar-outline" size={28} color={colors.primary} />
-                <Text style={styles.resultsTitle}>Prévisions mensuelles</Text>
+                <Text style={styles.resultsTitle}>{t('Prévisions mensuelles')}</Text>
               </View>
 
               <ResultRow
-                label="Revenus mensuels"
+                label={t('Revenus mensuels')}
                 value={`${formatNumber(results.monthlyForecasts.revenue)} €`}
               />
 
               <ResultRow
-                label="Coûts variables mensuels"
+                label={t('Coûts variables mensuels')}
                 value={`${formatNumber(results.monthlyForecasts.variableCosts)} €`}
               />
 
               <ResultRow
-                label="Charges fixes mensuelles"
+                label={t('Charges fixes mensuelles')}
                 value={`${formatNumber(results.monthlyForecasts.fixedCosts)} €`}
               />
 
               <View style={styles.divider} />
 
               <ResultRow
-                label="Bénéfice net mensuel"
+                label={t('Bénéfice net mensuel')}
                 value={`${formatNumber(results.monthlyForecasts.netProfit)} €`}
                 color={Number(results.monthlyForecasts.netProfit || 0) >= 0 ? colors.success : colors.error}
               />
@@ -453,16 +454,16 @@ export const SimulationScreen = () => {
             <Card style={styles.resultsCard}>
               <View style={styles.resultsHeader}>
                 <Ionicons name="bar-chart-outline" size={28} color={colors.success} />
-                <Text style={styles.resultsTitle}>Analyse sur {formData.analysisPeriodMonths} mois</Text>
+                <Text style={styles.resultsTitle}>{t('Analyse sur {analysisPeriodMonths} mois', { analysisPeriodMonths: formData.analysisPeriodMonths })}</Text>
               </View>
 
               <ResultRow
-                label="CA total"
+                label={t('CA total')}
                 value={`${formatNumber(results.periodAnalysis.totalRevenue)} €`}
               />
 
               <ResultRow
-                label="Profit total"
+                label={t('Profit total')}
                 value={`${formatNumber(results.periodAnalysis.totalProfit)} €`}
                 color={Number(results.periodAnalysis.totalProfit || 0) >= 0 ? colors.success : colors.error}
               />
@@ -475,8 +476,8 @@ export const SimulationScreen = () => {
 
               {results.periodAnalysis.monthsToRecoverInvestment !== null && (
                 <ResultRow
-                  label="Récupération investissement"
-                  value={`${results.periodAnalysis.monthsToRecoverInvestment} mois`}
+                  label={t('Récupération investissement')}
+                  value={t('{count} mois', { count: results.periodAnalysis.monthsToRecoverInvestment })}
                 />
               )}
 
@@ -491,7 +492,7 @@ export const SimulationScreen = () => {
                 <Text style={[styles.statusText, {
                   color: results.periodAnalysis.isViable ? colors.success : colors.error
                 }]}>
-                  {results.periodAnalysis.isViable ? '✓ Projet viable' : '✗ Projet non viable'}
+                  {results.periodAnalysis.isViable ? t('✓ Projet viable') : t('✗ Projet non viable')}
                 </Text>
               </View>
             </Card>
@@ -501,22 +502,22 @@ export const SimulationScreen = () => {
             <Card style={styles.resultsCard}>
               <View style={styles.resultsHeader}>
                 <Ionicons name="stats-chart-outline" size={28} color={colors.info} />
-                <Text style={styles.resultsTitle}>Évolution mois par mois</Text>
+                <Text style={styles.resultsTitle}>{t('Évolution mois par mois')}</Text>
               </View>
 
               {(results.projections && Array.isArray(results.projections)) && results.projections.map((projection, index) => (
                 <View key={index} style={styles.projectionItem}>
-                  <Text style={styles.projectionMonth}>Mois {projection.month}</Text>
+                  <Text style={styles.projectionMonth}>{t('Mois {month}', { month: projection.month })}</Text>
                   <View style={styles.projectionDetails}>
                     <View style={styles.projectionRow}>
-                      <Text style={styles.projectionLabel}>Revenus</Text>
+                      <Text style={styles.projectionLabel}>{t('Revenus')}</Text>
                       <Text style={[styles.projectionValue, { color: colors.primary }]}>
                         {formatNumber(projection.revenue)} €
                       </Text>
                     </View>
                     
                     <View style={styles.projectionRow}>
-                      <Text style={styles.projectionLabel}>Dépenses</Text>
+                      <Text style={styles.projectionLabel}>{t('Dépenses')}</Text>
                       <Text style={[styles.projectionValue, { color: colors.error }]}>
                         {formatNumber(projection.expenses)} €
                       </Text>
@@ -528,7 +529,7 @@ export const SimulationScreen = () => {
                       paddingTop: 8,
                       marginTop: 4,
                     }]}>
-                      <Text style={[styles.projectionLabel, { fontWeight: '600' }]}>Profit net</Text>
+                      <Text style={[styles.projectionLabel, { fontWeight: '600' }]}>{t('Profit net')}</Text>
                       <Text style={[styles.projectionValue, {
                         color: Number(projection.netProfit || 0) >= 0 ? colors.success : colors.error
                       }]}>
@@ -542,7 +543,7 @@ export const SimulationScreen = () => {
                       borderRadius: 6,
                       marginTop: 4,
                     }]}>
-                      <Text style={[styles.projectionLabel, { fontWeight: '700' }]}>Cumul</Text>
+                      <Text style={[styles.projectionLabel, { fontWeight: '700' }]}>{t('Cumul')}</Text>
                       <Text style={[styles.projectionValue, {
                         color: Number(projection.cumulativeProfit || 0) >= 0 ? colors.success : colors.error,
                         fontSize: 16,

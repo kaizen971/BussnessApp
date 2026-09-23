@@ -24,9 +24,11 @@ import { AppHeader } from '../components/AppHeader';
 import api, { productsAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
+import { t, useLanguage } from '../i18n';
 
 
 export const ProductsScreen = ({ navigation }) => {
+  useLanguage();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { user, setSelectedProjectId } = useAuth();
@@ -77,9 +79,9 @@ export const ProductsScreen = ({ navigation }) => {
       setNewCategoryName('');
       setShowCategoryModal(false);
       loadCategories();
-      Alert.alert('Succès', 'Catégorie créée');
+      Alert.alert(t('Succès'), t('Catégorie créée'));
     } catch (error) {
-      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de créer la catégorie');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Impossible de créer la catégorie'));
     }
   };
 
@@ -90,7 +92,7 @@ export const ProductsScreen = ({ navigation }) => {
       console.log(response.data);
       setProducts(response.data?.data);
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible de charger les produits');
+      Alert.alert(t('Erreur'), t('Impossible de charger les produits'));
     } finally {
       setLoading(false);
     }
@@ -98,7 +100,7 @@ export const ProductsScreen = ({ navigation }) => {
 
   const handleSave = async () => {
     if (!formData.name || formData.unitPrice === '' || formData.unitPrice === undefined || formData.costPrice === '' || formData.costPrice === undefined) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
+      Alert.alert(t('Erreur'), t('Veuillez remplir tous les champs obligatoires'));
       return;
     }
 
@@ -123,9 +125,9 @@ export const ProductsScreen = ({ navigation }) => {
       setModalVisible(false);
       resetForm();
       loadProducts();
-      Alert.alert('Succès', `Produit ${editingProduct ? 'modifié' : 'créé'} avec succès`);
+      Alert.alert(t('Succès'), t('Produit {value} avec succès', { value: editingProduct ? t('modifié') : t('créé') }));
     } catch (error) {
-      Alert.alert('Erreur', error.response?.data?.error || 'Une erreur est survenue');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Une erreur est survenue'));
     } finally {
       setLoading(false);
     }
@@ -147,20 +149,20 @@ export const ProductsScreen = ({ navigation }) => {
 
   const handleDelete = (product) => {
     Alert.alert(
-      'Confirmer la suppression',
-      `Voulez-vous vraiment supprimer ${product.name} ?`,
+      t('Confirmer la suppression'),
+      t('Voulez-vous vraiment supprimer {name} ?', { name: product.name }),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
         {
-          text: 'Supprimer',
+          text: t('Supprimer'),
           style: 'destructive',
           onPress: async () => {
             try {
               await api.delete(`/products/${product._id}`);
               loadProducts();
-              Alert.alert('Succès', 'Produit supprimé');
+              Alert.alert(t('Succès'), t('Produit supprimé'));
             } catch (error) {
-              Alert.alert('Erreur', 'Impossible de supprimer le produit');
+              Alert.alert(t('Erreur'), t('Impossible de supprimer le produit'));
             }
           },
         },
@@ -172,7 +174,7 @@ export const ProductsScreen = ({ navigation }) => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission requise', 'Nous avons besoin d\'accéder à vos photos.');
+        Alert.alert(t('Permission requise'), t("Nous avons besoin d'accéder à vos photos."));
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -186,7 +188,7 @@ export const ProductsScreen = ({ navigation }) => {
         setFormData({ ...formData, image: result.assets[0].uri });
       }
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible de sélectionner l\'image.');
+      Alert.alert(t('Erreur'), t("Impossible de sélectionner l'image."));
     }
   };
 
@@ -267,7 +269,7 @@ export const ProductsScreen = ({ navigation }) => {
             {isLowStock && (
               <View style={styles.warningBadge}>
                 <Ionicons name="warning" size={12} color={colors.error} />
-                <Text style={styles.warningText}>Stock bas</Text>
+                <Text style={styles.warningText}>{t('Stock bas')}</Text>
               </View>
             )}
           </View>
@@ -285,22 +287,22 @@ export const ProductsScreen = ({ navigation }) => {
 
         <View style={styles.productPricing}>
           <View style={styles.priceRow}>
-            <Text style={styles.priceLabel}>Prix de vente:</Text>
+            <Text style={styles.priceLabel}>{t('Prix de vente:')}</Text>
             <Text style={styles.priceValue}>{formatPrice(item.unitPrice)}</Text>
           </View>
           <View style={styles.priceRow}>
-            <Text style={styles.priceLabel}>Prix de revient:</Text>
+            <Text style={styles.priceLabel}>{t('Prix de revient:')}</Text>
             <Text style={styles.priceValue}>{formatPrice(item.costPrice)}</Text>
           </View>
           <View style={styles.priceRow}>
-            <Text style={styles.priceLabel}>Marge:</Text>
+            <Text style={styles.priceLabel}>{t('Marge:')}</Text>
             <Text style={[styles.priceValue, { color: marginColor }]}>{margin}%</Text>
           </View>
           {hasStock && (
             <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>En stock:</Text>
+              <Text style={styles.priceLabel}>{t('En stock:')}</Text>
               <Text style={[styles.priceValue, { color: stockColor, fontWeight: '700' }]}>
-                {stockQuantity} unité(s)
+                {t('{stockQuantity} unité(s)', { stockQuantity: stockQuantity })}
               </Text>
             </View>
           )}
@@ -312,10 +314,10 @@ export const ProductsScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <AppHeader
-        title="Produits & Services"
-        subtitle={`${filteredProducts?.length || 0}${searchQuery ? `/${products?.length || 0}` : ''} produit(s)`}
+        title={t('Produits & Services')}
+        subtitle={t('{value}{value2} produit(s)', { value: filteredProducts?.length || 0, value2: searchQuery ? `/${products?.length || 0}` : '' })}
         rightIcon="add"
-        rightLabel="Ajouter un produit"
+        rightLabel={t('Ajouter un produit')}
         onRightPress={() => {
           resetForm();
           setModalVisible(true);
@@ -324,7 +326,7 @@ export const ProductsScreen = ({ navigation }) => {
       <SearchField
         value={searchQuery}
         onChangeText={setSearchQuery}
-        placeholder="Rechercher un produit..."
+        placeholder={t('Rechercher un produit...')}
         style={styles.searchContainer}
       />
 
@@ -338,11 +340,11 @@ export const ProductsScreen = ({ navigation }) => {
         ListEmptyComponent={
           <EmptyState
             icon={searchQuery ? 'search-outline' : 'cube-outline'}
-            title={searchQuery ? 'Aucun résultat trouvé' : 'Aucun produit enregistré'}
+            title={searchQuery ? t('Aucun résultat trouvé') : t('Aucun produit enregistré')}
             description={
               searchQuery
-                ? `Aucun produit ne correspond à "${searchQuery}"`
-                : 'Ajoutez votre premier produit pour commencer.'
+                ? t('Aucun produit ne correspond à "{searchQuery}"', { searchQuery: searchQuery })
+                : t('Ajoutez votre premier produit pour commencer.')
             }
           />
         }
@@ -375,10 +377,10 @@ export const ProductsScreen = ({ navigation }) => {
                 </View>
                 <View style={styles.modalTitleContainer}>
                   <Text style={styles.modalTitle}>
-                    {editingProduct ? 'Modifier le produit' : 'Nouveau produit'}
+                    {editingProduct ? t('Modifier le produit') : t('Nouveau produit')}
                   </Text>
                   <Text style={styles.modalSubtitle}>
-                    {editingProduct ? 'Modifiez les informations' : 'Ajoutez un nouveau produit'}
+                    {editingProduct ? t('Modifiez les informations') : t('Ajoutez un nouveau produit')}
                   </Text>
                 </View>
               </LinearGradient>
@@ -400,7 +402,7 @@ export const ProductsScreen = ({ navigation }) => {
                     <Image source={{ uri: formData.image }} style={styles.imagePickerImage} />
                     <View style={styles.imagePickerOverlay}>
                       <Ionicons name="camera" size={20} color="#fff" />
-                      <Text style={styles.imagePickerOverlayText}>Changer</Text>
+                      <Text style={styles.imagePickerOverlayText}>{t('Changer')}</Text>
                     </View>
                   </View>
                 ) : (
@@ -411,20 +413,20 @@ export const ProductsScreen = ({ navigation }) => {
                     <View style={styles.imagePickerIconCircle}>
                       <Ionicons name="camera-outline" size={28} color={colors.primary} />
                     </View>
-                    <Text style={styles.imagePickerText}>Ajouter une photo</Text>
-                    <Text style={styles.imagePickerSubtext}>Appuyez pour sélectionner</Text>
+                    <Text style={styles.imagePickerText}>{t('Ajouter une photo')}</Text>
+                    <Text style={styles.imagePickerSubtext}>{t('Appuyez pour sélectionner')}</Text>
                   </LinearGradient>
                 )}
               </TouchableOpacity>
 
               <Input
-                placeholder="Nom du produit *"
+                placeholder={t('Nom du produit *')}
                 value={formData.name}
                 onChangeText={(text) => setFormData({ ...formData, name: text })}
               />
 
               <Input
-                placeholder="Description"
+                placeholder={t('Description')}
                 value={formData.description}
                 onChangeText={(text) => setFormData({ ...formData, description: text })}
                 multiline
@@ -432,7 +434,7 @@ export const ProductsScreen = ({ navigation }) => {
               />
 
               <View style={styles.categoryContainer}>
-                <Text style={styles.label}>Catégorie</Text>
+                <Text style={styles.label}>{t('Catégorie')}</Text>
                 <ScrollView 
                   horizontal 
                   showsHorizontalScrollIndicator={false}
@@ -447,7 +449,7 @@ export const ProductsScreen = ({ navigation }) => {
                     onPress={() => setShowCategoryModal(true)}
                   >
                     <Ionicons name="add" size={20} color={colors.primary} />
-                    <Text style={[styles.categoryChipText, { color: colors.primary }]}>Nouveau</Text>
+                    <Text style={[styles.categoryChipText, { color: colors.primary }]}>{t('Nouveau')}</Text>
                   </TouchableOpacity>
 
                   {categories.map((cat) => (
@@ -469,14 +471,14 @@ export const ProductsScreen = ({ navigation }) => {
               </View>
 
               <Input
-                placeholder="Prix de vente unitaire *"
+                placeholder={t('Prix de vente unitaire *')}
                 value={formData.unitPrice}
                 onChangeText={(text) => setFormData({ ...formData, unitPrice: text })}
                 keyboardType="decimal-pad"
               />
 
               <Input
-                placeholder="Prix de revient *"
+                placeholder={t('Prix de revient *')}
                 value={formData.costPrice}
                 onChangeText={(text) => setFormData({ ...formData, costPrice: text })}
                 keyboardType="decimal-pad"
@@ -490,7 +492,7 @@ export const ProductsScreen = ({ navigation }) => {
                   <View style={styles.marginPreviewContent}>
                     <Ionicons name="trending-up" size={24} color={colors.primary} />
                     <View style={styles.marginTextContainer}>
-                      <Text style={styles.marginLabel}>Marge prévue</Text>
+                      <Text style={styles.marginLabel}>{t('Marge prévue')}</Text>
                       <Text style={styles.marginValue}>
                         {calculateMargin(parseFloat(formData.unitPrice), parseFloat(formData.costPrice))}%
                       </Text>
@@ -505,7 +507,7 @@ export const ProductsScreen = ({ navigation }) => {
                 style={styles.cancelButton}
                 onPress={() => setModalVisible(false)}
               >
-                <Text style={styles.cancelButtonText}>Annuler</Text>
+                <Text style={styles.cancelButtonText}>{t('Annuler')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.saveButtonWrapper}
@@ -522,7 +524,7 @@ export const ProductsScreen = ({ navigation }) => {
                     <>
                       <Ionicons name="checkmark-circle" size={20} color={colors.onPrimary} />
                       <Text style={styles.saveButtonText}>
-                        {editingProduct ? 'Modifier' : 'Créer'}
+                        {editingProduct ? t('Modifier') : t('Créer')}
                       </Text>
                     </>
                   )}
@@ -535,9 +537,9 @@ export const ProductsScreen = ({ navigation }) => {
       <Modal visible={showCategoryModal} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.smallModalContent}>
-            <Text style={styles.smallModalTitle}>Nouvelle catégorie</Text>
+            <Text style={styles.smallModalTitle}>{t('Nouvelle catégorie')}</Text>
             <Input
-              placeholder="Nom de la catégorie"
+              placeholder={t('Nom de la catégorie')}
               value={newCategoryName}
               onChangeText={setNewCategoryName}
               autoFocus
@@ -547,13 +549,13 @@ export const ProductsScreen = ({ navigation }) => {
                 style={styles.smallButtonCancel}
                 onPress={() => setShowCategoryModal(false)}
               >
-                <Text style={styles.smallButtonTextCancel}>Annuler</Text>
+                <Text style={styles.smallButtonTextCancel}>{t('Annuler')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.smallButtonSave}
                 onPress={handleAddCategory}
               >
-                <Text style={styles.smallButtonTextSave}>Créer</Text>
+                <Text style={styles.smallButtonTextSave}>{t('Créer')}</Text>
               </TouchableOpacity>
             </View>
           </View>

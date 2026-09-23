@@ -9,6 +9,7 @@ import { useSubscription } from '../contexts/SubscriptionContext';
 import { useAuth } from '../contexts/AuthContext';
 import { feedbackAPI } from '../services/api';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { t, useLanguage, getLocale } from '../i18n';
 
 const { width } = Dimensions.get('window');
 
@@ -20,12 +21,14 @@ const TIER_CONFIG = {
   premium: { icon: 'diamond-outline', gradient: ['#8B5CF6', '#6D28D9'], label: 'Premium' },
 };
 
-function getDurationLabel(plan) {
-  if (plan.durationType === 'lifetime') return 'À vie';
-  return `${plan.duration} ${DURATION_LABELS[plan.durationType] || plan.durationType}`;
+function getDurationLabel(plan, translate = true) {
+  const tr = translate ? t : (text) => text;
+  if (plan.durationType === 'lifetime') return tr('À vie');
+  return `${plan.duration} ${tr(DURATION_LABELS[plan.durationType] || plan.durationType)}`;
 }
 
 export const SubscriptionScreen = ({ navigation }) => {
+  useLanguage();
   const { colors, gradients } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { subscription, plans, loading, isPremium, refreshSubscription } = useSubscription();
@@ -53,15 +56,16 @@ export const SubscriptionScreen = ({ navigation }) => {
     try {
       await feedbackAPI.create({
         type: 'other',
-        message: `Demande de changement d'abonnement vers le plan "${plan.name}" (${plan.price}€ / ${getDurationLabel(plan)}, ${plan.maxProjects} business max).`,
+        // message destiné au back-office : toujours en français
+        message: `Demande de changement d'abonnement vers le plan "${plan.name}" (${plan.price}€ / ${getDurationLabel(plan, false)}, ${plan.maxProjects} business max).`,
         projectId: user?.projectId,
       });
       Alert.alert(
-        'Demande envoyée !',
-        `Votre demande pour le plan "${plan.name}" a bien été transmise. Un administrateur vous contactera sous 24h pour finaliser le changement.`
+        t('Demande envoyée !'),
+        t('Votre demande pour le plan "{name}" a bien été transmise. Un administrateur vous contactera sous 24h pour finaliser le changement.', { name: plan.name })
       );
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible d\'envoyer la demande. Veuillez réessayer.');
+      Alert.alert(t('Erreur'), t("Impossible d'envoyer la demande. Veuillez réessayer."));
     } finally {
       setRequestingPlan(null);
     }
@@ -93,12 +97,12 @@ export const SubscriptionScreen = ({ navigation }) => {
               <Ionicons name={tierCfg.icon} size={28} color="#fff" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.currentPlanLabel}>Votre plan actuel</Text>
-              <Text style={styles.currentPlanName}>{subscription?.planLabel || tierCfg.label}</Text>
+              <Text style={styles.currentPlanLabel}>{t('Votre plan actuel')}</Text>
+              <Text style={styles.currentPlanName}>{subscription?.planLabel || t(tierCfg.label)}</Text>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: isPremium ? 'rgba(52,211,153,0.25)' : 'rgba(255,255,255,0.15)' }]}>
               <View style={[styles.statusDot, { backgroundColor: isPremium ? '#34d399' : '#fff' }]} />
-              <Text style={styles.statusText}>{isPremium ? 'Actif' : subscription?.status === 'pending_payment' ? 'En attente' : 'Inactif'}</Text>
+              <Text style={styles.statusText}>{isPremium ? t('Actif') : subscription?.status === 'pending_payment' ? t('En attente') : t('Inactif')}</Text>
             </View>
           </View>
 
@@ -107,12 +111,12 @@ export const SubscriptionScreen = ({ navigation }) => {
               <View style={styles.detailRow}>
                 <Ionicons name="calendar-outline" size={16} color="rgba(255,255,255,0.7)" />
                 <Text style={styles.detailText}>
-                  {subscription.daysLeft !== null ? `${subscription.daysLeft} jours restants` : 'Illimité'}
+                  {subscription.daysLeft !== null ? t('{daysLeft} jours restants', { daysLeft: subscription.daysLeft }) : t('Illimité')}
                 </Text>
               </View>
               <View style={styles.detailRow}>
                 <Ionicons name="business-outline" size={16} color="rgba(255,255,255,0.7)" />
-                <Text style={styles.detailText}>{subscription.maxProjects} business max</Text>
+                <Text style={styles.detailText}>{t('{maxProjects} business max', { maxProjects: subscription.maxProjects })}</Text>
               </View>
               {subscription.endDate && (
                 <View style={styles.progressBarContainer}>
@@ -124,7 +128,7 @@ export const SubscriptionScreen = ({ navigation }) => {
                     }]} />
                   </View>
                   <Text style={styles.progressLabel}>
-                    Expire le {new Date(subscription.endDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {t('Expire le {toLocaleDateString}', { toLocaleDateString: new Date(subscription.endDate).toLocaleDateString(getLocale(), { day: '2-digit', month: 'short', year: 'numeric' }) })}
                   </Text>
                 </View>
               )}
@@ -135,8 +139,8 @@ export const SubscriptionScreen = ({ navigation }) => {
             <View style={styles.currentPlanDetails}>
               <Text style={styles.noPlanText}>
                 {subscription?.status === 'pending_payment'
-                  ? 'Votre paiement est en cours de traitement. Vous serez notifié par email.'
-                  : 'Vous n\'avez pas d\'abonnement actif. Contactez votre administrateur pour souscrire.'}
+                  ? t('Votre paiement est en cours de traitement. Vous serez notifié par email.')
+                  : t("Vous n'avez pas d'abonnement actif. Contactez votre administrateur pour souscrire.")}
               </Text>
             </View>
           )}
@@ -145,7 +149,7 @@ export const SubscriptionScreen = ({ navigation }) => {
         {/* Features section */}
         {subscription?.features?.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Fonctionnalités incluses</Text>
+            <Text style={styles.sectionTitle}>{t('Fonctionnalités incluses')}</Text>
             <View style={styles.featuresCard}>
               {subscription.features.map((f, i) => (
                 <View key={i} style={styles.featureRow}>
@@ -162,8 +166,8 @@ export const SubscriptionScreen = ({ navigation }) => {
         {/* Plans comparison */}
         {plans.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Plans disponibles</Text>
-            <Text style={styles.sectionSubtitle}>Comparez les offres et choisissez la plus adaptée</Text>
+            <Text style={styles.sectionTitle}>{t('Plans disponibles')}</Text>
+            <Text style={styles.sectionSubtitle}>{t('Comparez les offres et choisissez la plus adaptée')}</Text>
 
             {plans.map((plan, index) => {
               const tier = plan.tier || 'basic';
@@ -187,7 +191,7 @@ export const SubscriptionScreen = ({ navigation }) => {
                     {isCurrent && (
                       <View style={styles.currentBadge}>
                         <Ionicons name="checkmark-circle" size={14} color="#fff" />
-                        <Text style={styles.currentBadgeText}>Plan actuel</Text>
+                        <Text style={styles.currentBadgeText}>{t('Plan actuel')}</Text>
                       </View>
                     )}
                   </LinearGradient>
@@ -195,11 +199,11 @@ export const SubscriptionScreen = ({ navigation }) => {
                   <View style={styles.planCardBody}>
                     <View style={styles.planStat}>
                       <Ionicons name="business-outline" size={18} color={colors.primary} />
-                      <Text style={styles.planStatText}><Text style={{ fontWeight: '700' }}>{plan.maxProjects}</Text> business max</Text>
+                      <Text style={styles.planStatText}><Text style={{ fontWeight: '700' }}>{plan.maxProjects}</Text>{' '}{t('business max')}</Text>
                     </View>
                     <View style={styles.planStat}>
                       <Ionicons name="time-outline" size={18} color={colors.primary} />
-                      <Text style={styles.planStatText}>{getDurationLabel(plan)} {plan.isRecurring ? '(renouvelable)' : ''}</Text>
+                      <Text style={styles.planStatText}>{getDurationLabel(plan)} {plan.isRecurring ? t('(renouvelable)') : ''}</Text>
                     </View>
 
                     {plan.features?.length > 0 && (
@@ -230,7 +234,7 @@ export const SubscriptionScreen = ({ navigation }) => {
                           ) : (
                             <>
                               <Ionicons name="paper-plane-outline" size={16} color="#fff" />
-                              <Text style={styles.requestButtonText}>Demander ce plan</Text>
+                              <Text style={styles.requestButtonText}>{t('Demander ce plan')}</Text>
                             </>
                           )}
                         </LinearGradient>
@@ -247,8 +251,8 @@ export const SubscriptionScreen = ({ navigation }) => {
         <View style={styles.contactCard}>
           <Ionicons name="information-circle-outline" size={24} color={colors.primary} />
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.contactTitle}>Comment ça marche ?</Text>
-            <Text style={styles.contactText}>Appuyez sur "Demander ce plan" pour envoyer une demande. Un administrateur vous contactera sous 24h pour activer votre nouvel abonnement.</Text>
+            <Text style={styles.contactTitle}>{t('Comment ça marche ?')}</Text>
+            <Text style={styles.contactText}>{t('Appuyez sur "Demander ce plan" pour envoyer une demande. Un administrateur vous contactera sous 24h pour activer votre nouvel abonnement.')}</Text>
           </View>
         </View>
 

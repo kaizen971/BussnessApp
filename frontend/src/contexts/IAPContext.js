@@ -4,6 +4,7 @@ import { IAP_SUBSCRIPTION_IDS, PLAN_DISPLAY_INFO } from '../config/iap';
 import { subscriptionAPI } from '../services/api';
 import { useSubscription } from './SubscriptionContext';
 import { useTheme, useThemedStyles } from './ThemeContext';
+import { t, useLanguage } from '../i18n';
 
 let RNIap = null;
 let iapAvailable = false;
@@ -31,6 +32,7 @@ export const useIAP = () => {
 };
 
 export const IAPProvider = ({ children }) => {
+  useLanguage();
   const { colors } = useTheme();
   const overlayStyles = useThemedStyles(createOverlayStyles);
   const [connected, setConnected] = useState(false);
@@ -104,7 +106,7 @@ export const IAPProvider = ({ children }) => {
 
   const handlePurchase = useCallback(async (productId) => {
     if (!iapAvailable) {
-      Alert.alert('Non disponible', 'Les achats intégrés ne sont pas disponibles dans Expo Go. Utilisez un build de production.');
+      Alert.alert(t('Non disponible'), t('Les achats intégrés ne sont pas disponibles dans Expo Go. Utilisez un build de production.'));
       return;
     }
     if (purchasing) return;
@@ -120,7 +122,7 @@ export const IAPProvider = ({ children }) => {
       });
     } catch (error) {
       if (error.code !== 'E_USER_CANCELLED') {
-        Alert.alert('Erreur d\'achat', error.message || 'Une erreur est survenue lors de l\'achat.');
+        Alert.alert(t("Erreur d'achat"), error.message || t("Une erreur est survenue lors de l'achat."));
       }
       setPurchasing(false);
     }
@@ -128,7 +130,7 @@ export const IAPProvider = ({ children }) => {
 
   const handleRestorePurchases = useCallback(async () => {
     if (!iapAvailable) {
-      Alert.alert('Non disponible', 'Les achats intégrés ne sont pas disponibles dans Expo Go.');
+      Alert.alert(t('Non disponible'), t('Les achats intégrés ne sont pas disponibles dans Expo Go.'));
       return;
     }
     setLoading(true);
@@ -147,12 +149,12 @@ export const IAPProvider = ({ children }) => {
           }
         }
         try { await refreshSubscriptionRef.current?.(); } catch (e) { console.warn('refreshSubscription:', e?.message); }
-        Alert.alert('Achats restaurés', 'Vos achats ont été restaurés avec succès.');
+        Alert.alert(t('Achats restaurés'), t('Vos achats ont été restaurés avec succès.'));
       } else {
-        Alert.alert('Aucun achat', 'Aucun achat précédent trouvé.');
+        Alert.alert(t('Aucun achat'), t('Aucun achat précédent trouvé.'));
       }
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible de restaurer les achats.');
+      Alert.alert(t('Erreur'), t('Impossible de restaurer les achats.'));
     } finally {
       setLoading(false);
     }
@@ -178,12 +180,12 @@ export const IAPProvider = ({ children }) => {
             // Actualise l'abonnement pour qu'il s'affiche immédiatement (sans redémarrer l'app).
             try { await refreshSubscriptionRef.current?.(); } catch (e) { console.warn('refreshSubscription:', e?.message); }
             Alert.alert(
-              'Achat réussi',
-              'Votre abonnement a été activé avec succès. Merci !',
+              t('Achat réussi'),
+              t('Votre abonnement a été activé avec succès. Merci !'),
             );
           } catch (error) {
             console.error('Receipt validation error:', error);
-            Alert.alert('Erreur', 'L\'achat a été effectué mais la validation a échoué. Veuillez restaurer vos achats.');
+            Alert.alert(t('Erreur'), t("L'achat a été effectué mais la validation a échoué. Veuillez restaurer vos achats."));
           } finally {
             setValidating(false);
           }
@@ -227,9 +229,9 @@ export const IAPProvider = ({ children }) => {
           <View style={overlayStyles.card}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={overlayStyles.text}>
-              {validating ? 'Validation de votre abonnement…' : 'Achat en cours…'}
+              {validating ? t('Validation de votre abonnement…') : t('Achat en cours…')}
             </Text>
-            <Text style={overlayStyles.subtext}>Merci de patienter, ne fermez pas l'application.</Text>
+            <Text style={overlayStyles.subtext}>{t("Merci de patienter, ne fermez pas l'application.")}</Text>
           </View>
         </View>
       </Modal>
