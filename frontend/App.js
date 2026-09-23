@@ -36,6 +36,7 @@ import { CsvImportScreen } from './src/screens/CsvImportScreen';
 import { SubscriptionScreen } from './src/screens/SubscriptionScreen';
 import { PaywallScreen } from './src/screens/PaywallScreen';
 import { ChangePasswordScreen } from './src/screens/ChangePasswordScreen';
+import { SubscriptionLockedScreen } from './src/screens/SubscriptionLockedScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -239,11 +240,32 @@ const MainStack = () => {
   );
 };
 
+// Essai / abonnement terminé : seule la page de renouvellement reste accessible
+const LockedStack = () => {
+  const { colors } = useTheme();
+  const { t } = useI18n();
+
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.surface },
+        headerTintColor: colors.text,
+        cardStyle: { backgroundColor: colors.background },
+      }}
+    >
+      <Stack.Screen name="Locked" component={SubscriptionLockedScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Subscription" component={SubscriptionScreen} options={{ title: t('Mon abonnement') }} />
+    </Stack.Navigator>
+  );
+};
+
 const AppNavigator = () => {
   const { isAuthenticated, loading } = useAuth();
+  const { isLocked, accessChecked } = useSubscription();
   const { colors, isDark } = useTheme();
 
-  if (loading) {
+  // On attend le premier contrôle d'accès pour ne pas afficher l'accueil d'un compte bloqué
+  if (loading || (isAuthenticated && !accessChecked)) {
     return null;
   }
 
@@ -262,7 +284,7 @@ const AppNavigator = () => {
 
   return (
     <NavigationContainer theme={navigationTheme}>
-      {isAuthenticated ? <MainStack /> : <AuthStack />}
+      {!isAuthenticated ? <AuthStack /> : isLocked ? <LockedStack /> : <MainStack />}
     </NavigationContainer>
   );
 };

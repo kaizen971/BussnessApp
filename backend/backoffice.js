@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const subscriptionAccess = require('./subscriptionAccess');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'bussnessapp_secret_key_2025';
 const SUPERADMIN_JWT_SECRET = JWT_SECRET + '_superadmin';
@@ -173,6 +174,7 @@ const SubscriptionSchema = new mongoose.Schema({
   stripeSessionId: String,
   stripeCustomerId: String,
   stripeSubscriptionId: String,
+  expiryNotifiedAt: Date, // fin d'essai / d'abonnement notifiée à l'admin (email d'offre)
   notes: String,
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'SuperAdmin' },
   createdAt: { type: Date, default: Date.now },
@@ -940,6 +942,37 @@ router.post('/admins/:id/send-credentials', authenticateSuperAdmin, async (req, 
   }
 });
 
+// Envoie à l'admin l'offre de passage à un plan payant (lien de paiement valable 30 jours).
+// Utile pour les essais déjà terminés ou pour relancer un client.
+router.post('/admins/:id/send-upgrade-offer', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const admin = await User.findById(req.params.id);
+    if (!admin) return res.status(404).json({ error: 'Admin non trouvé' });
+
+    const active = await Subscription.findOne({ adminId: admin._id, status: 'active' }).sort({ createdAt: -1 });
+    if (subscriptionAccess.isSubscriptionCurrent(active) && active.amount > 0) {
+      return res.status(400).json({ error: 'Cet admin a déjà un abonnement payant en cours' });
+    }
+
+    const sendUpgradeOffer = req.app.locals.sendUpgradeOffer;
+    if (typeof sendUpgradeOffer !== 'function') {
+      return res.status(503).json({ error: 'Envoi d\'offre indisponible' });
+    }
+
+    const previousSub = await Subscription.findOne({ adminId: admin._id, startDate: { $ne: null } }).sort({ startDate: -1 });
+    const reason = !previousSub || subscriptionAccess.isTrialSubscription(previousSub) ? 'trial_expired' : 'subscription_expired';
+    const sent = await sendUpgradeOffer({ user: admin, previousSub, reason });
+    if (!sent) return res.status(400).json({ error: 'Aucun plan payant actif à proposer' });
+
+    await logActivity(req.superAdmin.id, 'superadmin', 'send_upgrade_offer',
+      `Offre d'abonnement envoyée à: ${admin.fullName || admin.username}`, 'User', admin._id);
+
+    res.json({ message: `Offre envoyée à ${admin.email}` });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/admins/:id/resend-payment-link', authenticateSuperAdmin, async (req, res) => {
   try {
     const subscription = await Subscription.findOne({
@@ -1332,6 +1365,7 @@ router.post('/stripe/webhook', async (req, res) => {
             await subscription.save();
 
             await User.findByIdAndUpdate(adminId, { isActive: true });
+            subscriptionAccess.invalidateAccessCache(); // débloque tout de suite l'admin et son équipe
 
             const payment = new Payment({
               subscriptionId: subscription._id,
@@ -1346,9 +1380,10 @@ router.post('/stripe/webhook', async (req, res) => {
 
             const admin = await User.findById(adminId);
             if (admin) {
-              // Ne régénère le mot de passe que pour les nouveaux comptes (premier paiement)
-              // Pour les renouvellements, l'admin a déjà un mot de passe — ne pas l'écraser
-              const isFirstPayment = !admin.lastLogin;
+              // Ne régénère le mot de passe que pour un compte créé depuis le back-office et jamais
+              // connecté. Les paiements initiés par l'utilisateur (webapp, lien de fin d'essai) portent
+              // metadata.source : son mot de passe actuel ne doit surtout pas être écrasé.
+              const isFirstPayment = !session.metadata?.source && !admin.lastLogin;
               let tempPassword = null;
 
               if (isFirstPayment) {

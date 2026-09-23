@@ -13,6 +13,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { createDeleteAccountHandler } = require('./accountDeletion');
 const { createAuthenticateToken, checkRole } = require('./authorization');
+const subscriptionAccess = require('./subscriptionAccess');
 
 const app = express();
 const PORT = 3003;
@@ -269,6 +270,7 @@ const UserSchema = new mongoose.Schema({
   totalCommissions: { type: Number, default: 0 }, // Total des commissions gagnées
   hourlyRate: { type: Number, default: 0 }, // Salaire horaire en € (ex: 15 pour 15€/h)
   partnerCode: { type: String, trim: true, uppercase: true }, // Code promo / partenaire saisi à l'inscription (attribution)
+  lastLogin: { type: Date },
   createdAt: { type: Date, default: Date.now }
 });
 UserSchema.index({ projectId: 1 });
@@ -343,7 +345,13 @@ const Category = mongoose.model('Category', CategorySchema);
 const JWT_SECRET = process.env.JWT_SECRET || 'bussnessapp_secret_key_2025';
 
 // Auth Middleware
-const authenticateToken = createAuthenticateToken({ jwt, User, secret: JWT_SECRET });
+// Bloque l'accès (HTTP 402) aux business dont l'essai / l'abonnement est terminé (voir subscriptionAccess.js)
+const authenticateToken = createAuthenticateToken({
+  jwt,
+  User,
+  secret: JWT_SECRET,
+  accessGuard: subscriptionAccess.createAccessGuard(mongoose),
+});
 
 // Durée de grâce après expiration : le client peut encore rafraîchir le token
 const TOKEN_REFRESH_GRACE_SECONDS = 30 * 24 * 60 * 60; // 30 jours
@@ -358,6 +366,15 @@ app.get('/BussnessApp', (req, res) => {
 });
 
 app.get('/paiement-confirme', (req, res) => {
+  // ?renouvellement=1 : paiement d'un compte existant (lien envoyé en fin d'essai) ; ?deja=1 : déjà abonné
+  const isRenewal = req.query.renouvellement === '1';
+  const alreadyActive = req.query.deja === '1';
+  const title = alreadyActive ? 'Abonnement déjà actif' : 'Paiement confirmé !';
+  const lines = alreadyActive
+    ? '<p>Votre abonnement est déjà actif : aucun paiement n\'est nécessaire.</p><p>Vous pouvez utiliser <strong>EAS</strong> normalement.</p>'
+    : isRenewal
+      ? '<p>Votre paiement a bien été reçu et votre abonnement est activé.</p><p>Rouvrez l\'application <strong>EAS</strong> : votre accès est rétabli. Un email de confirmation vous a été envoyé.</p>'
+      : '<p>Votre paiement a bien été reçu.</p><p>Vous allez recevoir un email avec vos identifiants de connexion pour accéder à <strong>BussnessApp</strong>.</p>';
   res.send(`<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -377,9 +394,8 @@ app.get('/paiement-confirme', (req, res) => {
 <body>
   <div class="card">
     <div class="icon">✓</div>
-    <h1>Paiement confirmé !</h1>
-    <p>Votre paiement a bien été reçu.</p>
-    <p>Vous allez recevoir un email avec vos identifiants de connexion pour accéder à <strong>BussnessApp</strong>.</p>
+    <h1>${title}</h1>
+    ${lines}
     <div class="badge">Merci pour votre confiance</div>
   </div>
 </body>
@@ -907,6 +923,8 @@ app.post('/BussnessApp/auth/login', async (req, res) => {
         code: 'INVALID_PASSWORD'
       });
     }
+
+    await User.updateOne({ _id: user._id }, { $set: { lastLogin: new Date() } });
 
     // Generate token
     const token = jwt.sign(
@@ -4912,6 +4930,73 @@ app.get('/BussnessApp/subscription/plans', async (req, res) => {
 
 const WEBAPP_PUBLIC_URL = (process.env.WEBAPP_PUBLIC_URL || 'http://localhost:5174/app').replace(/\/$/, '');
 
+// Crée un abonnement « pending_payment » + une session Stripe Checkout pour ce plan.
+// `source` part dans les metadata : le webhook s'en sert pour ne pas régénérer le mot de passe.
+const createStripeCheckout = async ({ user, plan, source, successUrl, cancelUrl }) => {
+  const Subscription = mongoose.model('Subscription');
+
+  // Annule les anciennes tentatives en attente pour éviter que le webhook
+  // (fallback { adminId, status: 'pending_payment' }) matche un vieux document.
+  await Subscription.updateMany(
+    { adminId: user._id, status: 'pending_payment' },
+    { $set: { status: 'cancelled', updatedAt: new Date() } }
+  );
+
+  const subscription = new Subscription({
+    adminId: user._id,
+    planId: plan._id,
+    planName: plan.name,
+    plan: plan.durationType === 'lifetime' ? 'lifetime' : (plan.duration >= 12 && plan.durationType === 'months') ? 'yearly' : 'custom',
+    status: 'pending_payment',
+    startDate: null,
+    endDate: null,
+    amount: plan.price,
+    currency: plan.currency,
+    duration: plan.duration,
+    durationType: plan.durationType,
+    maxProjects: plan.maxProjects,
+    paymentMethod: 'card',
+    createdBy: user._id,
+  });
+  await subscription.save();
+
+  const isRecurring = plan.isRecurring && plan.durationType !== 'lifetime';
+  let recurringInterval = 'month';
+  if (plan.durationType === 'years') recurringInterval = 'year';
+  else if (plan.durationType === 'months' && plan.duration >= 12) recurringInterval = 'year';
+
+  const session = await stripeForExpiry.checkout.sessions.create({
+    payment_method_types: ['card'],
+    line_items: [{
+      price_data: {
+        currency: (plan.currency || 'EUR').toLowerCase(),
+        product_data: {
+          name: `BussnessApp - ${plan.name}`,
+          description: `${plan.name} pour ${user.fullName} (max ${plan.maxProjects} business)`,
+        },
+        unit_amount: Math.round(plan.price * 100),
+        ...(isRecurring ? { recurring: { interval: recurringInterval } } : {}),
+      },
+      quantity: 1,
+    }],
+    mode: isRecurring ? 'subscription' : 'payment',
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    customer_email: user.email,
+    metadata: {
+      adminId: user._id.toString(),
+      subscriptionId: subscription._id.toString(),
+      source,
+    },
+  });
+
+  subscription.stripeSessionId = session.id;
+  subscription.stripePaymentLinkUrl = session.url;
+  await subscription.save();
+
+  return { session, subscription };
+};
+
 app.post('/BussnessApp/subscription/checkout', authenticateToken, async (req, res) => {
   try {
     const { planId } = req.body;
@@ -4975,64 +5060,13 @@ app.post('/BussnessApp/subscription/checkout', authenticateToken, async (req, re
       return res.status(503).json({ error: 'Paiement par carte indisponible (Stripe non configuré)' });
     }
 
-    // Annule les anciennes tentatives en attente pour éviter que le webhook
-    // (fallback { adminId, status: 'pending_payment' }) matche un vieux document.
-    await Subscription.updateMany(
-      { adminId: user._id, status: 'pending_payment' },
-      { $set: { status: 'cancelled', updatedAt: new Date() } }
-    );
-
-    const subscription = new Subscription({
-      adminId: user._id,
-      planId: plan._id,
-      planName: plan.name,
-      plan: plan.durationType === 'lifetime' ? 'lifetime' : (plan.duration >= 12 && plan.durationType === 'months') ? 'yearly' : 'custom',
-      status: 'pending_payment',
-      startDate: null,
-      endDate: null,
-      amount: plan.price,
-      currency: plan.currency,
-      duration: plan.duration,
-      durationType: plan.durationType,
-      maxProjects: plan.maxProjects,
-      paymentMethod: 'card',
-      createdBy: user._id,
+    const { session } = await createStripeCheckout({
+      user,
+      plan,
+      source: 'webapp',
+      successUrl: `${WEBAPP_PUBLIC_URL}/abonnement/succes?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${WEBAPP_PUBLIC_URL}/abonnement?canceled=1`,
     });
-    await subscription.save();
-
-    const isRecurring = plan.isRecurring && plan.durationType !== 'lifetime';
-    let recurringInterval = 'month';
-    if (plan.durationType === 'years') recurringInterval = 'year';
-    else if (plan.durationType === 'months' && plan.duration >= 12) recurringInterval = 'year';
-
-    const session = await stripeForExpiry.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [{
-        price_data: {
-          currency: (plan.currency || 'EUR').toLowerCase(),
-          product_data: {
-            name: `BussnessApp - ${plan.name}`,
-            description: `${plan.name} pour ${user.fullName} (max ${plan.maxProjects} business)`,
-          },
-          unit_amount: Math.round(plan.price * 100),
-          ...(isRecurring ? { recurring: { interval: recurringInterval } } : {}),
-        },
-        quantity: 1,
-      }],
-      mode: isRecurring ? 'subscription' : 'payment',
-      success_url: `${WEBAPP_PUBLIC_URL}/abonnement/succes?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${WEBAPP_PUBLIC_URL}/abonnement?canceled=1`,
-      customer_email: user.email,
-      metadata: {
-        adminId: user._id.toString(),
-        subscriptionId: subscription._id.toString(),
-        source: 'webapp',
-      },
-    });
-
-    subscription.stripeSessionId = session.id;
-    subscription.stripePaymentLinkUrl = session.url;
-    await subscription.save();
 
     res.json({ url: session.url });
   } catch (error) {
@@ -5062,6 +5096,106 @@ app.get('/BussnessApp/subscription/checkout-status', authenticateToken, async (r
     res.json({ status: subscription.status });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// URL publiques (liens envoyés par email)
+const PUBLIC_API_URL = (process.env.BACKEND_PUBLIC_URL || `http://localhost:${PORT}/BussnessApp`).replace(/\/$/, '');
+const PUBLIC_ROOT_URL = PUBLIC_API_URL.replace(/\/bussnessapp$/i, '');
+
+// Envoie à l'admin l'offre de passage à un plan payant, avec un lien de paiement valable 30 jours.
+// Retourne false si aucun plan payant n'est disponible.
+const sendUpgradeOffer = async ({ user, previousSub, reason }) => {
+  const plan = await subscriptionAccess.findOfferPlan(mongoose, previousSub);
+  if (!plan) return false;
+  const payLink = subscriptionAccess.buildPayLink(jwt, JWT_SECRET, PUBLIC_API_URL, user._id, plan._id);
+  const { subject, html } = subscriptionAccess.buildOfferEmail({
+    user,
+    plan,
+    payLink,
+    reason,
+    endedAt: previousSub?.endDate,
+  });
+  await sendEmail(user.email, subject, html);
+  return true;
+};
+
+// Partagé avec le back-office (bouton « Envoyer l'offre »)
+app.locals.sendUpgradeOffer = sendUpgradeOffer;
+
+// État d'accès de l'utilisateur connecté (toujours accessible, même bloqué)
+app.get('/BussnessApp/subscription/access', authenticateToken, async (req, res) => {
+  try {
+    subscriptionAccess.invalidateAccessCache(req.user.id);
+    const status = await subscriptionAccess.getAccessStatus(mongoose, req.user.id);
+    const payload = { ...status };
+    // Offre proposée au propriétaire du business bloqué (paiement par carte hors iOS)
+    if (status.locked && status.isOwner) {
+      const Subscription = mongoose.model('Subscription');
+      const previousSub = await Subscription.findOne({ adminId: req.user.id, startDate: { $ne: null } }).sort({ startDate: -1 });
+      const plan = await subscriptionAccess.findOfferPlan(mongoose, previousSub);
+      if (plan) {
+        payload.offer = {
+          planId: plan._id,
+          name: plan.name,
+          price: plan.price,
+          currency: plan.currency || 'EUR',
+          duration: plan.duration,
+          durationType: plan.durationType,
+          maxProjects: plan.maxProjects,
+          payUrl: stripeForExpiry ? subscriptionAccess.buildPayLink(jwt, JWT_SECRET, PUBLIC_API_URL, req.user.id, plan._id) : null,
+        };
+      }
+    }
+    res.json(payload);
+  } catch (error) {
+    console.error('Erreur subscription/access:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Lien de paiement envoyé par email (public, signé) : crée une session Stripe neuve puis redirige.
+app.get('/BussnessApp/subscription/pay', async (req, res) => {
+  const page = (title, message, ok = false) => res.status(ok ? 200 : 400).send(`<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${title} - EAS</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Arial,sans-serif;background:#0f0f1a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{background:#1a1a2e;border-radius:16px;padding:48px 40px;max-width:480px;width:90%;text-align:center}h1{font-size:1.6rem;margin-bottom:12px}p{color:#94a3b8;line-height:1.6}</style>
+</head><body><div class="card"><h1>${title}</h1><p>${message}</p></div></body></html>`);
+
+  try {
+    let claims;
+    try {
+      claims = subscriptionAccess.verifyPayToken(jwt, JWT_SECRET, String(req.query.token || ''));
+    } catch (e) {
+      return page('Lien expiré', 'Ce lien de paiement n\'est plus valide. Ouvrez l\'application EAS et choisissez un abonnement depuis le menu Abonnement.');
+    }
+
+    const SubscriptionPlan = mongoose.model('SubscriptionPlan');
+    const Subscription = mongoose.model('Subscription');
+    const [user, plan] = await Promise.all([User.findById(claims.adminId), SubscriptionPlan.findById(claims.planId)]);
+    if (!user) return page('Compte introuvable', 'Ce compte n\'existe plus.');
+    if (!plan || !plan.isActive || !(plan.price > 0)) {
+      return page('Offre indisponible', 'Cette offre n\'est plus disponible. Ouvrez l\'application EAS pour voir les abonnements actuels.');
+    }
+
+    const active = await Subscription.findOne({ adminId: user._id, status: 'active' }).sort({ createdAt: -1 });
+    if (subscriptionAccess.isSubscriptionCurrent(active)) {
+      return res.redirect(303, `${PUBLIC_ROOT_URL}/paiement-confirme?deja=1`);
+    }
+    if (!stripeForExpiry) {
+      return page('Paiement indisponible', 'Le paiement en ligne est momentanément indisponible. Réessayez plus tard ou répondez à notre email.');
+    }
+
+    const { session } = await createStripeCheckout({
+      user,
+      plan,
+      source: 'upgrade_email',
+      successUrl: `${PUBLIC_ROOT_URL}/paiement-confirme?renouvellement=1`,
+      cancelUrl: `${PUBLIC_ROOT_URL}/paiement-annule`,
+    });
+    return res.redirect(303, session.url);
+  } catch (error) {
+    console.error('Erreur subscription/pay:', error);
+    return page('Erreur', 'Une erreur est survenue. Réessayez dans quelques instants.');
   }
 });
 
@@ -5338,19 +5472,28 @@ if (process.env.STRIPE_SECRET_KEY) {
 
 // ============= JOB : EXPIRATION DES ABONNEMENTS =============
 
+// Fenêtre de rattrapage : un abonnement échu depuis plus longtemps n'est plus notifié automatiquement
+// (évite d'écrire à d'anciens comptes ; le back-office peut renvoyer l'offre manuellement).
+const EXPIRY_NOTIFY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
 const expireSubscriptions = async () => {
   try {
     const Subscription = mongoose.model('Subscription');
     const now = new Date();
 
-    // Récupérer les abonnements actifs expirés (un par un pour traitement individuel)
-    const expiredSubs = await Subscription.find({ status: 'active', endDate: { $lt: now } });
+    // Abonnements échus pas encore notifiés. Inclut ceux déjà passés en 'expired' par
+    // /subscription/my (ouverture de l'app) avant le passage de ce job.
+    const expiredSubs = await Subscription.find({
+      status: { $in: ['active', 'expired'] },
+      endDate: { $lt: now, $gt: new Date(now.getTime() - EXPIRY_NOTIFY_WINDOW_MS) },
+      expiryNotifiedAt: null,
+    });
 
     if (expiredSubs.length === 0) return;
 
     for (const subscription of expiredSubs) {
       // 1. Annuler côté Stripe si un stripeSubscriptionId existe
-      if (stripeForExpiry && subscription.stripeSubscriptionId) {
+      if (subscription.status === 'active' && stripeForExpiry && subscription.stripeSubscriptionId) {
         try {
           await stripeForExpiry.subscriptions.cancel(subscription.stripeSubscriptionId);
           console.log(`[expireSubscriptions] Stripe subscription ${subscription.stripeSubscriptionId} annulée`);
@@ -5360,51 +5503,52 @@ const expireSubscriptions = async () => {
         }
       }
 
-      // 2. Passer le statut à 'expired' (sans désactiver le compte)
+      // 2. Passer le statut à 'expired'. Le compte n'est PAS désactivé : l'utilisateur doit pouvoir
+      // se reconnecter pour voir l'écran de renouvellement (exigence App Review 2.1). L'accès aux
+      // données du business est bloqué par la garde d'accès (subscriptionAccess.js).
       subscription.status = 'expired';
+      subscription.expiryNotifiedAt = new Date();
       subscription.updatedAt = new Date();
       await subscription.save();
-      // On NE désactive PAS le compte : l'utilisateur doit pouvoir se reconnecter
-      // pour atterrir sur le paywall et renouveler son abonnement (exigence App Review 2.1).
+      subscriptionAccess.invalidateAccessCache(subscription.adminId);
 
-      // 3. Envoyer un email de notification à l'utilisateur
+      // 3. Prévenir l'admin, sauf s'il a déjà un autre abonnement en cours (ex. payé pendant l'essai)
       try {
-        const User = mongoose.model('User');
-        const user = await User.findById(subscription.adminId);
-        if (user && user.email) {
-          const planLabel = subscription.planName || subscription.plan || 'votre abonnement';
-          const expirationDate = subscription.endDate
-            ? new Date(subscription.endDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
-            : 'la date prévue';
+        const current = await Subscription.findOne({ adminId: subscription.adminId, status: 'active', _id: { $ne: subscription._id } });
+        if (subscriptionAccess.isSubscriptionCurrent(current)) continue;
 
+        const user = await User.findById(subscription.adminId);
+        if (!user || !user.email) continue;
+
+        const reason = subscriptionAccess.isTrialSubscription(subscription) ? 'trial_expired' : 'subscription_expired';
+        // Abonnement Apple : le renouvellement se fait dans l'app (pas de lien de paiement externe)
+        const offered = subscription.paymentMethod !== 'apple_iap'
+          && await sendUpgradeOffer({ user, previousSub: subscription, reason });
+
+        if (!offered) {
+          const planLabel = subscription.planName || subscription.plan || 'votre abonnement';
+          const expirationDate = new Date(subscription.endDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
           await sendEmail(
             user.email,
-            'Votre abonnement BussnessApp a expiré',
+            'Votre abonnement EAS a expiré',
             `
             <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
               <div style="background: linear-gradient(135deg, #1A1A1A, #2D2D2D); border-radius: 12px; padding: 30px; margin-bottom: 20px; text-align: center;">
-                <h1 style="color: #FFFFFF; margin: 0; font-size: 24px;">BussnessApp</h1>
+                <h1 style="color: #FFFFFF; margin: 0; font-size: 24px;">EAS</h1>
               </div>
               <div style="background: #FFFFFF; border-radius: 12px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
                 <h2 style="color: #E53E3E; margin-top: 0;">Abonnement expiré</h2>
                 <p style="color: #4A5568;">Bonjour <strong>${user.fullName || user.username}</strong>,</p>
                 <p style="color: #4A5568;">
                   Votre abonnement <strong>${planLabel}</strong> a expiré le <strong>${expirationDate}</strong>.
-                  Votre accès à BussnessApp est maintenant limité.
-                </p>
-                <div style="background: #FFF5F5; border-left: 4px solid #E53E3E; padding: 15px; border-radius: 4px; margin: 20px 0;">
-                  <p style="margin: 0; color: #C53030; font-size: 14px;">
-                    Pour continuer à utiliser toutes les fonctionnalités, veuillez renouveler votre abonnement.
-                  </p>
-                </div>
-                <p style="color: #718096; font-size: 13px; margin-top: 30px;">
-                  Si vous avez des questions, contactez-nous à <a href="mailto:support@bussnessapp.com" style="color: #1A1A1A;">support@bussnessapp.com</a>.
+                  Vos données sont conservées : renouvelez votre abonnement depuis l'application (menu Abonnement) pour retrouver l'accès.
                 </p>
               </div>
             </div>
             `
           );
         }
+        console.log(`[expireSubscriptions] ${user.email} notifié (${reason}${offered ? ', offre envoyée' : ''})`);
       } catch (mailErr) {
         console.warn(`[expireSubscriptions] Email non envoyé pour adminId ${subscription.adminId}: ${mailErr.message}`);
       }

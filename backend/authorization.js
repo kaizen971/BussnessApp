@@ -1,4 +1,5 @@
-const createAuthenticateToken = ({ jwt, User, secret }) => (req, res, next) => {
+// accessGuard (optionnel) : async (req, user) => null | corps d'une réponse 402 (abonnement requis)
+const createAuthenticateToken = ({ jwt, User, secret, accessGuard }) => (req, res, next) => {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -24,6 +25,11 @@ const createAuthenticateToken = ({ jwt, User, secret }) => (req, res, next) => {
       }
 
       req.user = { ...claims, role: user.role, projectId: user.projectId };
+
+      if (accessGuard) {
+        const denial = await accessGuard(req, user);
+        if (denial) return res.status(402).json(denial);
+      }
       return next();
     } catch (lookupError) {
       console.error('Authentication lookup error:', lookupError);

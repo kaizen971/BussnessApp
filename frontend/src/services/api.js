@@ -21,6 +21,13 @@ let onSessionInvalidated = null;
 export const setCachedToken = (token) => { cachedToken = token; };
 export const clearCachedToken = () => { cachedToken = null; };
 
+let onSubscriptionRequired = null;
+
+/** Enregistré par SubscriptionContext : le serveur a répondu 402 (essai / abonnement terminé) */
+export const setOnSubscriptionRequired = (callback) => {
+  onSubscriptionRequired = callback;
+};
+
 /** Enregistré par AuthContext pour forcer la déconnexion UI si la session est morte */
 export const setOnSessionInvalidated = (callback) => {
   onSessionInvalidated = callback;
@@ -133,6 +140,11 @@ api.interceptors.response.use(
           await invalidateSession();
           return Promise.reject(refreshError);
         }
+      }
+
+      // Essai / abonnement terminé : l'app affiche l'écran de renouvellement
+      if (error.response.status === 402 && errorCode === 'SUBSCRIPTION_REQUIRED' && typeof onSubscriptionRequired === 'function') {
+        onSubscriptionRequired();
       }
 
       // Token invalide / absent : déconnexion propre (évite l'écran bloqué)
@@ -317,6 +329,7 @@ export const csvImportAPI = {
 // Subscription API
 export const subscriptionAPI = {
   getMySubscription: () => api.get('/subscription/my'),
+  getAccess: () => api.get('/subscription/access'),
   getPlans: () => api.get('/subscription/plans'),
   validateReceipt: (data) => api.post('/subscription/validate-receipt', data),
 };

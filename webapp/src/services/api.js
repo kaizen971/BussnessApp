@@ -250,6 +250,7 @@ export const exportAPI = {
 // Subscription API
 export const subscriptionAPI = {
   getMySubscription: () => api.get('/subscription/my'),
+  getAccess: () => api.get('/subscription/access'),
   getPlans: () => api.get('/subscription/plans'),
   createCheckout: (planId) => api.post('/subscription/checkout', { planId }),
   getCheckoutStatus: (sessionId) => api.get('/subscription/checkout-status', { params: { session_id: sessionId } }),

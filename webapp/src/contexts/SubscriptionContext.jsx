@@ -20,8 +20,20 @@ export const SubscriptionProvider = ({ children }) => {
   const [subscription, setSubscription] = useState(null);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Employé d'un business dont l'essai / l'abonnement est terminé (les admins passent par /abonnement)
+  const [employeeLocked, setEmployeeLocked] = useState(false);
 
   const loadSubscription = useCallback(async () => {
+    if (isAuthenticated && !isAdmin) {
+      try {
+        const res = await subscriptionAPI.getAccess();
+        setEmployeeLocked(res.data?.locked === true);
+      } catch (err) {
+        console.error('Error loading access:', err);
+      }
+    } else {
+      setEmployeeLocked(false);
+    }
     if (!isAuthenticated || !isAdmin) {
       setSubscription(null);
       setLoading(false);
@@ -73,6 +85,7 @@ export const SubscriptionProvider = ({ children }) => {
     loading,
     isPremium,
     hasWebappAccess,
+    employeeLocked,
     canAccessScreen,
     refreshSubscription: loadSubscription,
     premiumScreens: PREMIUM_SCREENS,
