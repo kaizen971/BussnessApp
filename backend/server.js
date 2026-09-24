@@ -5285,7 +5285,9 @@ function verifyAppleSignedTransaction(jws, expectedProductId) {
 
 app.post('/BussnessApp/subscription/validate-receipt', authenticateToken, async (req, res) => {
   try {
-    const { receipt, productId, platform } = req.body;
+    // source 'sync' : synchronisation silencieuse au lancement de l'app (renouvellements Apple)
+    const { receipt, productId, platform, source } = req.body;
+    const isSync = source === 'sync';
     if (!receipt || !productId) {
       return res.status(400).json({ error: 'Receipt and productId are required' });
     }
@@ -5340,6 +5342,40 @@ app.post('/BussnessApp/subscription/validate-receipt', authenticateToken, async 
       ? new Date(verified.expiresDate)
       : (() => { const d = new Date(now); d.setMonth(d.getMonth() + durationMonths); return d; })();
 
+    const originalTransactionId = verified.originalTransactionId || verified.transactionId;
+
+    // Abonnement Apple déjà connu (même transaction d'origine) : on le prolonge au lieu d'en créer un
+    // nouveau à chaque synchronisation (renouvellement automatique Apple = même originalTransactionId).
+    if (originalTransactionId) {
+      const existing = await Subscription.findOne({ iapOriginalTransactionId: originalTransactionId }).sort({ createdAt: -1 });
+      if (existing && String(existing.adminId) !== String(userId) && isSync) {
+        // iPhone partagé : la synchro automatique ne déplace jamais un abonnement d'un compte à l'autre
+        return res.status(409).json({ error: 'Abonnement Apple rattaché à un autre compte', code: 'IAP_OTHER_ACCOUNT' });
+      }
+      if (existing && String(existing.adminId) === String(userId)) {
+        await Subscription.updateMany(
+          { adminId: userId, status: 'active', _id: { $ne: existing._id } },
+          { status: 'replaced', updatedAt: now }
+        );
+        existing.status = 'active';
+        existing.endDate = endDate;
+        existing.planName = planName;
+        existing.plan = tier;
+        existing.maxProjects = maxProjects;
+        existing.iapProductId = verifiedProductId;
+        existing.expiryNotifiedAt = undefined;
+        existing.updatedAt = now;
+        await existing.save();
+        await User.findByIdAndUpdate(userId, { isActive: true });
+        subscriptionAccess.invalidateAccessCache(userId);
+        return res.json({
+          success: true,
+          message: 'Subscription renewed via In-App Purchase',
+          subscription: { id: existing._id, plan: tier, status: 'active', endDate },
+        });
+      }
+    }
+
     // Deactivate old subscriptions
     await Subscription.updateMany(
       { adminId: userId, status: 'active' },
@@ -5359,7 +5395,7 @@ app.post('/BussnessApp/subscription/validate-receipt', authenticateToken, async 
       maxProjects: maxProjects,
       paymentMethod: 'apple_iap',
       iapProductId: verifiedProductId,
-      iapOriginalTransactionId: verified.originalTransactionId || verified.transactionId,
+      iapOriginalTransactionId: originalTransactionId,
       iapReceipt: receipt.substring(0, 500),
       createdAt: now,
       updatedAt: now,
@@ -5367,6 +5403,7 @@ app.post('/BussnessApp/subscription/validate-receipt', authenticateToken, async 
     await newSub.save();
 
     await User.findByIdAndUpdate(userId, { isActive: true });
+    subscriptionAccess.invalidateAccessCache(userId);
 
     res.json({
       success: true,

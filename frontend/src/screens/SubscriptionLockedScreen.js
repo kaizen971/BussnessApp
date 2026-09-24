@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useSubscription } from '../contexts/SubscriptionContext';
+import { useIAP } from '../contexts/IAPContext';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -32,6 +33,7 @@ export const SubscriptionLockedScreen = ({ navigation }) => {
   const styles = useThemedStyles(createStyles);
   const { user, logout, deleteAccount } = useAuth();
   const { access, refreshSubscription } = useSubscription();
+  const { handleRestorePurchases } = useIAP();
   const [refreshing, setRefreshing] = useState(false);
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [password, setPassword] = useState('');
@@ -39,8 +41,10 @@ export const SubscriptionLockedScreen = ({ navigation }) => {
 
   const isOwner = access?.isOwner === true;
   const offer = access?.offer;
-  // Sur iOS, l'abonnement passe par l'App Store : pas de lien de paiement externe dans l'app
-  const canPayByCard = Platform.OS !== 'ios' && !!offer?.payUrl;
+  // Sur iOS, l'abonnement passe uniquement par l'App Store (règle 3.1.1) : ni lien de paiement
+  // externe, ni prix hors App Store affiché. Les offres et prix iOS sont sur l'écran Abonnement.
+  const isIOS = Platform.OS === 'ios';
+  const canPayByCard = !isIOS && !!offer?.payUrl;
 
   const title = !isOwner
     ? t('Accès suspendu')
@@ -98,7 +102,7 @@ export const SubscriptionLockedScreen = ({ navigation }) => {
         )}
         <Text style={styles.message}>{message}</Text>
 
-        {isOwner && offer && (
+        {isOwner && offer && !isIOS && (
           <View style={styles.offerCard}>
             <Text style={styles.offerLabel}>{t('Offre recommandée')}</Text>
             <Text style={styles.offerName}>{offer.name}</Text>
@@ -129,8 +133,17 @@ export const SubscriptionLockedScreen = ({ navigation }) => {
             style={styles.button}
           />
         )}
+        {isOwner && isIOS && (
+          <Button
+            title={t('Restaurer mes achats')}
+            icon="refresh-circle-outline"
+            variant="outline"
+            onPress={handleRestorePurchases}
+            style={styles.button}
+          />
+        )}
         <Button
-          title={isOwner ? t('J\'ai payé : actualiser') : t('Actualiser')}
+          title={isOwner && !isIOS ? t('J\'ai payé : actualiser') : t('Actualiser')}
           icon="refresh-outline"
           variant="outline"
           loading={refreshing}

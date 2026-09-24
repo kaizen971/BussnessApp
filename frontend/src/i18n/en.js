@@ -631,6 +631,7 @@ export default {
   "Confirmer le mot de passe": "Confirm password",
   "Retapez votre mot de passe": "Re-enter your password",
   "Code promo / Code partenaire (facultatif)": "Promo code / Partner code (optional)",
+  "Code partenaire (facultatif)": "Partner code (optional)",
   "Ex : EAS-PARTENAIRE": "E.g. EAS-PARTNER",
   "J'accepte les": "I accept the",
   "Conditions Générales d'Utilisation": "Terms and Conditions of Use",

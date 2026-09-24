@@ -261,7 +261,7 @@ export const RegisterScreen = ({ navigation }) => {
         secureTextEntry
       />
       <Input
-        label={t('Code promo / Code partenaire (facultatif)')}
+        label={t('Code partenaire (facultatif)')}
         value={formData.partnerCode}
         onChangeText={(value) => updateField('partnerCode', value.toUpperCase())}
         placeholder={t('Ex : EAS-PARTENAIRE')}

@@ -3,6 +3,7 @@ import { Platform, Alert, Modal, View, Text, ActivityIndicator, StyleSheet } fro
 import { IAP_SUBSCRIPTION_IDS, PLAN_DISPLAY_INFO } from '../config/iap';
 import { subscriptionAPI } from '../services/api';
 import { useSubscription } from './SubscriptionContext';
+import { useAuth } from './AuthContext';
 import { useTheme, useThemedStyles } from './ThemeContext';
 import { t, useLanguage } from '../i18n';
 
@@ -159,6 +160,42 @@ export const IAPProvider = ({ children }) => {
       setLoading(false);
     }
   }, [restorePurchases]);
+
+  // Synchronisation silencieuse des abonnements Apple avec le serveur, à chaque connexion.
+  // Apple renouvelle l'abonnement automatiquement sans passer par l'app : sans cette synchro,
+  // le serveur garderait l'ancienne date de fin et bloquerait un abonné qui paie.
+  const { isAuthenticated } = useAuth();
+  const syncedRef = useRef(false);
+  useEffect(() => {
+    if (!isAuthenticated) {
+      syncedRef.current = false;
+      return;
+    }
+    if (!iapAvailable || !connected || syncedRef.current) return;
+    syncedRef.current = true;
+    (async () => {
+      const purchases = await restorePurchases();
+      let synced = 0;
+      for (const purchase of purchases) {
+        if (!purchase.purchaseToken) continue;
+        try {
+          await subscriptionAPI.validateReceipt({
+            receipt: purchase.purchaseToken,
+            productId: purchase.productId,
+            platform: Platform.OS,
+            source: 'sync',
+          });
+          synced += 1;
+        } catch (err) {
+          // Abonnement expiré, rattaché à un autre compte ou serveur indisponible : rien à faire
+          console.log('IAP sync skipped:', err.response?.data?.code || err.message);
+        }
+      }
+      if (synced > 0) {
+        try { await refreshSubscriptionRef.current?.(); } catch (e) { console.warn('refreshSubscription:', e?.message); }
+      }
+    })();
+  }, [isAuthenticated, connected, restorePurchases]);
 
   useEffect(() => {
     initialize();
