@@ -2,7 +2,7 @@
   "expo": {
     "name": "Entreprendre Avec Succès",
     "slug": "frontend",
-    "version": "1.0.9",
+    "version": "1.0.10",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -21,10 +21,10 @@
         "NSCameraUsageDescription": "L'application a besoin d'accéder à la caméra pour prendre une photo de logo pour votre business.",
         "NSPhotoLibraryAddUsageDescription": "L'application a besoin de cette permission pour sauvegarder des photos."
       },
-      "buildNumber": "25"
+      "buildNumber": "27"
     },
     "android": {
-      "versionCode": 50,
+      "versionCode": 51,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
