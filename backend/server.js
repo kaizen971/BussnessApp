@@ -1685,6 +1685,10 @@ app.get('/BussnessApp/sales', authenticateToken, async (req, res) => {
       .populate('employeeId', 'username fullName')
       .sort({ date: -1 })
       .lean();
+    // Les vendeurs voient le nombre de leurs ventes, pas le chiffre d'affaires
+    if (req.user.role === 'cashier') {
+      return res.json({ data: sales.map((sale) => ({ ...sale, amount: 0 })) });
+    }
     res.json({ data: sales });
   } catch (error) {
     res.status(500).json({ error: error.message });

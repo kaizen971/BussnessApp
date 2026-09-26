@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import {
-  Lock, LineChart, Users, Boxes, UserRound, CalendarDays, Banknote,
+  Lock, LineChart, Users, UserRound, Banknote,
   CheckCircle2, Gem, Building2, Infinity as InfinityIcon,
 } from 'lucide-react'
 import { useSubscription } from '../contexts/SubscriptionContext'
@@ -8,9 +8,7 @@ import { useSubscription } from '../contexts/SubscriptionContext'
 const PREMIUM_FEATURES = [
   { icon: LineChart, label: 'Simulation Business Plan', desc: 'Simulez et planifiez votre activité' },
   { icon: Users, label: "Gestion d'équipe", desc: 'Gérez votre personnel et la paie' },
-  { icon: Boxes, label: 'Gestion de stock avancée', desc: 'Mouvements, alertes et historique' },
   { icon: UserRound, label: 'CRM Clients', desc: 'Gérez vos relations clients' },
-  { icon: CalendarDays, label: 'Planning', desc: 'Organisez votre agenda professionnel' },
   { icon: Banknote, label: 'Commissions', desc: 'Calcul automatique des commissions' },
 ]
 

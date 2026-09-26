@@ -13,7 +13,7 @@ export const useSubscription = () => {
   return context;
 };
 
-const PREMIUM_SCREENS = ['Simulation', 'Commissions', 'Stock', 'Customers', 'Planning', 'Team'];
+const PREMIUM_SCREENS = ['Simulation', 'Commissions', 'Customers', 'Team'];
 
 export const SubscriptionProvider = ({ children }) => {
   const { isAuthenticated, isAdmin } = useAuth();

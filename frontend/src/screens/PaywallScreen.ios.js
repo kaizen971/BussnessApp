@@ -13,9 +13,7 @@ import { t, useLanguage } from '../i18n';
 const getPremiumFeatures = () => [
   { icon: 'analytics-outline', label: t('Simulation Business Plan'), desc: t('Simulez et planifiez votre activité') },
   { icon: 'people-outline', label: t("Gestion d'équipe"), desc: t('Gérez votre personnel et la paie') },
-  { icon: 'cube-outline', label: t('Gestion de stock avancée'), desc: t('Mouvements, alertes et historique') },
   { icon: 'person-outline', label: t('CRM Clients'), desc: t('Gérez vos relations clients') },
-  { icon: 'calendar-outline', label: t('Planning'), desc: t('Organisez votre agenda professionnel') },
   { icon: 'cash-outline', label: t('Commissions'), desc: t('Calcul automatique des commissions') },
 ];
 

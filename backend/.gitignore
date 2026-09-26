@@ -5,3 +5,5 @@ npm-debug.log
 *.pem
 *.env*
 yarn.lock
+frontend/app-release.apk
+*.apk

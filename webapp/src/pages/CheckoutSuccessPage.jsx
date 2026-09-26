@@ -82,7 +82,7 @@ export default function CheckoutSuccessPage() {
               Félicitations ! Toutes les fonctionnalités de votre plan sont maintenant débloquées.
             </p>
             <div className="card p-4 mt-6 text-left space-y-2.5">
-              {['Simulation Business Plan', 'Gestion de stock', 'CRM Clients', "Équipe & Paie", 'Planning', 'Commissions'].map(f => (
+              {['Simulation Business Plan', 'CRM Clients', "Équipe & Paie", 'Commissions'].map(f => (
                 <p key={f} className="flex items-center gap-2.5 text-[13px] text-gray-300">
                   <CheckCircle2 className="w-4 h-4 text-gold-500 flex-shrink-0" />
                   {f}

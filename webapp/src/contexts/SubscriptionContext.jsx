@@ -13,7 +13,7 @@ export const useSubscription = () => {
 };
 
 // Mêmes clés de gating que frontend/App.js (PremiumGate)
-const PREMIUM_SCREENS = ['Simulation', 'Commissions', 'Stock', 'Customers', 'Planning', 'Team'];
+const PREMIUM_SCREENS = ['Simulation', 'Commissions', 'Customers', 'Team'];
 
 export const SubscriptionProvider = ({ children }) => {
   const { isAuthenticated, isAdmin } = useAuth();

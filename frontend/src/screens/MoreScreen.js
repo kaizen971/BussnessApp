@@ -14,7 +14,7 @@ const GROUPS = [
     title: 'Gestion',
     items: [
       { route: 'Expenses', label: 'Dépenses', detail: 'Charges et paiements', icon: 'wallet-outline', admin: true },
-      { route: 'Stock', label: 'Stock', detail: 'Niveaux et mouvements', icon: 'cube-outline', premium: 'Stock' },
+      { route: 'Stock', label: 'Stock', detail: 'Niveaux et mouvements', icon: 'cube-outline' },
       { route: 'Categories', label: 'Catégories', detail: 'Organisation du catalogue', icon: 'grid-outline', admin: true },
       { route: 'CsvImport', label: 'Importer des données', detail: 'Produits, stock, ventes, clients et dépenses', icon: 'document-text-outline', admin: true },
     ],
@@ -23,7 +23,7 @@ const GROUPS = [
     title: 'Pilotage',
     items: [
       { route: 'Simulation', label: 'Simulation', detail: 'Rentabilité et point mort', icon: 'calculator-outline', premium: 'Simulation', admin: true },
-      { route: 'Planning', label: 'Planning', detail: 'Activités et échéances', icon: 'calendar-outline', premium: 'Planning' },
+      { route: 'Planning', label: 'Planning', detail: 'Activités et échéances', icon: 'calendar-outline' },
       { route: 'Commissions', label: 'Commissions', detail: 'Suivi des rémunérations', icon: 'cash-outline', premium: 'Commissions' },
     ],
   },

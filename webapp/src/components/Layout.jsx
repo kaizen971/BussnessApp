@@ -14,6 +14,8 @@ const mainNav = [
   { to: '/ventes', icon: ShoppingCart, label: 'Ventes' },
   { to: '/depenses', icon: TrendingDown, label: 'Dépenses' },
   { to: '/produits', icon: Package, label: 'Produits' },
+  { to: '/stock', icon: Boxes, label: 'Stock' },
+  { to: '/planning', icon: CalendarDays, label: 'Planning' },
   { to: '/projets', icon: FolderKanban, label: 'Mes business' },
   { to: '/categories', icon: Tags, label: 'Catégories' },
   { to: '/feedback', icon: MessageSquare, label: 'Feedback' },
@@ -22,10 +24,8 @@ const mainNav = [
 // screenKey = clé de gating (PREMIUM_SCREENS du SubscriptionContext)
 const premiumNav = [
   { to: '/simulation', icon: Calculator, label: 'Simulation', screenKey: 'Simulation' },
-  { to: '/stock', icon: Boxes, label: 'Stock', screenKey: 'Stock' },
   { to: '/clients', icon: Users, label: 'Clients CRM', screenKey: 'Customers' },
   { to: '/equipe', icon: UserCog, label: 'Équipe', screenKey: 'Team' },
-  { to: '/planning', icon: CalendarDays, label: 'Planning', screenKey: 'Planning' },
   { to: '/commissions', icon: Percent, label: 'Commissions', screenKey: 'Commissions' },
 ]
 

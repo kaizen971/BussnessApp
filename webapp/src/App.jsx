@@ -57,7 +57,7 @@ function AppRoutes() {
           <PremiumRoute screenKey="Simulation" featureName="Simulation Business Plan"><SimulationPage /></PremiumRoute>
         } />
         <Route path="stock" element={
-          <PremiumRoute screenKey="Stock" featureName="Gestion de stock"><StockPage /></PremiumRoute>
+          <StockPage />
         } />
         <Route path="clients" element={
           <PremiumRoute screenKey="Customers" featureName="CRM Clients"><CustomersPage /></PremiumRoute>
@@ -66,7 +66,7 @@ function AppRoutes() {
           <PremiumRoute screenKey="Team" featureName="Gestion d'équipe"><TeamPage /></PremiumRoute>
         } />
         <Route path="planning" element={
-          <PremiumRoute screenKey="Planning" featureName="Planning"><PlanningPage /></PremiumRoute>
+          <PlanningPage />
         } />
         <Route path="commissions" element={
           <PremiumRoute screenKey="Commissions" featureName="Commissions"><CommissionsPage /></PremiumRoute>
