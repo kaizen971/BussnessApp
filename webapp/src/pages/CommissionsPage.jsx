@@ -102,11 +102,13 @@ export default function CommissionsPage() {
                   </Badge>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-night-700/60">
-                  <div>
-                    <p className="text-[10.5px] text-gray-500 uppercase tracking-wide">Vente</p>
-                    <p className="text-[13px] font-semibold text-cream mt-0.5">{formatPrice(item.saleAmount || 0)}</p>
-                  </div>
+                <div className={`grid ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'} gap-2 mt-3 pt-3 border-t border-night-700/60`}>
+                  {isAdmin && (
+                    <div>
+                      <p className="text-[10.5px] text-gray-500 uppercase tracking-wide">Vente</p>
+                      <p className="text-[13px] font-semibold text-cream mt-0.5">{formatPrice(item.saleAmount || 0)}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-[10.5px] text-gray-500 uppercase tracking-wide">Taux</p>
                     <p className="text-[13px] font-semibold text-cream mt-0.5">{item.rate}%</p>

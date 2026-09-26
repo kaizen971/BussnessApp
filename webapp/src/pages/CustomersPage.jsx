@@ -164,10 +164,12 @@ export default function CustomersPage() {
                     {item.phone}
                   </span>
                 )}
-                <span className="inline-block mt-2.5 px-2.5 py-1 rounded-lg bg-night-900 border border-night-700">
-                  <span className="block text-[13px] font-bold text-gold-400">{formatPrice(item.totalPurchases || 0)}</span>
-                  <span className="block text-[10px] text-gray-500 uppercase tracking-wide">Total achats</span>
-                </span>
+                {isAdmin && (
+                  <span className="inline-block mt-2.5 px-2.5 py-1 rounded-lg bg-night-900 border border-night-700">
+                    <span className="block text-[13px] font-bold text-gold-400">{formatPrice(item.totalPurchases || 0)}</span>
+                    <span className="block text-[10px] text-gray-500 uppercase tracking-wide">Total achats</span>
+                  </span>
+                )}
               </span>
             </button>
           ))}

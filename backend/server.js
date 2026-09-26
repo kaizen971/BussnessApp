@@ -2491,7 +2491,11 @@ app.get('/BussnessApp/customers', authenticateToken, async (req, res) => {
   try {
     const { projectId } = req.query;
     const filter = projectId ? { projectId } : {};
-    const customers = await Customer.find(filter).sort({ name: 1 });
+    const customers = await Customer.find(filter).sort({ name: 1 }).lean();
+    // Les vendeurs ne voient pas le chiffre d'affaires réalisé par client
+    if (req.user.role === 'cashier') {
+      return res.json({ data: customers.map((customer) => ({ ...customer, totalPurchases: 0 })) });
+    }
     res.json({ data: customers });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -3505,8 +3509,18 @@ app.get('/BussnessApp/commissions', authenticateToken, async (req, res) => {
     const pending = commissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + c.amount, 0);
     const paid = commissions.filter(c => c.status === 'paid').reduce((sum, c) => sum + c.amount, 0);
 
+    // Les vendeurs voient leur commission, pas le montant des ventes
+    const data = req.user.role === 'cashier'
+      ? commissions.map((commission) => {
+          const item = commission.toObject();
+          item.saleAmount = 0;
+          if (item.saleId) item.saleId.amount = 0;
+          return item;
+        })
+      : commissions;
+
     res.json({
-      data: commissions,
+      data,
       stats: {
         total,
         pending,

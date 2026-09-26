@@ -569,7 +569,6 @@ export const DashboardScreen = ({ navigation }) => {
     })
     .sort((left, right) => `${left.date}${left.startTime}`.localeCompare(`${right.date}${right.startTime}`))
     .slice(0, 2);
-  const sumSales = (sales) => sales.reduce((total, sale) => total + (Number(sale.amount) || 0), 0);
 
   if (loading) {
     return <LoadingScreen />;
@@ -805,13 +804,11 @@ export const DashboardScreen = ({ navigation }) => {
                   <View style={styles.employeeSalesMetric}>
                     <Text style={styles.employeeMetricLabel}>{t("Aujourd'hui")}</Text>
                     <Text style={styles.employeeMetricCount}>{todaySales.length > 1 ? t('{count} ventes', { count: todaySales.length }) : t('{count} vente', { count: todaySales.length })}</Text>
-                    <Text style={styles.employeeMetricAmount} numberOfLines={1} adjustsFontSizeToFit>{formatPrice(sumSales(todaySales))}</Text>
                   </View>
                   <View style={styles.employeeMetricDivider} />
                   <View style={styles.employeeSalesMetric}>
                     <Text style={styles.employeeMetricLabel}>{t('Ce mois')}</Text>
                     <Text style={styles.employeeMetricCount}>{ownSales.length > 1 ? t('{count} ventes', { count: ownSales.length }) : t('{count} vente', { count: ownSales.length })}</Text>
-                    <Text style={styles.employeeMetricAmount} numberOfLines={1} adjustsFontSizeToFit>{formatPrice(sumSales(ownSales))}</Text>
                   </View>
                 </View>
               )}
@@ -1959,12 +1956,6 @@ const createStyles = (colors) => ({
     fontSize: 16,
     fontWeight: '700',
     marginTop: 5,
-  },
-  employeeMetricAmount: {
-    color: colors.success,
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 3,
   },
   employeeMetricDivider: {
     width: 1,

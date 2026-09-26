@@ -123,10 +123,12 @@ export const CommissionsScreen = ({ navigation }) => {
 
         <View style={styles.commissionDetails}>
           <View style={styles.detailRow}>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>{t('Montant de la vente')}</Text>
-              <Text style={styles.detailValue}>{formatPrice(item.saleAmount || 0)}</Text>
-            </View>
+            {isAdmin && (
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>{t('Montant de la vente')}</Text>
+                <Text style={styles.detailValue}>{formatPrice(item.saleAmount || 0)}</Text>
+              </View>
+            )}
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>{t('Taux')}</Text>
               <Text style={styles.detailValue}>{item.rate}%</Text>

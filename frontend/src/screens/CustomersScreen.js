@@ -141,13 +141,14 @@ export const CustomersScreen = () => {
               <Text style={styles.customerDetail}>{item.phone}</Text>
             </View>
           )}
-          <View style={styles.statsRow}>
-            <View style={styles.statBadge}>
-              <Text style={styles.statValue}>{formatPrice(item.totalPurchases || 0)}</Text>
-              <Text style={styles.statLabel}>{t('Total achats')}</Text>
+          {isAdmin && (
+            <View style={styles.statsRow}>
+              <View style={styles.statBadge}>
+                <Text style={styles.statValue}>{formatPrice(item.totalPurchases || 0)}</Text>
+                <Text style={styles.statLabel}>{t('Total achats')}</Text>
+              </View>
             </View>
-
-          </View>
+          )}
         </View>
       </View>
     </Card>
