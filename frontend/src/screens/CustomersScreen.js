@@ -15,9 +15,14 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
 import { customersAPI } from '../services/api';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { EmptyState, FloatingActionButton, SearchField } from '../components/AppPrimitives';
+import { t, useLanguage } from '../i18n';
 
 export const CustomersScreen = () => {
+  useLanguage();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const { format: formatPrice } = useCurrency();
   const [customers, setCustomers] = useState([]);
@@ -51,7 +56,7 @@ export const CustomersScreen = () => {
       setCustomers(response.data.data || response.data || []);
     } catch (error) {
       console.error('Error loading customers:', error);
-      Alert.alert('Erreur', 'Impossible de charger les clients');
+      Alert.alert(t('Erreur'), t('Impossible de charger les clients'));
     } finally {
       setLoading(false);
     }
@@ -59,7 +64,7 @@ export const CustomersScreen = () => {
 
   const handleSaveCustomer = async () => {
     if (!formData.name || !formData.name.trim()) {
-      Alert.alert('Erreur', 'Veuillez saisir un nom');
+      Alert.alert(t('Erreur'), t('Veuillez saisir un nom'));
       return;
     }
 
@@ -72,13 +77,13 @@ export const CustomersScreen = () => {
 
       if (selectedCustomer) {
         const response = await customersAPI.update(selectedCustomer._id, customerData);
-        Alert.alert('Succès', 'Client modifié avec succès');
+        Alert.alert(t('Succès'), t('Client modifié avec succès'));
       } else {
         const response = await customersAPI.create({
           ...customerData,
           projectId: user?.projectId,
         });
-        Alert.alert('Succès', 'Client ajouté avec succès');
+        Alert.alert(t('Succès'), t('Client ajouté avec succès'));
       }
 
       setFormData({ name: '', email: '', phone: '' });
@@ -87,11 +92,11 @@ export const CustomersScreen = () => {
       await loadCustomers();
     } catch (error) {
       console.error('Error saving customer:', error);
-      const errorMessage = error.response?.data?.error || error.message || 'Impossible de sauvegarder le client';
+      const errorMessage = error.response?.data?.error || error.message || t('Impossible de sauvegarder le client');
       const errorDetails = error.response?.status === 403
-        ? 'Vous n\'avez pas les permissions nécessaires pour créer un client'
+        ? t("Vous n'avez pas les permissions nécessaires pour créer un client")
         : errorMessage;
-      Alert.alert('Erreur', errorDetails);
+      Alert.alert(t('Erreur'), errorDetails);
     }
   };
 
@@ -136,13 +141,14 @@ export const CustomersScreen = () => {
               <Text style={styles.customerDetail}>{item.phone}</Text>
             </View>
           )}
-          <View style={styles.statsRow}>
-            <View style={styles.statBadge}>
-              <Text style={styles.statValue}>{formatPrice(item.totalPurchases || 0)}</Text>
-              <Text style={styles.statLabel}>Total achats</Text>
+          {isAdmin && (
+            <View style={styles.statsRow}>
+              <View style={styles.statBadge}>
+                <Text style={styles.statValue}>{formatPrice(item.totalPurchases || 0)}</Text>
+                <Text style={styles.statLabel}>{t('Total achats')}</Text>
+              </View>
             </View>
-
-          </View>
+          )}
         </View>
       </View>
     </Card>
@@ -151,23 +157,10 @@ export const CustomersScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.searchContainer}>
-        <View style={styles.searchInputWrapper}>
-          <Ionicons name="search-outline" size={20} color={colors.textSecondary} />
-          <Input
-            placeholder="Rechercher un client..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            style={styles.searchInput}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
-          )}
-        </View>
+        <SearchField value={searchQuery} onChangeText={setSearchQuery} placeholder={t('Rechercher un client…')} />
         {searchQuery.length > 0 && (
           <Text style={styles.searchResultText}>
-            {filteredCustomers.length} client{filteredCustomers.length !== 1 ? 's' : ''} trouvé{filteredCustomers.length !== 1 ? 's' : ''}
+            {filteredCustomers.length !== 1 ? t('{count} clients trouvés', { count: filteredCustomers.length }) : t('{count} client trouvé', { count: filteredCustomers.length })}
           </Text>
         )}
       </View>
@@ -178,21 +171,15 @@ export const CustomersScreen = () => {
         keyExtractor={(item) => item._id}
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="people-outline" size={64} color={colors.textLight} />
-            <Text style={styles.emptyText}>Aucun client enregistré</Text>
-          </View>
+          <EmptyState
+            icon="people-outline"
+            title={searchQuery ? t('Aucun résultat') : t('Aucun client')}
+            description={searchQuery ? t('Modifiez votre recherche.') : t('Ajoutez votre premier client pour commencer le suivi.')}
+          />
         }
       />
 
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => openCustomerModal()}
-        >
-          <Ionicons name="add" size={28} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      <FloatingActionButton icon="person-add-outline" label={t('Ajouter un client')} onPress={() => openCustomerModal()} bottom={80} />
 
       <Modal
         visible={modalVisible}
@@ -204,7 +191,7 @@ export const CustomersScreen = () => {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {selectedCustomer ? 'Modifier client' : 'Nouveau client'}
+                {selectedCustomer ? t('Modifier client') : t('Nouveau client')}
               </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={24} color={colors.text} />
@@ -212,15 +199,15 @@ export const CustomersScreen = () => {
             </View>
 
             <Input
-              label="Nom *"
+              label={t('Nom *')}
               value={formData.name}
               onChangeText={(value) => setFormData(prev => ({ ...prev, name: value }))}
-              placeholder="Nom du client"
+              placeholder={t('Nom du client')}
               icon="person-outline"
             />
 
             <Input
-              label="Email"
+              label={t('Email')}
               value={formData.email}
               onChangeText={(value) => setFormData(prev => ({ ...prev, email: value }))}
               placeholder="email@exemple.com"
@@ -230,7 +217,7 @@ export const CustomersScreen = () => {
             />
 
             <Input
-              label="Téléphone"
+              label={t('Téléphone')}
               value={formData.phone}
               onChangeText={(value) => setFormData(prev => ({ ...prev, phone: value }))}
               placeholder="+33 6 12 34 56 78"
@@ -239,7 +226,7 @@ export const CustomersScreen = () => {
             />
 
             <Button
-              title={selectedCustomer ? 'Modifier' : 'Ajouter'}
+              title={selectedCustomer ? t('Modifier') : t('Ajouter')}
               onPress={handleSaveCustomer}
             />
           </View>
@@ -249,7 +236,7 @@ export const CustomersScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -258,17 +245,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 8,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   searchInputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.background,
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
     paddingHorizontal: 12,
     gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   searchInput: {
     flex: 1,
@@ -284,7 +273,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     padding: 16,
-    paddingBottom: 80,
+    paddingBottom: 110,
   },
   customerItem: {
     marginBottom: 12,
@@ -293,9 +282,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   customerIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 8,
     backgroundColor: colors.primary + '20',
     alignItems: 'center',
     justifyContent: 'center',
@@ -305,8 +294,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   customerName: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -333,7 +322,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   statLabel: {
@@ -352,13 +341,13 @@ const styles = StyleSheet.create({
   },
   fabContainer: {
     position: 'absolute',
-    bottom: 24,
-    right: 24,
+    bottom: 80,
+    right: 16,
   },
   fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 54,
+    height: 54,
+    borderRadius: 12,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -375,8 +364,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     padding: 24,
     paddingBottom: 40,
   },
@@ -388,7 +377,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
 });

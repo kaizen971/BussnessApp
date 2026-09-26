@@ -17,20 +17,28 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
+import { EmptyState, FloatingActionButton, SearchField, SegmentedControl } from '../components/AppPrimitives';
+import { MonthNavigator } from '../components/MonthNavigator';
 import { salesAPI, productsAPI, customersAPI, usersAPI } from '../services/api';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { getMonthBounds, MONTH_HISTORY_LIMIT, shiftMonth, startOfMonth } from '../utils/monthPeriod';
+import { t, useLanguage, getLocale } from '../i18n';
 
 const { width } = Dimensions.get('window');
 
 export const SalesScreen = () => {
+  useLanguage();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const { format: formatPrice } = useCurrency();
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'responsable';
   const [sales, setSales] = useState([]);
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -56,7 +64,8 @@ export const SalesScreen = () => {
   const [salesPage, setSalesPage] = useState(1);
   const [salesHasMore, setSalesHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [salesTotalAmount, setSalesTotalAmount] = useState(0);
+  const [periodMode, setPeriodMode] = useState('month');
+  const [selectedMonth, setSelectedMonth] = useState(startOfMonth());
 
   // Nouveaux états pour la recherche et l'affichage
   const [customerSearch, setCustomerSearch] = useState('');
@@ -65,41 +74,36 @@ export const SalesScreen = () => {
   const [productViewMode, setProductViewMode] = useState('list');
 
   useEffect(() => {
-    // Log pour déboguer le projectId
-    console.log('SalesScreen - User data:', {
-      userId: user?._id,
-      username: user?.username,
-      projectId: user?.projectId,
-      hasProjectId: !!user?.projectId,
-      userObject: user
-    });
     loadData();
-    // Configuration audio pour iOS
+  }, [periodMode, selectedMonth, user?.projectId]);
 
-  }, []);
+  const getPeriodFilters = () => (
+    periodMode === 'month' ? getMonthBounds(selectedMonth) : {}
+  );
 
   const loadData = async () => {
     try {
       const [salesRes, productsRes, customersRes, usersRes] = await Promise.all([
-        salesAPI.getAll(user?.projectId, 1, 50),
+        salesAPI.getAll(user?.projectId, getPeriodFilters()),
         productsAPI.getAll(user?.projectId),
         customersAPI.getAll(user?.projectId),
-        usersAPI.getAll(user?.projectId),
+        isAdmin ? usersAPI.getAll(user?.projectId) : Promise.resolve({ data: [] }),
       ]);
-      const salesData = salesRes.data?.data || [];
+      const receivedSales = salesRes.data?.data || [];
+      const bounds = getMonthBounds(selectedMonth);
+      const salesData = periodMode === 'month'
+        ? receivedSales.filter((sale) => sale.date >= bounds.startDate && sale.date < bounds.endDate)
+        : receivedSales;
       const pagination = salesRes.data?.pagination;
       setSales(salesData);
       setSalesPage(1);
       setSalesHasMore(pagination?.hasMore ?? false);
-      setSalesTotalAmount(
-        salesData.reduce((sum, s) => sum + (s.amount || 0), 0)
-      );
       setProducts(productsRes?.data?.data || []);
       setCustomers(customersRes?.data?.data || []);
       setSellers(usersRes?.data || []);
     } catch (error) {
       console.error('Error loading data:', error);
-      Alert.alert('Erreur', 'Impossible de charger les données');
+      Alert.alert(t('Erreur'), t('Impossible de charger les données'));
     } finally {
       setLoading(false);
     }
@@ -110,7 +114,7 @@ export const SalesScreen = () => {
     setLoadingMore(true);
     try {
       const nextPage = salesPage + 1;
-      const res = await salesAPI.getAll(user?.projectId, nextPage, 50);
+      const res = await salesAPI.getAll(user?.projectId, getPeriodFilters());
       const newSales = res.data?.data || [];
       const pagination = res.data?.pagination;
       setSales(prev => [...prev, ...newSales]);
@@ -121,7 +125,7 @@ export const SalesScreen = () => {
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, salesHasMore, salesPage, user?.projectId]);
+  }, [loadingMore, salesHasMore, salesPage, user?.projectId, periodMode, selectedMonth]);
 
   // Fonction pour jouer un son
   const playSound = async (soundType) => {
@@ -208,12 +212,12 @@ export const SalesScreen = () => {
   // Vider le panier avec confirmation
   const handleClearCart = () => {
     Alert.alert(
-      'Vider le panier',
-      `Êtes-vous sûr de vouloir supprimer les ${cart.length} produit(s) du panier ?`,
+      t('Vider le panier'),
+      t('Êtes-vous sûr de vouloir supprimer les {length} produit(s) du panier ?', { length: cart.length }),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
         {
-          text: 'Vider',
+          text: t('Vider'),
           style: 'destructive',
           onPress: () => {
             setCart([]);
@@ -227,18 +231,18 @@ export const SalesScreen = () => {
   // Valider toutes les ventes du panier
   const handleValidateCart = async () => {
     if (cart.length === 0) {
-      Alert.alert('Panier vide', 'Ajoutez des produits avant de valider');
+      Alert.alert(t('Panier vide'), t('Ajoutez des produits avant de valider'));
       return;
     }
 
     // Validation obligatoire pour les managers : client + vendeur
     if (isAdmin) {
       if (!formData.customerId) {
-        Alert.alert('Client requis', 'En tant que manager, vous devez sélectionner un client pour la vente.');
+        Alert.alert(t('Client requis'), t('En tant que manager, vous devez sélectionner un client pour la vente.'));
         return;
       }
       if (!formData.sellerId) {
-        Alert.alert('Vendeur requis', 'En tant que manager, vous devez sélectionner le vendeur ayant réalisé la vente.');
+        Alert.alert(t('Vendeur requis'), t('En tant que manager, vous devez sélectionner le vendeur ayant réalisé la vente.'));
         return;
       }
     }
@@ -272,11 +276,11 @@ export const SalesScreen = () => {
       setModalVisible(false);
       await loadData();
       Alert.alert(
-        'Succès',
-        `${cartSnapshot.length} vente(s) enregistrée(s) avec succès`,
+        t('Succès'),
+        t('{length} vente(s) enregistrée(s) avec succès', { length: cartSnapshot.length }),
         [
           {
-            text: 'Partager le reçu',
+            text: t('Partager le reçu'),
             onPress: () => handleShareCart(cartSnapshot, customerSnapshot, sellerSnapshot),
           },
           { text: 'OK', style: 'cancel' },
@@ -285,7 +289,7 @@ export const SalesScreen = () => {
     } catch (error) {
       console.error('Error adding sales:', error);
       playSound('error');
-      Alert.alert('Erreur', error.response?.data?.error || 'Impossible d\'ajouter les ventes');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t("Impossible d'ajouter les ventes"));
     } finally {
       setSubmitting(false);
     }
@@ -312,10 +316,10 @@ export const SalesScreen = () => {
       setEditSaleModalVisible(false);
       setEditingSale(null);
       await loadData();
-      Alert.alert('Succès', 'Vente modifiée avec succès');
+      Alert.alert(t('Succès'), t('Vente modifiée avec succès'));
     } catch (error) {
       console.error('Error updating sale:', error);
-      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de modifier la vente');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Impossible de modifier la vente'));
     } finally {
       setLoading(false);
     }
@@ -323,18 +327,18 @@ export const SalesScreen = () => {
 
   // Fonction pour rembourser une vente
   const handleRefund = (sale) => {
-    const customerName = sale.customerId?.name || 'Client inconnu';
-    const sellerName = sale.employeeId?.fullName || sale.employeeId?.username || 'Vendeur inconnu';
-    const productName = sale.productId?.name || 'Produit';
+    const customerName = sale.customerId?.name || t('Client inconnu');
+    const sellerName = sale.employeeId?.fullName || sale.employeeId?.username || t('Vendeur inconnu');
+    const productName = sale.productId?.name || t('Produit');
     const amount = formatPrice(sale.amount || 0);
 
     Alert.alert(
-      'Confirmer le remboursement',
-      `Produit : ${productName} x${sale.quantity || 1}\nMontant : ${amount}\nClient : ${customerName}\nVendeur : ${sellerName}\n\nCette action créera une vente négative et remettra le stock.`,
+      t('Confirmer le remboursement'),
+      t('Produit : {productName} x{value}\nMontant : {amount}\nClient : {customerName}\nVendeur : {sellerName}\n\nCette action créera une vente négative et remettra le stock.', { productName: productName, value: sale.quantity || 1, amount: amount, customerName: customerName, sellerName: sellerName }),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
         {
-          text: 'Rembourser',
+          text: t('Rembourser'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -342,11 +346,11 @@ export const SalesScreen = () => {
               await salesAPI.refund(sale._id);
               playSound('success');
               await loadData();
-              Alert.alert('Succès', 'Remboursement effectué avec succès');
+              Alert.alert(t('Succès'), t('Remboursement effectué avec succès'));
             } catch (error) {
               console.error('Error refunding sale:', error);
               playSound('error');
-              Alert.alert('Erreur', error.response?.data?.error || 'Impossible de rembourser cette vente');
+              Alert.alert(t('Erreur'), error.response?.data?.error || t('Impossible de rembourser cette vente'));
             } finally {
               setLoading(false);
             }
@@ -357,36 +361,36 @@ export const SalesScreen = () => {
   };
 
   const buildReceiptMessage = (sale) => {
-    const productName = sale.productId?.name || 'Produit';
-    const customerName = sale.customerId?.name || 'Client inconnu';
-    const sellerName = sale.employeeId?.fullName || sale.employeeId?.username || 'Vendeur';
+    const productName = sale.productId?.name || t('Produit');
+    const customerName = sale.customerId?.name || t('Client inconnu');
+    const sellerName = sale.employeeId?.fullName || sale.employeeId?.username || t('Vendeur');
     const amount = formatPrice(sale.amount || 0);
     const unitPrice = formatPrice(sale.unitPrice || 0);
-    const date = new Date(sale.date).toLocaleDateString('fr-FR', {
+    const date = new Date(sale.date).toLocaleDateString(getLocale(), {
       day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
     const qty = sale.quantity || 1;
 
     return (
-      `🧾 *REÇU DE VENTE*\n` +
+      t('🧾 *REÇU DE VENTE*\n') +
       `━━━━━━━━━━━━━━━━━━\n\n` +
-      `📦 *Produit :* ${productName}\n` +
-      `📊 *Quantité :* ${qty}\n` +
-      `💵 *Prix unitaire :* ${unitPrice}\n` +
-      (sale.discount > 0 ? `🏷️ *Remise :* -${formatPrice(sale.discount)}\n` : '') +
-      `💰 *Total :* ${amount}\n\n` +
-      `👤 *Client :* ${customerName}\n` +
-      `🏪 *Vendeur :* ${sellerName}\n` +
-      `📅 *Date :* ${date}\n\n` +
+      t('📦 *Produit :* {productName}\n', { productName: productName }) +
+      t('📊 *Quantité :* {qty}\n', { qty: qty }) +
+      t('💵 *Prix unitaire :* {unitPrice}\n', { unitPrice: unitPrice }) +
+      (sale.discount > 0 ? t('🏷️ *Remise :* -{price}\n', { price: formatPrice(sale.discount) }) : '') +
+      t('💰 *Total :* {amount}\n\n', { amount: amount }) +
+      t('👤 *Client :* {customerName}\n', { customerName: customerName }) +
+      t('🏪 *Vendeur :* {sellerName}\n', { sellerName: sellerName }) +
+      t('📅 *Date :* {date}\n\n', { date: date }) +
       `━━━━━━━━━━━━━━━━━━\n` +
-      `Merci pour votre achat ! 🙏`
+      t('Merci pour votre achat ! 🙏')
     );
   };
 
   const buildCartReceiptMessage = (cartItems, customer, seller, receiptDate = new Date()) => {
-    const customerName = customer?.name || 'Client inconnu';
-    const sellerName = seller?.fullName || seller?.username || 'Vendeur';
-    const date = new Date(receiptDate).toLocaleDateString('fr-FR', {
+    const customerName = customer?.name || t('Client inconnu');
+    const sellerName = seller?.fullName || seller?.username || t('Vendeur');
+    const date = new Date(receiptDate).toLocaleDateString(getLocale(), {
       day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
 
@@ -404,32 +408,32 @@ export const SalesScreen = () => {
         `📦 *${item.productName}*\n` +
         `   ${item.quantity} x ${formatPrice(item.unitPrice)} = ${formatPrice(lineSubtotal)}\n`;
       if (lineDiscount > 0) {
-        productsLines += `   🏷️ Remise : -${formatPrice(lineDiscount)}\n`;
+        productsLines += t('   🏷️ Remise : -{price}\n', { price: formatPrice(lineDiscount) });
       }
     });
 
     return (
-      `🧾 *REÇU DE VENTE*\n` +
+      t('🧾 *REÇU DE VENTE*\n') +
       `━━━━━━━━━━━━━━━━━━\n\n` +
       productsLines +
       `\n` +
-      (totalDiscount > 0 ? `🏷️ *Remise totale :* -${formatPrice(totalDiscount)}\n` : '') +
-      `💰 *Total :* ${formatPrice(total)}\n\n` +
-      `👤 *Client :* ${customerName}\n` +
-      `🏪 *Vendeur :* ${sellerName}\n` +
-      `📅 *Date :* ${date}\n\n` +
+      (totalDiscount > 0 ? t('🏷️ *Remise totale :* -{price}\n', { price: formatPrice(totalDiscount) }) : '') +
+      t('💰 *Total :* {price}\n\n', { price: formatPrice(total) }) +
+      t('👤 *Client :* {customerName}\n', { customerName: customerName }) +
+      t('🏪 *Vendeur :* {sellerName}\n', { sellerName: sellerName }) +
+      t('📅 *Date :* {date}\n\n', { date: date }) +
       `━━━━━━━━━━━━━━━━━━\n` +
-      `Merci pour votre achat ! 🙏`
+      t('Merci pour votre achat ! 🙏')
     );
   };
 
   const shareReceiptMessage = (message, title) => {
     Alert.alert(
-      'Partager le reçu',
-      'Choisissez comment envoyer ce reçu',
+      t('Partager le reçu'),
+      t('Choisissez comment envoyer ce reçu'),
       [
         {
-          text: '💬 WhatsApp',
+          text: t('💬 WhatsApp'),
           onPress: async () => {
             const url = `whatsapp://send?text=${encodeURIComponent(message)}`;
             const canOpen = await Linking.canOpenURL(url).catch(() => false);
@@ -437,26 +441,26 @@ export const SalesScreen = () => {
               await Linking.openURL(url);
             } else {
               Alert.alert(
-                'WhatsApp non disponible',
-                'WhatsApp n\'est pas installé. Le reçu va s\'ouvrir dans d\'autres applications.',
+                t('WhatsApp non disponible'),
+                t("WhatsApp n'est pas installé. Le reçu va s'ouvrir dans d'autres applications."),
                 [{ text: 'OK', onPress: () => Share.share({ message, title }) }]
               );
             }
           },
         },
         {
-          text: '📤 Autres applications',
+          text: t('📤 Autres applications'),
           onPress: async () => {
             try {
               await Share.share({ message, title });
             } catch (error) {
               if (error.message !== 'User did not share') {
-                Alert.alert('Erreur', 'Impossible de partager le reçu.');
+                Alert.alert(t('Erreur'), t('Impossible de partager le reçu.'));
               }
             }
           },
         },
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
       ]
     );
   };
@@ -489,7 +493,7 @@ export const SalesScreen = () => {
   const buildCartItemsFromSales = (saleItems) => (
     saleItems.map(sale => ({
       productId: sale.productId?._id || sale.productId,
-      productName: sale.productId?.name || 'Produit',
+      productName: sale.productId?.name || t('Produit'),
       quantity: sale.quantity || 1,
       unitPrice: sale.unitPrice || 0,
       discount: sale.discount || 0,
@@ -508,26 +512,25 @@ export const SalesScreen = () => {
         seller,
         sale.date
       );
-      shareReceiptMessage(message, `Recu - ${saleItems.length} produit(s)`);
+      shareReceiptMessage(message, t('Recu - {length} produit(s)', { length: saleItems.length }));
       return;
     }
 
     const message = buildReceiptMessage(sale);
-    const productName = sale.productId?.name || 'Produit';
-    shareReceiptMessage(message, `Reçu - ${productName}`);
+    const productName = sale.productId?.name || t('Produit');
+    shareReceiptMessage(message, t('Reçu - {productName}', { productName: productName }));
   };
 
   const handleShareCart = (items = cart, customer = selectedCustomer, seller = (isAdmin ? selectedSeller : user)) => {
     if (!items || items.length === 0) {
-      Alert.alert('Panier vide', 'Ajoutez des produits au panier avant de partager');
+      Alert.alert(t('Panier vide'), t('Ajoutez des produits au panier avant de partager'));
       return;
     }
     const message = buildCartReceiptMessage(items, customer, seller);
-    shareReceiptMessage(message, `Reçu - ${items.length} produit(s)`);
+    shareReceiptMessage(message, t('Reçu - {length} produit(s)', { length: items.length }));
   };
 
   // Déterminer si l'utilisateur est admin/manager
-  const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'responsable';
 
   // Fonction pour afficher les ventes (uniquement pour les admins)
   const renderSaleItem = ({ item }) => {
@@ -566,7 +569,7 @@ export const SalesScreen = () => {
               </Text>
             ) : (
               <Text style={styles.saleProduct}>
-                Produit x{item.quantity || 1}
+                {t('Produit x')}{item.quantity || 1}
               </Text>
             )}
             {/* Client et vendeur */}
@@ -592,7 +595,7 @@ export const SalesScreen = () => {
               </Text>
             )}
             <Text style={styles.saleDate}>
-              {new Date(item.date).toLocaleDateString('fr-FR', {
+              {new Date(item.date).toLocaleDateString(getLocale(), {
                 day: '2-digit',
                 month: 'short',
                 year: 'numeric',
@@ -622,7 +625,7 @@ export const SalesScreen = () => {
                 >
                   <View style={styles.refundButtonInner}>
                     <Ionicons name="arrow-undo" size={18} color="#fff" />
-                    <Text style={styles.refundButtonText}>Rembourser</Text>
+                    <Text style={styles.refundButtonText}>{t('Rembourser')}</Text>
                   </View>
                 </TouchableOpacity>
               </>
@@ -683,39 +686,55 @@ export const SalesScreen = () => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={[colors.surface, colors.background]}
-        style={styles.header}
-      >
+      <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.titleSection}>
             <Text style={styles.headerTitle}>
-              {isAdmin ? 'Ventes' : 'Point de Vente'}
+              {isAdmin ? t('Ventes') : t('Point de Vente')}
             </Text>
             <Text style={styles.headerSubtitle}>
               {isAdmin
                 ? `${(sales && Array.isArray(sales)) ? sales.length : 0} vente(s)`
-                : 'Effectuez vos ventes rapidement'}
+                : t('Effectuez vos ventes rapidement')}
             </Text>
           </View>
         </View>
 
+        {isAdmin && (
+          <View style={styles.periodControls}>
+            <SegmentedControl
+              value={periodMode}
+              onChange={setPeriodMode}
+              options={[
+                { value: 'month', label: t('Ce mois'), icon: 'calendar-outline' },
+                { value: 'all', label: t('Depuis le début'), icon: 'infinite-outline' },
+              ]}
+            />
+            {periodMode === 'month' && (
+              <MonthNavigator
+                value={selectedMonth}
+                onChange={setSelectedMonth}
+                minimumDate={shiftMonth(new Date(), -MONTH_HISTORY_LIMIT)}
+              />
+            )}
+          </View>
+        )}
+
         {/* Afficher le total uniquement pour les admins */}
         {isAdmin && (
-          <LinearGradient
-            colors={[colors.primary + '25', colors.primary + '10']}
-            style={styles.totalCard}
-          >
+          <View style={styles.totalCard}>
             <View style={styles.totalCardContent}>
               <Ionicons name="wallet" size={32} color={colors.primary} />
               <View style={styles.totalTextContainer}>
-                <Text style={styles.totalLabel}>Total des ventes</Text>
+                <Text style={styles.totalLabel}>
+                  {periodMode === 'month' ? t('Ventes du mois') : t('Ventes depuis le début')}
+                </Text>
                 <Text style={styles.totalAmount}>{formatPrice(totalSales)}</Text>
               </View>
             </View>
-          </LinearGradient>
+          </View>
         )}
-      </LinearGradient>
+      </View>
 
       {/* Interface pour les admins : liste des ventes */}
       {isAdmin ? (
@@ -729,14 +748,15 @@ export const SalesScreen = () => {
           ListFooterComponent={loadingMore ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.loadingText}>Chargement...</Text>
+              <Text style={styles.loadingText}>{t('Chargement...')}</Text>
             </View>
           ) : null}
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="cart-outline" size={64} color={colors.textLight} />
-              <Text style={styles.emptyText}>Aucune vente enregistrée</Text>
-            </View>
+            <EmptyState
+              icon="cart-outline"
+              title={t('Aucune vente enregistrée')}
+              description={t('Créez une vente pour démarrer le suivi de votre activité.')}
+            />
           }
         />
       ) : (
@@ -749,9 +769,9 @@ export const SalesScreen = () => {
             <View style={styles.welcomeIconContainer}>
               <Ionicons name="cart" size={64} color={colors.primary} />
             </View>
-            <Text style={styles.welcomeTitle}>Bienvenue, {user?.fullName || user?.username}</Text>
+            <Text style={styles.welcomeTitle}>{t('Bienvenue,')}{' '}{user?.fullName || user?.username}</Text>
             <Text style={styles.welcomeText}>
-              Cliquez sur le bouton ci-dessous pour commencer une nouvelle vente
+              {t('Cliquez sur le bouton ci-dessous pour commencer une nouvelle vente')}
             </Text>
 
             <TouchableOpacity
@@ -762,8 +782,8 @@ export const SalesScreen = () => {
                 colors={[colors.primary, colors.primaryDark]}
                 style={styles.mainSaleButton}
               >
-                <Ionicons name="add-circle" size={28} color="#000" />
-                <Text style={styles.mainSaleButtonText}>Nouvelle Vente</Text>
+                <Ionicons name="add-circle" size={28} color={colors.onPrimary} />
+                <Text style={styles.mainSaleButtonText}>{t('Nouvelle Vente')}</Text>
               </LinearGradient>
             </TouchableOpacity>
           </LinearGradient>
@@ -781,7 +801,7 @@ export const SalesScreen = () => {
                   return saleDate.toDateString() === today.toDateString();
                 }).length}
               </Text>
-              <Text style={styles.quickStatLabel}>Ventes aujourd'hui</Text>
+              <Text style={styles.quickStatLabel}>{t("Ventes aujourd'hui")}</Text>
             </LinearGradient>
           </View>
 
@@ -790,20 +810,11 @@ export const SalesScreen = () => {
       )}
 
 
-      {/* Bouton FAB (toujours accessible) */}
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fabWrapper}
-          onPress={() => setModalVisible(true)}
-        >
-          <LinearGradient
-            colors={[colors.primary, colors.primaryDark]}
-            style={styles.fab}
-          >
-            <Ionicons name="add" size={32} color="#000" />
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+      <FloatingActionButton
+        label={t('Créer une vente')}
+        onPress={() => setModalVisible(true)}
+        bottom={80}
+      />
 
       <Modal
         visible={modalVisible}
@@ -828,12 +839,12 @@ export const SalesScreen = () => {
                     colors={[colors.primary, colors.primaryDark]}
                     style={styles.modalIcon}
                   >
-                    <Ionicons name="cart" size={28} color="#000" />
+                    <Ionicons name="cart" size={28} color={colors.onPrimary} />
                   </LinearGradient>
                 </View>
                 <View style={styles.modalTitleContainer}>
-                  <Text style={styles.modalTitle}>Nouvelle vente</Text>
-                  <Text style={styles.modalSubtitle}>Ajoutez des produits au panier</Text>
+                  <Text style={styles.modalTitle}>{t('Nouvelle vente')}</Text>
+                  <Text style={styles.modalSubtitle}>{t('Ajoutez des produits au panier')}</Text>
                 </View>
               </LinearGradient>
               <TouchableOpacity
@@ -856,184 +867,274 @@ export const SalesScreen = () => {
                 >
                   <Ionicons name="person-circle" size={24} color={colors.primary} />
                   <Text style={styles.employeeText}>
-                    Vendeur: {user?.fullName || user?.username}
+                    {t('Vendeur:')}{' '}{user?.fullName || user?.username}
                   </Text>
                 </LinearGradient>
               )}
 
-              {/* Sélection du client */}
-              <Text style={styles.fieldLabel}>
-                Client {isAdmin ? '(obligatoire)' : '(optionnel)'}
-              </Text>
-
-              {/* Badge du client sélectionné */}
-              {selectedCustomer ? (
-                <View style={styles.selectedClientContainer}>
-                  <LinearGradient
-                    colors={[colors.primary + '20', colors.primary + '10']}
-                    style={styles.selectedClientCard}
-                  >
-                    <View style={styles.selectedClientInfo}>
-                      <View style={styles.selectedClientIcon}>
-                        <Ionicons name="person" size={20} color={colors.primary} />
-                      </View>
-                      <View>
-                        <Text style={styles.selectedClientName}>{selectedCustomer.name}</Text>
-                        <Text style={styles.selectedClientPhone}>{selectedCustomer.phone || 'Pas de téléphone'}</Text>
-                      </View>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.removeClientButton}
-                      onPress={() => {
-                        setFormData({ ...formData, customerId: '' });
-                        setCustomerSearch('');
-                      }}
-                    >
-                      <Ionicons name="close" size={20} color={colors.danger} />
-                    </TouchableOpacity>
-                  </LinearGradient>
+              <View style={styles.assignmentCard}>
+                <View style={styles.assignmentHeader}>
+                  <View style={styles.assignmentHeaderIcon}>
+                    <Ionicons name="people-outline" size={20} color={colors.primary} />
+                  </View>
+                  <View style={styles.assignmentHeaderText}>
+                    <Text style={styles.assignmentTitle}>{t('Attribution de la vente')}</Text>
+                    <Text style={styles.assignmentSubtitle}>{t('Choisissez le client et la personne ayant réalisé la vente.')}</Text>
+                  </View>
                 </View>
-              ) : (
-                /* Champ de recherche et liste d'autocomplete */
-                <View style={styles.autocompleteContainer}>
-                  <View style={styles.searchContainer}>
-                    <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
-                    <TextInput
-                      style={styles.searchInput}
-                      placeholder="Rechercher un client (nom, téléphone)..."
-                      placeholderTextColor={colors.textLight}
-                      value={customerSearch}
-                      onChangeText={setCustomerSearch}
-                    />
-                    {customerSearch.length > 0 && (
-                      <TouchableOpacity onPress={() => setCustomerSearch('')}>
-                        <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
-                      </TouchableOpacity>
-                    )}
+
+                <View style={styles.selectorBlock}>
+                  <View style={styles.selectorLabelRow}>
+                    <View style={styles.selectorLabelGroup}>
+                      <Ionicons name="person-outline" size={18} color={colors.primary} />
+                      <Text style={styles.selectorLabel}>{t('Client')}</Text>
+                    </View>
+                    <View style={[styles.requirementBadge, !isAdmin && styles.optionalBadge]}>
+                      <Text style={[styles.requirementText, !isAdmin && styles.optionalText]}>
+                        {isAdmin ? t('Requis') : t('Optionnel')}
+                      </Text>
+                    </View>
                   </View>
 
-                  {/* Liste des résultats d'autocomplete */}
-                  {customerSearch.length > 0 && (
-                    <View style={styles.autocompleteList}>
-                      {filteredCustomers.length > 0 ? (
-                        filteredCustomers.slice(0, 5).map(customer => (
-                          <TouchableOpacity
-                            key={customer._id}
-                            style={styles.autocompleteItem}
-                            onPress={() => {
-                              setFormData({ ...formData, customerId: customer._id });
-                              setCustomerSearch(''); // Optionnel : vider la recherche ou garder le nom
-                            }}
+                  {selectedCustomer ? (
+                    <View style={[styles.selectedPartyCard, { borderColor: `${colors.primary}55` }]}>
+                      <View style={[styles.partyAvatar, { backgroundColor: `${colors.primary}18` }]}>
+                        <Text style={[styles.partyAvatarText, { color: colors.primary }]}>
+                          {(selectedCustomer.name || 'C').charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.selectedPartyInfo}>
+                        <Text style={styles.selectedPartyName} numberOfLines={1}>{selectedCustomer.name}</Text>
+                        <Text style={styles.selectedPartyDetail} numberOfLines={1}>
+                          {selectedCustomer.phone || selectedCustomer.email || t('Aucune coordonnée')}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.changePartyButton}
+                        onPress={() => {
+                          setFormData({ ...formData, customerId: '' });
+                          setCustomerSearch('');
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('Changer de client')}
+                      >
+                        <Ionicons name="swap-horizontal" size={19} color={colors.primary} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={styles.autocompleteContainer}>
+                      <SearchField
+                        value={customerSearch}
+                        onChangeText={setCustomerSearch}
+                        placeholder={t('Nom, téléphone ou email')}
+                        style={styles.selectorSearch}
+                      />
+                      {customerSearch.trim() ? (
+                        <View style={styles.autocompleteList}>
+                          {filteredCustomers.length > 0 ? (
+                            <>
+                              {filteredCustomers.slice(0, 4).map((customer, index) => (
+                                <TouchableOpacity
+                                  key={customer._id}
+                                  style={[styles.autocompleteItem, index > 0 && styles.autocompleteItemBorder]}
+                                  onPress={() => {
+                                    setFormData({ ...formData, customerId: customer._id });
+                                    setCustomerSearch('');
+                                  }}
+                                >
+                                  <View style={[styles.partyAvatar, styles.resultAvatar]}>
+                                    <Text style={styles.resultAvatarText}>{(customer.name || 'C').charAt(0).toUpperCase()}</Text>
+                                  </View>
+                                  <View style={styles.autocompleteItemContent}>
+                                    <Text style={styles.autocompleteItemName} numberOfLines={1}>{customer.name}</Text>
+                                    <Text style={styles.autocompleteItemSub} numberOfLines={1}>{customer.phone || customer.email || t('Aucune coordonnée')}</Text>
+                                  </View>
+                                  <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
+                                </TouchableOpacity>
+                              ))}
+                              {filteredCustomers.length > 4 && (
+                                <Text style={styles.moreResultsText}>
+                                  {t('4 sur {length} résultats · affinez la recherche', { length: filteredCustomers.length })}
+                                </Text>
+                              )}
+                            </>
+                          ) : (
+                            <View style={styles.autocompleteEmpty}>
+                              <Ionicons name="person-add-outline" size={20} color={colors.textLight} />
+                              <Text style={styles.autocompleteEmptyText}>{t('Aucun client trouvé')}</Text>
+                            </View>
+                          )}
+                        </View>
+                      ) : customers.length > 0 ? (
+                        <View style={styles.quickChoices}>
+                          <Text style={styles.quickChoicesLabel}>{t('Suggestions · {length} client(s)', { length: customers.length })}</Text>
+                          <ScrollView
+                            horizontal
+                            nestedScrollEnabled
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.quickChoicesRow}
                           >
-                            <View style={styles.autocompleteItemIcon}>
-                              <Ionicons name="person-outline" size={18} color={colors.textSecondary} />
-                            </View>
-                            <View style={styles.autocompleteItemContent}>
-                              <Text style={styles.autocompleteItemName}>{customer.name}</Text>
-                              <Text style={styles.autocompleteItemSub}>{customer.phone || customer.email || 'N/A'}</Text>
-                            </View>
-                            <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
-                          </TouchableOpacity>
-                        ))
+                            {customers.slice(0, 6).map((customer) => (
+                              <TouchableOpacity
+                                key={customer._id}
+                                style={styles.quickChoiceCard}
+                                onPress={() => setFormData({ ...formData, customerId: customer._id })}
+                              >
+                                <View style={[styles.partyAvatar, styles.quickChoiceAvatar]}>
+                                  <Text style={styles.resultAvatarText}>{(customer.name || 'C').charAt(0).toUpperCase()}</Text>
+                                </View>
+                                <Text style={styles.quickChoiceName} numberOfLines={1}>{customer.name}</Text>
+                              </TouchableOpacity>
+                            ))}
+                            {customers.length > 6 && (
+                              <View style={styles.quickChoiceMore}>
+                                <Text style={styles.quickChoiceMoreText}>+{customers.length - 6}</Text>
+                                <Text style={styles.quickChoiceMoreLabel}>{t('Rechercher')}</Text>
+                              </View>
+                            )}
+                          </ScrollView>
+                        </View>
                       ) : (
-                        <View style={styles.autocompleteEmpty}>
-                          <Text style={styles.autocompleteEmptyText}>Aucun client trouvé</Text>
+                        <View style={styles.autocompleteList}>
+                          <View style={styles.autocompleteEmpty}>
+                            <Ionicons name="person-add-outline" size={20} color={colors.textLight} />
+                            <Text style={styles.autocompleteEmptyText}>{t('Aucun client disponible')}</Text>
+                          </View>
                         </View>
                       )}
                     </View>
                   )}
                 </View>
-              )}
 
-              {/* Sélection du vendeur (obligatoire pour les managers) */}
-              {isAdmin && (
-                <>
-                  <Text style={styles.fieldLabel}>Vendeur (obligatoire)</Text>
+                {isAdmin && (
+                  <View style={[styles.selectorBlock, styles.sellerSelectorBlock]}>
+                    <View style={styles.selectorLabelRow}>
+                      <View style={styles.selectorLabelGroup}>
+                        <Ionicons name="storefront-outline" size={18} color={colors.success} />
+                        <Text style={styles.selectorLabel}>{t('Vendeur')}</Text>
+                      </View>
+                      <View style={[styles.requirementBadge, { backgroundColor: `${colors.success}16` }]}>
+                        <Text style={[styles.requirementText, { color: colors.success }]}>{t('Requis')}</Text>
+                      </View>
+                    </View>
 
-                  {/* Badge du vendeur sélectionné */}
-                  {selectedSeller ? (
-                    <View style={styles.selectedClientContainer}>
-                      <LinearGradient
-                        colors={[colors.success + '20', colors.success + '10']}
-                        style={styles.selectedClientCard}
-                      >
-                        <View style={styles.selectedClientInfo}>
-                          <View style={[styles.selectedClientIcon, { backgroundColor: colors.success + '20' }]}>
-                            <Ionicons name="briefcase" size={20} color={colors.success} />
-                          </View>
-                          <View>
-                            <Text style={styles.selectedClientName}>{selectedSeller.fullName || selectedSeller.username}</Text>
-                            <Text style={styles.selectedClientPhone}>{selectedSeller.role || 'Vendeur'}</Text>
-                          </View>
+                    {selectedSeller ? (
+                      <View style={[styles.selectedPartyCard, { borderColor: `${colors.success}55` }]}>
+                        <View style={[styles.partyAvatar, { backgroundColor: `${colors.success}18` }]}>
+                          <Text style={[styles.partyAvatarText, { color: colors.success }]}>
+                            {(selectedSeller.fullName || selectedSeller.username || 'V').charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={styles.selectedPartyInfo}>
+                          <Text style={styles.selectedPartyName} numberOfLines={1}>{selectedSeller.fullName || selectedSeller.username}</Text>
+                          <Text style={styles.selectedPartyDetail} numberOfLines={1}>{selectedSeller.role || t('Vendeur')}</Text>
                         </View>
                         <TouchableOpacity
-                          style={styles.removeClientButton}
+                          style={[styles.changePartyButton, { backgroundColor: `${colors.success}14` }]}
                           onPress={() => {
                             setFormData({ ...formData, sellerId: '' });
                             setSellerSearch('');
                           }}
+                          accessibilityRole="button"
+                          accessibilityLabel={t('Changer de vendeur')}
                         >
-                          <Ionicons name="close" size={20} color={colors.danger} />
+                          <Ionicons name="swap-horizontal" size={19} color={colors.success} />
                         </TouchableOpacity>
-                      </LinearGradient>
-                    </View>
-                  ) : (
-                    /* Champ de recherche vendeur */
-                    <View style={styles.autocompleteContainer}>
-                      <View style={styles.searchContainer}>
-                        <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
-                        <TextInput
-                          style={styles.searchInput}
-                          placeholder="Rechercher un vendeur..."
-                          placeholderTextColor={colors.textLight}
+                      </View>
+                    ) : (
+                      <View style={styles.autocompleteContainer}>
+                        <SearchField
                           value={sellerSearch}
                           onChangeText={setSellerSearch}
+                          placeholder={t('Nom ou identifiant du vendeur')}
+                          style={styles.selectorSearch}
                         />
-                        {sellerSearch.length > 0 && (
-                          <TouchableOpacity onPress={() => setSellerSearch('')}>
-                            <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
-                          </TouchableOpacity>
+                        {sellerSearch.trim() ? (
+                          <View style={styles.autocompleteList}>
+                            {filteredSellers.length > 0 ? (
+                              <>
+                                {filteredSellers.slice(0, 4).map((seller, index) => (
+                                  <TouchableOpacity
+                                    key={seller._id}
+                                    style={[styles.autocompleteItem, index > 0 && styles.autocompleteItemBorder]}
+                                    onPress={() => {
+                                      setFormData({ ...formData, sellerId: seller._id });
+                                      setSellerSearch('');
+                                    }}
+                                  >
+                                    <View style={[styles.partyAvatar, styles.resultAvatar, { backgroundColor: `${colors.success}14` }]}>
+                                      <Text style={[styles.resultAvatarText, { color: colors.success }]}>
+                                        {(seller.fullName || seller.username || 'V').charAt(0).toUpperCase()}
+                                      </Text>
+                                    </View>
+                                    <View style={styles.autocompleteItemContent}>
+                                      <Text style={styles.autocompleteItemName} numberOfLines={1}>{seller.fullName || seller.username}</Text>
+                                      <Text style={styles.autocompleteItemSub} numberOfLines={1}>{seller.role || t('Vendeur')}</Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
+                                  </TouchableOpacity>
+                                ))}
+                                {filteredSellers.length > 4 && (
+                                  <Text style={styles.moreResultsText}>
+                                    {t('4 sur {length} résultats · affinez la recherche', { length: filteredSellers.length })}
+                                  </Text>
+                                )}
+                              </>
+                            ) : (
+                              <View style={styles.autocompleteEmpty}>
+                                <Ionicons name="people-outline" size={20} color={colors.textLight} />
+                                <Text style={styles.autocompleteEmptyText}>{t('Aucun vendeur trouvé')}</Text>
+                              </View>
+                            )}
+                          </View>
+                        ) : sellers.length > 0 ? (
+                          <View style={styles.quickChoices}>
+                            <Text style={styles.quickChoicesLabel}>{t('Suggestions · {length} vendeur(s)', { length: sellers.length })}</Text>
+                            <ScrollView
+                              horizontal
+                              nestedScrollEnabled
+                              showsHorizontalScrollIndicator={false}
+                              contentContainerStyle={styles.quickChoicesRow}
+                            >
+                              {sellers.slice(0, 6).map((seller) => (
+                                <TouchableOpacity
+                                  key={seller._id}
+                                  style={styles.quickChoiceCard}
+                                  onPress={() => setFormData({ ...formData, sellerId: seller._id })}
+                                >
+                                  <View style={[styles.partyAvatar, styles.quickChoiceAvatar, { backgroundColor: `${colors.success}14` }]}>
+                                    <Text style={[styles.resultAvatarText, { color: colors.success }]}>
+                                      {(seller.fullName || seller.username || 'V').charAt(0).toUpperCase()}
+                                    </Text>
+                                  </View>
+                                  <Text style={styles.quickChoiceName} numberOfLines={1}>{seller.fullName || seller.username}</Text>
+                                </TouchableOpacity>
+                              ))}
+                              {sellers.length > 6 && (
+                                <View style={styles.quickChoiceMore}>
+                                  <Text style={[styles.quickChoiceMoreText, { color: colors.success }]}>+{sellers.length - 6}</Text>
+                                  <Text style={styles.quickChoiceMoreLabel}>{t('Rechercher')}</Text>
+                                </View>
+                              )}
+                            </ScrollView>
+                          </View>
+                        ) : (
+                          <View style={styles.autocompleteList}>
+                            <View style={styles.autocompleteEmpty}>
+                              <Ionicons name="people-outline" size={20} color={colors.textLight} />
+                              <Text style={styles.autocompleteEmptyText}>{t('Aucun vendeur disponible')}</Text>
+                            </View>
+                          </View>
                         )}
                       </View>
-
-                      {/* Liste des vendeurs */}
-                      {sellerSearch.length > 0 && (
-                        <View style={styles.autocompleteList}>
-                          {filteredSellers.length > 0 ? (
-                            filteredSellers.slice(0, 5).map(seller => (
-                              <TouchableOpacity
-                                key={seller._id}
-                                style={styles.autocompleteItem}
-                                onPress={() => {
-                                  setFormData({ ...formData, sellerId: seller._id });
-                                  setSellerSearch('');
-                                }}
-                              >
-                                <View style={styles.autocompleteItemIcon}>
-                                  <Ionicons name="briefcase-outline" size={18} color={colors.textSecondary} />
-                                </View>
-                                <View style={styles.autocompleteItemContent}>
-                                  <Text style={styles.autocompleteItemName}>{seller.fullName || seller.username}</Text>
-                                  <Text style={styles.autocompleteItemSub}>{seller.role || 'Vendeur'}</Text>
-                                </View>
-                                <Ionicons name="add-circle-outline" size={20} color={colors.success} />
-                              </TouchableOpacity>
-                            ))
-                          ) : (
-                            <View style={styles.autocompleteEmpty}>
-                              <Text style={styles.autocompleteEmptyText}>Aucun vendeur trouvé</Text>
-                            </View>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  )}
-                </>
-              )}
+                    )}
+                  </View>
+                )}
+              </View>
 
               {/* Sélection des produits */}
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Produits</Text>
+                <Text style={styles.sectionTitle}>{t('Produits')}</Text>
                 <View style={styles.viewModeToggle}>
                   <TouchableOpacity
                     style={[styles.viewModeButton, productViewMode === 'grid' && styles.viewModeButtonActive]}
@@ -1059,25 +1160,16 @@ export const SalesScreen = () => {
               </View>
 
               {/* Champ de recherche pour les produits */}
-              <View style={styles.searchContainer}>
-                <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Rechercher un produit..."
-                  placeholderTextColor={colors.textLight}
-                  value={productSearch}
-                  onChangeText={setProductSearch}
-                />
-                {productSearch.length > 0 && (
-                  <TouchableOpacity onPress={() => setProductSearch('')}>
-                    <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                )}
-              </View>
+              <SearchField
+                value={productSearch}
+                onChangeText={setProductSearch}
+                placeholder={t('Rechercher un produit...')}
+                style={styles.searchContainer}
+              />
 
               {productSearch && (
                 <Text style={styles.searchResultText}>
-                  {filteredProducts.length} produit(s) trouvé(s)
+                  {t('{length} produit(s) trouvé(s)', { length: filteredProducts.length })}
                 </Text>
               )}
 
@@ -1160,14 +1252,14 @@ export const SalesScreen = () => {
                     </Animated.View>
                   );
                 }}
-                ListEmptyComponent={<Text style={styles.emptyText}>Aucun produit disponible</Text>}
+                ListEmptyComponent={<Text style={styles.emptyText}>{t('Aucun produit disponible')}</Text>}
               />
 
               {/* Panier */}
               {cart.length > 0 && (
                 <>
                   <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Panier ({cart.length})</Text>
+                    <Text style={styles.sectionTitle}>{t('Panier ({length})', { length: cart.length })}</Text>
                   </View>
 
                   {cart.map((item) => (
@@ -1225,7 +1317,7 @@ export const SalesScreen = () => {
             {cart.length > 0 && (
               <View style={styles.validateOverlay}>
                 <View style={styles.validateOverlaySummary}>
-                  <Text style={styles.validateOverlayLabel}>Total panier</Text>
+                  <Text style={styles.validateOverlayLabel}>{t('Total panier')}</Text>
                   <Text style={styles.validateOverlayTotal}>{formatPrice(cartTotal)}</Text>
                 </View>
                 <TouchableOpacity
@@ -1238,12 +1330,12 @@ export const SalesScreen = () => {
                     style={styles.validateButton}
                   >
                     {submitting ? (
-                      <ActivityIndicator color="#000" />
+                      <ActivityIndicator color={colors.onPrimary} />
                     ) : (
                       <>
-                        <Ionicons name="checkmark-circle" size={22} color="#000" />
+                        <Ionicons name="checkmark-circle" size={22} color={colors.onPrimary} />
                         <Text style={styles.validateButtonText}>
-                          Valider {cart.length} vente(s)
+                          {t('Valider {length} vente(s)', { length: cart.length })}
                         </Text>
                       </>
                     )}
@@ -1256,7 +1348,7 @@ export const SalesScreen = () => {
                     disabled={submitting}
                   >
                     <Ionicons name="share-social-outline" size={18} color={colors.primary} />
-                    <Text style={styles.shareCartButtonText}>Partager</Text>
+                    <Text style={styles.shareCartButtonText}>{t('Partager')}</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -1265,7 +1357,7 @@ export const SalesScreen = () => {
                     disabled={submitting}
                   >
                     <Ionicons name="trash-outline" size={18} color={colors.error} />
-                    <Text style={styles.clearButtonText}>Vider</Text>
+                    <Text style={styles.clearButtonText}>{t('Vider')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1294,7 +1386,7 @@ export const SalesScreen = () => {
               {/* Header */}
               <View style={styles.editModalHeader}>
                 <Ionicons name="create" size={24} color={colors.accent} />
-                <Text style={styles.editModalTitle}>Modifier la vente</Text>
+                <Text style={styles.editModalTitle}>{t('Modifier la vente')}</Text>
                 <TouchableOpacity onPress={() => setEditSaleModalVisible(false)}>
                   <Ionicons name="close-circle" size={28} color={colors.textSecondary} />
                 </TouchableOpacity>
@@ -1305,20 +1397,20 @@ export const SalesScreen = () => {
                   {/* Infos vente */}
                   <View style={styles.editSaleInfo}>
                     <Text style={styles.editSaleInfoText}>
-                      {editingSale.productId?.name || 'Produit'} x{editingSale.quantity || 1} — {formatPrice(editingSale.amount || 0)}
+                      {editingSale.productId?.name || t('Produit')} x{editingSale.quantity || 1} — {formatPrice(editingSale.amount || 0)}
                     </Text>
                     <Text style={styles.editSaleInfoDate}>
-                      {new Date(editingSale.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      {new Date(editingSale.date).toLocaleDateString(getLocale(), { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </Text>
                   </View>
 
                   {/* Sélection client */}
-                  <Text style={styles.editSectionLabel}>Client</Text>
+                  <Text style={styles.editSectionLabel}>{t('Client')}</Text>
                   {editCustomerId ? (
                     <View style={styles.editSelectedBadge}>
                       <Ionicons name="person" size={16} color={colors.primary} />
                       <Text style={styles.editSelectedText}>
-                        {customers.find(c => c._id === editCustomerId)?.name || 'Client sélectionné'}
+                        {customers.find(c => c._id === editCustomerId)?.name || t('Client sélectionné')}
                       </Text>
                       <TouchableOpacity onPress={() => setEditCustomerId('')}>
                         <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
@@ -1328,7 +1420,7 @@ export const SalesScreen = () => {
                     <View>
                       <TextInput
                         style={styles.editSearchInput}
-                        placeholder="Rechercher un client..."
+                        placeholder={t('Rechercher un client...')}
                         placeholderTextColor={colors.textSecondary}
                         value={editCustomerSearch}
                         onChangeText={setEditCustomerSearch}
@@ -1349,7 +1441,7 @@ export const SalesScreen = () => {
                               </TouchableOpacity>
                             ))}
                           {customers.filter(c => c.name?.toLowerCase().includes(editCustomerSearch.toLowerCase())).length === 0 && (
-                            <Text style={styles.editDropdownEmpty}>Aucun client trouvé</Text>
+                            <Text style={styles.editDropdownEmpty}>{t('Aucun client trouvé')}</Text>
                           )}
                         </View>
                       )}
@@ -1357,12 +1449,12 @@ export const SalesScreen = () => {
                   )}
 
                   {/* Sélection vendeur */}
-                  <Text style={styles.editSectionLabel}>Vendeur</Text>
+                  <Text style={styles.editSectionLabel}>{t('Vendeur')}</Text>
                   {editSellerId ? (
                     <View style={styles.editSelectedBadge}>
                       <Ionicons name="storefront" size={16} color={colors.success} />
                       <Text style={styles.editSelectedText}>
-                        {sellers.find(s => s._id === editSellerId)?.fullName || sellers.find(s => s._id === editSellerId)?.username || 'Vendeur sélectionné'}
+                        {sellers.find(s => s._id === editSellerId)?.fullName || sellers.find(s => s._id === editSellerId)?.username || t('Vendeur sélectionné')}
                       </Text>
                       <TouchableOpacity onPress={() => setEditSellerId('')}>
                         <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
@@ -1372,7 +1464,7 @@ export const SalesScreen = () => {
                     <View>
                       <TextInput
                         style={styles.editSearchInput}
-                        placeholder="Rechercher un vendeur..."
+                        placeholder={t('Rechercher un vendeur...')}
                         placeholderTextColor={colors.textSecondary}
                         value={editSellerSearch}
                         onChangeText={setEditSellerSearch}
@@ -1393,7 +1485,7 @@ export const SalesScreen = () => {
                               </TouchableOpacity>
                             ))}
                           {sellers.filter(s => (s.fullName || s.username || '').toLowerCase().includes(editSellerSearch.toLowerCase())).length === 0 && (
-                            <Text style={styles.editDropdownEmpty}>Aucun vendeur trouvé</Text>
+                            <Text style={styles.editDropdownEmpty}>{t('Aucun vendeur trouvé')}</Text>
                           )}
                         </View>
                       )}
@@ -1406,7 +1498,7 @@ export const SalesScreen = () => {
                       style={styles.editCancelBtn}
                       onPress={() => setEditSaleModalVisible(false)}
                     >
-                      <Text style={styles.editCancelBtnText}>Annuler</Text>
+                      <Text style={styles.editCancelBtnText}>{t('Annuler')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.editSaveBtn}
@@ -1417,7 +1509,7 @@ export const SalesScreen = () => {
                         style={styles.editSaveBtnGradient}
                       >
                         <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                        <Text style={styles.editSaveBtnText}>Enregistrer</Text>
+                        <Text style={styles.editSaveBtnText}>{t('Enregistrer')}</Text>
                       </LinearGradient>
                     </TouchableOpacity>
                   </View>
@@ -1431,63 +1523,64 @@ export const SalesScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
   header: {
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    paddingTop: 54,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border + '50',
+    borderBottomColor: colors.border,
   },
   headerContent: {
     marginBottom: 16,
   },
+  periodControls: {
+    gap: 8,
+    marginBottom: 12,
+  },
   titleSection: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
+    fontSize: 13,
+    color: colors.textLight,
   },
   totalCard: {
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 8,
+    padding: 14,
     borderWidth: 1,
-    borderColor: colors.primary + '30',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
   },
   totalCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
   },
   totalTextContainer: {
     flex: 1,
   },
   totalLabel: {
-    fontSize: 13,
-    color: colors.textSecondary,
+    fontSize: 12,
+    color: colors.textLight,
     marginBottom: 6,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   totalAmount: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontSize: 24,
+    fontWeight: '700',
     color: colors.primary,
   },
   centerContainer: {
@@ -1521,7 +1614,7 @@ const styles = StyleSheet.create({
   },
   welcomeTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 12,
     textAlign: 'center',
@@ -1554,8 +1647,8 @@ const styles = StyleSheet.create({
   },
   mainSaleButtonText: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#000',
+    fontWeight: '700',
+    color: colors.onPrimary,
   },
   quickStatsContainer: {
     flexDirection: 'row',
@@ -1576,7 +1669,7 @@ const styles = StyleSheet.create({
   },
   quickStatValue: {
     fontSize: 36,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
     marginTop: 12,
     marginBottom: 8,
@@ -1590,7 +1683,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     padding: 16,
-    paddingBottom: 80,
+    paddingBottom: 110,
   },
   saleItem: {
     marginBottom: 12,
@@ -1625,7 +1718,7 @@ const styles = StyleSheet.create({
   },
   saleAmount: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
     marginBottom: 4,
   },
@@ -1728,7 +1821,7 @@ const styles = StyleSheet.create({
   // Modal édition vente
   editModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   editModalBackdrop: {
@@ -1738,8 +1831,8 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
   },
   editModalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     paddingBottom: 30,
   },
   editModalHeader: {
@@ -1752,7 +1845,7 @@ const styles = StyleSheet.create({
   },
   editModalTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     flex: 1,
     marginLeft: 10,
@@ -1871,7 +1964,7 @@ const styles = StyleSheet.create({
   },
   editSaveBtnText: {
     fontSize: 15,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#fff',
   },
   emptyContainer: {
@@ -1886,8 +1979,8 @@ const styles = StyleSheet.create({
   },
   fabContainer: {
     position: 'absolute',
-    bottom: 24,
-    right: 24,
+    bottom: 80,
+    right: 16,
   },
   fabWrapper: {
     shadowColor: '#000',
@@ -1897,9 +1990,9 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   fab: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 54,
+    height: 54,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1949,7 +2042,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -2091,7 +2184,7 @@ const styles = StyleSheet.create({
   },
   productListPrice: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   productListBadge: {
@@ -2137,7 +2230,7 @@ const styles = StyleSheet.create({
   },
   amountPreviewValue: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   validateButtonWrapper: {
@@ -2181,7 +2274,7 @@ const styles = StyleSheet.create({
   },
   validateOverlayTotal: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   validateOverlayButtonWrapper: {
@@ -2211,8 +2304,8 @@ const styles = StyleSheet.create({
   },
   validateButtonText: {
     fontSize: 17,
-    fontWeight: 'bold',
-    color: '#000',
+    fontWeight: '700',
+    color: colors.onPrimary,
   },
   clearButton: {
     flexDirection: 'row',
@@ -2270,7 +2363,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -2339,7 +2432,7 @@ const styles = StyleSheet.create({
   },
   productPrice: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   productBadge: {
@@ -2360,9 +2453,9 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   productBadgeText: {
-    color: '#000',
+    color: colors.onPrimary,
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   cartItem: {
     backgroundColor: colors.background,
@@ -2414,7 +2507,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     textAlign: 'center',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     paddingHorizontal: 8,
     marginHorizontal: 8,
@@ -2429,93 +2522,224 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 8,
   },
-  // Styles Autocomplete Client
-  selectedClientContainer: {
+  assignmentCard: {
+    marginBottom: 20,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  assignmentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 16,
   },
-  selectedClientCard: {
+  assignmentHeaderIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: `${colors.primary}14`,
+    marginRight: 10,
+  },
+  assignmentHeaderText: {
+    flex: 1,
+  },
+  assignmentTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  assignmentSubtitle: {
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.textLight,
+  },
+  selectorBlock: {
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sellerSelectorBlock: {
+    marginTop: 12,
+  },
+  selectorLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.primary + '30',
+    marginBottom: 10,
   },
-  selectedClientInfo: {
+  selectorLabelGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    gap: 7,
   },
-  selectedClientIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary + '20',
+  selectorLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  requirementBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: `${colors.primary}14`,
+  },
+  requirementText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary,
+    textTransform: 'uppercase',
+  },
+  optionalBadge: {
+    backgroundColor: `${colors.textLight}12`,
+  },
+  optionalText: {
+    color: colors.textLight,
+  },
+  selectedPartyCard: {
+    minHeight: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+  },
+  partyAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    backgroundColor: `${colors.primary}14`,
   },
-  selectedClientName: {
+  partyAvatarText: {
     fontSize: 15,
-    fontWeight: 'bold',
+    fontWeight: '800',
+  },
+  selectedPartyInfo: {
+    flex: 1,
+    minWidth: 0,
+    marginHorizontal: 10,
+  },
+  selectedPartyName: {
+    fontSize: 14,
+    fontWeight: '700',
     color: colors.text,
-    marginBottom: 2,
   },
-  selectedClientPhone: {
-    fontSize: 13,
-    color: colors.textSecondary,
+  selectedPartyDetail: {
+    marginTop: 3,
+    fontSize: 11,
+    color: colors.textLight,
   },
-  removeClientButton: {
+  changePartyButton: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.danger + '10',
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    backgroundColor: `${colors.primary}14`,
   },
-  autocompleteContainer: {
-    position: 'relative',
-    zIndex: 10,
+  autocompleteContainer: {},
+  selectorSearch: {
+    backgroundColor: colors.surface,
   },
   autocompleteList: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
+    marginTop: 8,
     backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    maxHeight: 250,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
-    zIndex: 1000,
-    marginTop: -8,
     overflow: 'hidden',
   },
-  autocompleteItem: {
+  quickChoices: {
+    marginTop: 9,
+  },
+  quickChoicesLabel: {
+    marginBottom: 7,
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  quickChoicesRow: {
+    gap: 8,
+    paddingRight: 4,
+  },
+  quickChoiceCard: {
+    width: 104,
+    minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border + '50',
+    paddingHorizontal: 9,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  autocompleteItemIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.background,
+  quickChoiceAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    marginRight: 7,
+  },
+  quickChoiceName: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  quickChoiceMore: {
+    width: 86,
+    minHeight: 64,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  quickChoiceMoreText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  quickChoiceMoreLabel: {
+    marginTop: 2,
+    fontSize: 9,
+    color: colors.textSecondary,
+  },
+  autocompleteItem: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  autocompleteItemBorder: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  resultAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+  },
+  resultAvatarText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.primary,
   },
   autocompleteItemContent: {
     flex: 1,
+    minWidth: 0,
+    marginHorizontal: 10,
   },
   autocompleteItemName: {
     fontSize: 14,
@@ -2528,13 +2752,26 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   autocompleteEmpty: {
-    padding: 16,
+    minHeight: 64,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 14,
   },
   autocompleteEmptyText: {
     fontSize: 14,
     color: colors.textSecondary,
     fontStyle: 'italic',
+  },
+  moreResultsText: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    fontSize: 10,
+    textAlign: 'center',
+    color: colors.textSecondary,
   },
   cartTotal: {
     backgroundColor: colors.primary + '10',
@@ -2553,7 +2790,7 @@ const styles = StyleSheet.create({
   },
   cartTotalValue: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   loadingContainer: {

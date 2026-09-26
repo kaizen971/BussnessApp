@@ -10,14 +10,20 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { colors } from '../utils/colors';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { AppHeader } from '../components/AppHeader';
+import { EmptyState } from '../components/AppPrimitives';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { t, useLanguage, getLocale } from '../i18n';
 
 export const CategoriesScreen = ({ navigation }) => {
+  useLanguage();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -38,7 +44,7 @@ export const CategoriesScreen = ({ navigation }) => {
       setCategories(response.data?.data || []);
     } catch (error) {
       console.error('Error loading categories', error);
-      Alert.alert('Erreur', 'Impossible de charger les catégories');
+      Alert.alert(t('Erreur'), t('Impossible de charger les catégories'));
     } finally {
       setLoading(false);
     }
@@ -46,7 +52,7 @@ export const CategoriesScreen = ({ navigation }) => {
 
   const handleSave = async () => {
     if (!categoryName.trim()) {
-      Alert.alert('Erreur', 'Veuillez entrer un nom de catégorie');
+      Alert.alert(t('Erreur'), t('Veuillez entrer un nom de catégorie'));
       return;
     }
 
@@ -57,20 +63,20 @@ export const CategoriesScreen = ({ navigation }) => {
           name: categoryName,
           projectId: user?.projectId
         });
-        Alert.alert('Succès', 'Catégorie modifiée');
+        Alert.alert(t('Succès'), t('Catégorie modifiée'));
       } else {
         await api.post('/categories', {
           name: categoryName,
           projectId: user?.projectId
         });
-        Alert.alert('Succès', 'Catégorie créée');
+        Alert.alert(t('Succès'), t('Catégorie créée'));
       }
       setModalVisible(false);
       setCategoryName('');
       setEditingCategory(null);
       loadCategories();
     } catch (error) {
-      Alert.alert('Erreur', error.response?.data?.error || 'Une erreur est survenue');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Une erreur est survenue'));
     } finally {
       setLoading(false);
     }
@@ -84,20 +90,20 @@ export const CategoriesScreen = ({ navigation }) => {
 
   const handleDelete = (category) => {
     Alert.alert(
-      'Confirmer la suppression',
-      `Voulez-vous vraiment supprimer la catégorie "${category.name}" ?`,
+      t('Confirmer la suppression'),
+      t('Voulez-vous vraiment supprimer la catégorie "{name}" ?', { name: category.name }),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
         {
-          text: 'Supprimer',
+          text: t('Supprimer'),
           style: 'destructive',
           onPress: async () => {
             try {
               await api.delete(`/categories/${category._id}`);
               loadCategories();
-              Alert.alert('Succès', 'Catégorie supprimée');
+              Alert.alert(t('Succès'), t('Catégorie supprimée'));
             } catch (error) {
-              Alert.alert('Erreur', 'Impossible de supprimer la catégorie');
+              Alert.alert(t('Erreur'), t('Impossible de supprimer la catégorie'));
             }
           },
         },
@@ -119,7 +125,7 @@ export const CategoriesScreen = ({ navigation }) => {
         <View style={styles.categoryInfo}>
           <Text style={styles.categoryName}>{item.name}</Text>
           <Text style={styles.categoryDate}>
-            Créée le {new Date(item.createdAt).toLocaleDateString('fr-FR')}
+            {t('Créée le {toLocaleDateString}', { toLocaleDateString: new Date(item.createdAt).toLocaleDateString(getLocale()) })}
           </Text>
         </View>
         {isAdmin && (
@@ -138,40 +144,18 @@ export const CategoriesScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={[colors.surface, colors.background]}
-        style={styles.header}
-      >
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>Catégories</Text>
-            <Text style={styles.subtitle}>{categories.length} catégorie(s)</Text>
-          </View>
-          {isAdmin && (
-            <TouchableOpacity
-              style={styles.addButtonWrapper}
-              onPress={() => {
-                setCategoryName('');
-                setEditingCategory(null);
-                setModalVisible(true);
-              }}
-            >
-              <LinearGradient
-                colors={[colors.primary, colors.primaryDark]}
-                style={styles.addButton}
-              >
-                <Ionicons name="add" size={28} color="#000" />
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
-        </View>
-      </LinearGradient>
+      <AppHeader
+        title={t('Catégories')}
+        subtitle={t('{length} catégorie(s)', { length: categories.length })}
+        onBack={() => navigation.goBack()}
+        rightIcon={isAdmin ? 'add' : undefined}
+        rightLabel={t('Ajouter une catégorie')}
+        onRightPress={isAdmin ? () => {
+          setCategoryName('');
+          setEditingCategory(null);
+          setModalVisible(true);
+        } : undefined}
+      />
 
       <FlatList
         data={categories}
@@ -181,11 +165,11 @@ export const CategoriesScreen = ({ navigation }) => {
         refreshing={loading}
         onRefresh={loadCategories}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="grid-outline" size={80} color={colors.textSecondary} />
-            <Text style={styles.emptyText}>Aucune catégorie</Text>
-            <Text style={styles.emptySubtext}>Appuyez sur + pour créer une catégorie</Text>
-          </View>
+          <EmptyState
+            icon="grid-outline"
+            title={t('Aucune catégorie')}
+            description={t('Créez une catégorie pour organiser votre catalogue.')}
+          />
         }
       />
 
@@ -208,16 +192,16 @@ export const CategoriesScreen = ({ navigation }) => {
                     <Ionicons
                       name={editingCategory ? "create-outline" : "add-circle-outline"}
                       size={28}
-                      color="#000"
+                      color={colors.onPrimary}
                     />
                   </LinearGradient>
                 </View>
                 <View style={styles.modalTitleContainer}>
                   <Text style={styles.modalTitle}>
-                    {editingCategory ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
+                    {editingCategory ? t('Modifier la catégorie') : t('Nouvelle catégorie')}
                   </Text>
                   <Text style={styles.modalSubtitle}>
-                    {editingCategory ? 'Modifiez le nom' : 'Créez une nouvelle catégorie'}
+                    {editingCategory ? t('Modifiez le nom') : t('Créez une nouvelle catégorie')}
                   </Text>
                 </View>
               </LinearGradient>
@@ -234,18 +218,18 @@ export const CategoriesScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.modalForm}>
-              <Text style={styles.inputLabel}>Nom de la catégorie</Text>
+              <Text style={styles.inputLabel}>{t('Nom de la catégorie')}</Text>
               <Input
-                placeholder="Ex: Boissons, Soins, Accessoires..."
+                placeholder={t('Ex: Boissons, Soins, Accessoires...')}
                 value={categoryName}
                 onChangeText={setCategoryName}
                 autoFocus
               />
 
               <View style={styles.suggestionsContainer}>
-                <Text style={styles.suggestionsTitle}>Suggestions</Text>
+                <Text style={styles.suggestionsTitle}>{t('Suggestions')}</Text>
                 <View style={styles.suggestionsGrid}>
-                  {['Boissons', 'Soins', 'Accessoires', 'Vêtements', 'Alimentation', 'Services'].map((suggestion) => (
+                  {[t('Boissons'), t('Soins'), t('Accessoires'), t('Vêtements'), t('Alimentation'), t('Services')].map((suggestion) => (
                     <TouchableOpacity
                       key={suggestion}
                       style={styles.suggestionChip}
@@ -267,7 +251,7 @@ export const CategoriesScreen = ({ navigation }) => {
                   setEditingCategory(null);
                 }}
               >
-                <Text style={styles.cancelButtonText}>Annuler</Text>
+                <Text style={styles.cancelButtonText}>{t('Annuler')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.saveButtonWrapper}
@@ -279,12 +263,12 @@ export const CategoriesScreen = ({ navigation }) => {
                   style={styles.saveButton}
                 >
                   {loading ? (
-                    <ActivityIndicator color="#000" />
+                    <ActivityIndicator color={colors.onPrimary} />
                   ) : (
                     <>
-                      <Ionicons name="checkmark-circle" size={20} color="#000" />
+                      <Ionicons name="checkmark-circle" size={20} color={colors.onPrimary} />
                       <Text style={styles.saveButtonText}>
-                        {editingCategory ? 'Modifier' : 'Créer'}
+                        {editingCategory ? t('Modifier') : t('Créer')}
                       </Text>
                     </>
                   )}
@@ -298,7 +282,7 @@ export const CategoriesScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -331,7 +315,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 2,
   },
@@ -372,7 +356,7 @@ const styles = StyleSheet.create({
   },
   categoryName: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -443,7 +427,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -527,7 +511,7 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#000',
+    fontWeight: '700',
+    color: colors.onPrimary,
   },
 });

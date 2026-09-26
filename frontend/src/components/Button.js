@@ -1,7 +1,8 @@
 import React, { useRef } from 'react';
 import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, Animated, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { colors } from '../utils/colors';
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { control, radius, spacing } from '../utils/designSystem';
 
 export const Button = ({
   title,
@@ -11,8 +12,12 @@ export const Button = ({
   disabled = false,
   loading = false,
   style,
-  textStyle
+  textStyle,
+  icon,
+  iconPosition = 'left',
 }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
 
@@ -49,7 +54,7 @@ export const Button = ({
   const buttonStyles = [
     styles.button,
     styles[variant],
-    styles[size],
+    variant !== 'primary' && styles[size],
     disabled && styles.disabled,
     style
   ];
@@ -62,30 +67,25 @@ export const Button = ({
   ];
 
   const renderButtonContent = () => {
+    const content = loading ? (
+      <ActivityIndicator color={variant === 'primary' ? colors.onPrimary : variant === 'outline' || variant === 'ghost' ? colors.primary : '#fff'} />
+    ) : (
+      <>
+        {icon && iconPosition === 'left' && <Ionicons name={icon} size={18} color={variant === 'primary' ? colors.onPrimary : variant === 'danger' ? '#fff' : colors.primary} />}
+        <Text style={textStyles}>{title}</Text>
+        {icon && iconPosition === 'right' && <Ionicons name={icon} size={18} color={variant === 'primary' ? colors.onPrimary : variant === 'danger' ? '#fff' : colors.primary} />}
+      </>
+    );
+
     if (variant === 'primary') {
       return (
-        <LinearGradient
-          colors={[colors.primary, colors.primaryDark]}
-          style={[styles.gradientButton, styles[size]]}
-        >
-          {loading ? (
-            <ActivityIndicator color="#000" />
-          ) : (
-            <Text style={[textStyles, { fontWeight: '700' }]}>{title}</Text>
-          )}
-        </LinearGradient>
+        <View style={[styles.gradientButton, styles[size]]}>
+          {content}
+        </View>
       );
     }
 
-    return (
-      <>
-        {loading ? (
-          <ActivityIndicator color={variant === 'outline' || variant === 'ghost' ? colors.primary : '#fff'} />
-        ) : (
-          <Text style={textStyles}>{title}</Text>
-        )}
-      </>
-    );
+    return content;
   };
 
   return (
@@ -109,33 +109,39 @@ export const Button = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   button: {
-    borderRadius: 12,
+    minHeight: control.height,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
+    gap: spacing.xs,
   },
   primary: {
     overflow: 'hidden',
   },
   primaryWrapper: {
-    borderRadius: 12,
+    borderRadius: radius.md,
     overflow: 'hidden',
   },
   gradientButton: {
     width: '100%',
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    borderRadius: 12,
+    borderRadius: radius.md,
+    gap: spacing.xs,
   },
   secondary: {
-    backgroundColor: colors.secondary,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   outline: {
     backgroundColor: 'transparent',
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.primary,
   },
   ghost: {
@@ -143,38 +149,32 @@ const styles = StyleSheet.create({
   },
   danger: {
     backgroundColor: colors.danger,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
   },
   disabled: {
     opacity: 0.5,
   },
   small: {
+    minHeight: control.compactHeight,
     paddingVertical: 8,
     paddingHorizontal: 16,
   },
   medium: {
-    paddingVertical: 14,
+    paddingVertical: 13,
     paddingHorizontal: 24,
   },
   large: {
-    paddingVertical: 18,
+    minHeight: 56,
+    paddingVertical: 16,
     paddingHorizontal: 32,
   },
   text: {
     fontWeight: '600',
   },
   primaryText: {
-    color: '#000',
-    textShadowColor: 'rgba(0, 0, 0, 0.1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    color: colors.onPrimary,
   },
   secondaryText: {
-    color: '#FFD700',
+    color: colors.text,
   },
   outlineText: {
     color: colors.primary,

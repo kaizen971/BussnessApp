@@ -1,11 +1,19 @@
 import 'react-native-gesture-handler';
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
+import { Platform } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { CurrencyProvider } from './src/contexts/CurrencyContext';
 import { SubscriptionProvider, useSubscription } from './src/contexts/SubscriptionContext';
+import { IAPProvider } from './src/contexts/IAPContext';
+import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
+import { ThemePicker } from './src/components/ThemePicker';
+import { LanguageProvider, useI18n } from './src/i18n';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { RegisterScreen } from './src/screens/RegisterScreen';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
@@ -23,63 +31,150 @@ import { PlanningScreen } from './src/screens/PlanningScreen';
 import { CommissionsScreen } from './src/screens/CommissionsScreen';
 import { TutorialScreen } from './src/screens/TutorialScreen';
 import { CategoriesScreen } from './src/screens/CategoriesScreen';
+import { MoreScreen } from './src/screens/MoreScreen';
+import { CsvImportScreen } from './src/screens/CsvImportScreen';
 import { SubscriptionScreen } from './src/screens/SubscriptionScreen';
 import { PaywallScreen } from './src/screens/PaywallScreen';
-import { colors } from './src/utils/colors';
+import { ChangePasswordScreen } from './src/screens/ChangePasswordScreen';
+import { SubscriptionLockedScreen } from './src/screens/SubscriptionLockedScreen';
 
 const Stack = createStackNavigator();
+const Tab = createBottomTabNavigator();
 
-const AuthStack = () => (
-  <Stack.Navigator
-    screenOptions={{
-      headerShown: false,
-      cardStyle: { backgroundColor: colors.background },
-    }}
-  >
-    <Stack.Screen name="Login" component={LoginScreen} />
-    <Stack.Screen name="Register" component={RegisterScreen} />
-  </Stack.Navigator>
-);
+const AuthStack = () => {
+  const { colors } = useTheme();
+
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        cardStyle: { backgroundColor: colors.background },
+      }}
+    >
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
+    </Stack.Navigator>
+  );
+};
 
 function PremiumGate(WrappedComponent, screenName, featureName) {
   return function GatedScreen(props) {
     const { canAccessScreen } = useSubscription();
+    const { t } = useI18n();
     if (!canAccessScreen(screenName)) {
-      return <PaywallScreen {...props} route={{ ...props.route, params: { ...props.route?.params, featureName } }} />;
+      return <PaywallScreen {...props} route={{ ...props.route, params: { ...props.route?.params, featureName: t(featureName) } }} />;
     }
     return <WrappedComponent {...props} />;
   };
 }
 
-const MainStack = () => (
-  <Stack.Navigator
-    screenOptions={{
-      headerStyle: {
-        backgroundColor: colors.primary,
-        elevation: 0,
-        shadowOpacity: 0,
-      },
-      headerTintColor: '#fff',
-      headerTitleStyle: {
-        fontWeight: 'bold',
-      },
-      cardStyle: { backgroundColor: colors.background },
-    }}
-  >
+const TAB_ICONS = {
+  Dashboard: ['home', 'home-outline'],
+  Sales: ['cart', 'cart-outline'],
+  Products: ['pricetag', 'pricetag-outline'],
+  Customers: ['people', 'people-outline'],
+  More: ['grid', 'grid-outline'],
+};
+
+const MainTabs = () => {
+  const { colors } = useTheme();
+  const { t } = useI18n();
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 8);
+
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarHideOnKeyboard: true,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textLight,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+        },
+        tabBarItemStyle: {
+          paddingTop: 5,
+        },
+        tabBarStyle: {
+          height: 60 + bottomInset,
+          paddingTop: 4,
+          paddingBottom: bottomInset,
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+          borderTopWidth: 1,
+          elevation: 0,
+          shadowOpacity: 0,
+        },
+        tabBarIcon: ({ color, focused, size }) => {
+          const icons = TAB_ICONS[route.name];
+          return <Ionicons name={focused ? icons[0] : icons[1]} size={Math.min(size, 22)} color={color} />;
+        },
+      })}
+    >
+      <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: t('Accueil') }} />
+      <Tab.Screen name="Sales" component={SalesScreen} options={{ title: t('Ventes') }} />
+      <Tab.Screen name="Products" component={ProductsScreen} options={{ title: t('Produits') }} />
+      <Tab.Screen
+        name="Customers"
+        component={PremiumGate(CustomersScreen, 'Customers', 'CRM Clients')}
+        options={{
+          title: t('Clients'),
+          headerShown: true,
+          headerStyle: { backgroundColor: colors.surface },
+          headerTintColor: colors.text,
+          headerTitleStyle: { fontSize: 20, fontWeight: '700' },
+          headerShadowVisible: false,
+        }}
+      />
+      <Tab.Screen name="More" component={MoreScreen} options={{ title: t('Plus') }} />
+    </Tab.Navigator>
+  );
+};
+
+const MainStack = () => {
+  const { colors } = useTheme();
+  const { t } = useI18n();
+
+  return (
+    <Stack.Navigator
+      initialRouteName="Main"
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: colors.surface,
+          elevation: 0,
+          shadowOpacity: 0,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        },
+        headerTintColor: colors.text,
+        headerTitleStyle: {
+          fontSize: 17,
+          fontWeight: '700',
+        },
+        headerRight: () => <ThemePicker />,
+        cardStyle: { backgroundColor: colors.background },
+      }}
+    >
+    <Stack.Screen
+      name="Main"
+      component={MainTabs}
+      options={{ headerShown: false }}
+    />
     <Stack.Screen
       name="Onboarding"
       component={OnboardingScreen}
       options={{ headerShown: false }}
     />
     <Stack.Screen
-      name="Dashboard"
-      component={DashboardScreen}
-      options={{ title: 'Tableau de bord' }}
-    />
-    <Stack.Screen
       name="Subscription"
       component={SubscriptionScreen}
-      options={{ title: 'Mon abonnement' }}
+      options={{ title: t('Mon abonnement') }}
+    />
+    <Stack.Screen
+      name="ChangePassword"
+      component={ChangePasswordScreen}
+      options={{ title: t('Changer le mot de passe') }}
     />
     <Stack.Screen
       name="Paywall"
@@ -89,57 +184,42 @@ const MainStack = () => (
     <Stack.Screen
       name="Simulation"
       component={PremiumGate(SimulationScreen, 'Simulation', 'Simulation Business Plan')}
-      options={{ title: 'Simulation Business Plan' }}
-    />
-    <Stack.Screen
-      name="Sales"
-      component={SalesScreen}
-      options={{ title: 'Ventes' }}
+      options={{ title: t('Simulation Business Plan') }}
     />
     <Stack.Screen
       name="Expenses"
       component={ExpensesScreen}
-      options={{ title: 'Dépenses' }}
+      options={{ title: t('Dépenses') }}
     />
     <Stack.Screen
       name="Stock"
       component={PremiumGate(StockScreen, 'Stock', 'Gestion de stock')}
-      options={{ title: 'Stock' }}
-    />
-    <Stack.Screen
-      name="Products"
-      component={ProductsScreen}
-      options={{ title: 'Produits', headerShown: false }}
-    />
-    <Stack.Screen
-      name="Customers"
-      component={PremiumGate(CustomersScreen, 'Customers', 'CRM Clients')}
-      options={{ title: 'Clients CRM' }}
+      options={{ title: t('Stock') }}
     />
     <Stack.Screen
       name="Team"
       component={PremiumGate(TeamScreen, 'Team', 'Gestion d\'équipe')}
-      options={{ title: 'Équipe', headerShown: false }}
+      options={{ title: t('Équipe'), headerShown: false }}
     />
     <Stack.Screen
       name="Feedback"
       component={FeedbackScreen}
-      options={{ title: 'Feedback' }}
+      options={{ title: t('Feedback') }}
     />
     <Stack.Screen
       name="Projects"
       component={ProjectsScreen}
-      options={{ title: 'Projets', headerShown: false }}
+      options={{ title: t('Projets'), headerShown: false }}
     />
     <Stack.Screen
       name="Planning"
       component={PremiumGate(PlanningScreen, 'Planning', 'Planning')}
-      options={{ title: 'Planning', headerShown: false }}
+      options={{ title: t('Planning'), headerShown: false }}
     />
     <Stack.Screen
       name="Commissions"
       component={PremiumGate(CommissionsScreen, 'Commissions', 'Commissions')}
-      options={{ title: 'Commissions', headerShown: false }}
+      options={{ title: t('Commissions'), headerShown: false }}
     />
     <Stack.Screen
       name="Tutorial"
@@ -151,32 +231,86 @@ const MainStack = () => (
       component={CategoriesScreen}
       options={{ headerShown: false }}
     />
-  </Stack.Navigator>
-);
+    <Stack.Screen
+      name="CsvImport"
+      component={CsvImportScreen}
+      options={{ title: t('Import CSV') }}
+    />
+    </Stack.Navigator>
+  );
+};
+
+// Essai / abonnement terminé : seule la page de renouvellement reste accessible
+const LockedStack = () => {
+  const { colors } = useTheme();
+  const { t } = useI18n();
+
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.surface },
+        headerTintColor: colors.text,
+        cardStyle: { backgroundColor: colors.background },
+      }}
+    >
+      <Stack.Screen name="Locked" component={SubscriptionLockedScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Subscription" component={SubscriptionScreen} options={{ title: t('Mon abonnement') }} />
+    </Stack.Navigator>
+  );
+};
 
 const AppNavigator = () => {
   const { isAuthenticated, loading } = useAuth();
+  const { isLocked, accessChecked } = useSubscription();
+  const { colors, isDark } = useTheme();
 
-  if (loading) {
+  // On attend le premier contrôle d'accès pour ne pas afficher l'accueil d'un compte bloqué
+  if (loading || (isAuthenticated && !accessChecked)) {
     return null;
   }
 
+  const navigationTheme = {
+    ...(isDark ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(isDark ? DarkTheme.colors : DefaultTheme.colors),
+      primary: colors.primary,
+      background: colors.background,
+      card: colors.surface,
+      text: colors.text,
+      border: colors.border,
+      notification: colors.error,
+    },
+  };
+
   return (
-    <NavigationContainer>
-      {isAuthenticated ? <MainStack /> : <AuthStack />}
+    <NavigationContainer theme={navigationTheme}>
+      {!isAuthenticated ? <AuthStack /> : isLocked ? <LockedStack /> : <MainStack />}
     </NavigationContainer>
   );
 };
 
+const ThemedStatusBar = () => {
+  const { isDark } = useTheme();
+  return <StatusBar style={isDark ? 'light' : 'dark'} />;
+};
+
 export default function App() {
   return (
-    <AuthProvider>
-      <CurrencyProvider>
-        <SubscriptionProvider>
-          <StatusBar style="light" />
-          <AppNavigator />
-        </SubscriptionProvider>
-      </CurrencyProvider>
-    </AuthProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <LanguageProvider>
+        <AuthProvider>
+          <CurrencyProvider>
+            <SubscriptionProvider>
+              <IAPProvider>
+                <ThemedStatusBar />
+                <AppNavigator />
+              </IAPProvider>
+            </SubscriptionProvider>
+          </CurrencyProvider>
+        </AuthProvider>
+        </LanguageProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

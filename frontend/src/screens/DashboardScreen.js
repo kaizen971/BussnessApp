@@ -15,8 +15,9 @@ import {
   ActivityIndicator,
   Image,
   AppState,
+  TextInput,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import { Ionicons } from '@expo/vector-icons';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -28,17 +29,39 @@ import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { Card } from '../components/Card';
+import { MonthNavigator } from '../components/MonthNavigator';
 import { LoadingScreen } from '../components/LoadingScreen';
-import api, { dashboardAPI, projectsAPI, authAPI } from '../services/api';
-import { colors, gradients } from '../utils/colors';
+import api, {
+  authAPI,
+  dashboardAPI,
+  expensesAPI,
+  projectsAPI,
+  salesAPI,
+  teamPayrollAPI,
+} from '../services/api';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { getMonthBounds, MONTH_HISTORY_LIMIT, monthKey, shiftMonth, startOfMonth } from '../utils/monthPeriod';
+import { t, useLanguage, getLocale } from '../i18n';
 
 const screenWidth = Dimensions.get('window').width;
+const formatLocalDateKey = (date) => (
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+);
+
+const formatShiftDate = (dateKey) => new Date(`${dateKey}T12:00:00`).toLocaleDateString(getLocale(), {
+  weekday: 'long', day: 'numeric', month: 'long',
+});
 
 export const DashboardScreen = ({ navigation }) => {
-  const { user, logout, selectedProjectId, availableProjects, loadAvailableProjects, selectProject } = useAuth();
+  useLanguage();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { user, logout, deleteAccount, selectedProjectId, availableProjects, loadAvailableProjects, selectProject } = useAuth();
   const { format: formatPrice, currency, setProjectCurrency, availableCurrencies } = useCurrency();
   const { subscription, isPremium, canAccessScreen, refreshSubscription } = useSubscription();
   const [stats, setStats] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(startOfMonth());
+  const [monthlyOverview, setMonthlyOverview] = useState(null);
   const [currentProject, setCurrentProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -51,13 +74,24 @@ export const DashboardScreen = ({ navigation }) => {
   const [endDate, setEndDate] = useState(new Date()); // Aujourd'hui
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [employeeSchedules, setEmployeeSchedules] = useState([]);
+  const [employeeSales, setEmployeeSales] = useState([]);
+  const [employeeLoading, setEmployeeLoading] = useState(false);
+  const [employeeScheduleError, setEmployeeScheduleError] = useState(false);
+  const [employeeSalesError, setEmployeeSalesError] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const monthlyRequestId = useRef(0);
+  const employeeRequestId = useRef(0);
   const slideAnim = useRef(new Animated.Value(50)).current;
   const modalSlideAnim = useRef(new Animated.Value(0)).current;
   const exportModalSlideAnim = useRef(new Animated.Value(0)).current;
   const commerceModalSlideAnim = useRef(new Animated.Value(0)).current;
   const appState = useRef(AppState.currentState);
-  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
+  const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'responsable';
 
   // Charger les projets disponibles au montage si pas encore chargés
   useEffect(() => {
@@ -100,6 +134,7 @@ export const DashboardScreen = ({ navigation }) => {
   useEffect(() => {
     const unsubscribeFocus = navigation.addListener('focus', () => {
       refreshSubscription();
+      if (!isAdmin) loadEmployeeOverview();
     });
 
     const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
@@ -113,13 +148,21 @@ export const DashboardScreen = ({ navigation }) => {
       unsubscribeFocus();
       appStateSubscription.remove();
     };
-  }, [navigation, refreshSubscription]);
+  }, [navigation, refreshSubscription, isAdmin, selectedProjectId, user?.projectId, user?.id, user?._id]);
 
   useEffect(() => {
     if (selectedProjectId) {
       loadDashboardData();
     }
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (isAdmin) loadMonthlyOverview();
+  }, [selectedMonth, selectedProjectId, user?.projectId, isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) loadEmployeeOverview();
+  }, [selectedProjectId, user?.projectId, user?.id, user?._id, isAdmin]);
 
   const loadDashboardData = async () => {
     const projectId = selectedProjectId || user?.projectId;
@@ -130,8 +173,10 @@ export const DashboardScreen = ({ navigation }) => {
     }
 
     try {
-      const response = await dashboardAPI.getStats(projectId);
-      setStats(response.data);
+      if (isAdmin) {
+        const response = await dashboardAPI.getStats(projectId);
+        setStats(response.data);
+      }
 
       // Charger les infos du projet pour obtenir la devise
       const project = availableProjects.find(p => p._id === projectId);
@@ -142,24 +187,60 @@ export const DashboardScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Error loading dashboard:', error);
-      Alert.alert('Erreur', 'Impossible de charger les données');
+      Alert.alert(t('Erreur'), t('Impossible de charger les données'));
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
+  };
+
+  const loadEmployeeOverview = async () => {
+    const projectId = user?.projectId;
+    const employeeId = user?._id || user?.id;
+    const requestId = ++employeeRequestId.current;
+    if (!projectId || !employeeId || isAdmin) {
+      setEmployeeLoading(false);
+      return;
+    }
+
+    const today = new Date();
+    const todayKey = formatLocalDateKey(today);
+    const horizon = new Date(today);
+    horizon.setDate(horizon.getDate() + 14);
+    setEmployeeLoading(true);
+
+    const [schedulesResult, salesResult] = await Promise.allSettled([
+      api.get('/schedules', {
+        params: {
+          projectId,
+          userId: employeeId,
+          startDate: todayKey,
+          endDate: formatLocalDateKey(horizon),
+        },
+      }),
+      salesAPI.getAll(projectId, getMonthBounds(today)),
+    ]);
+
+    if (requestId !== employeeRequestId.current) return;
+
+    setEmployeeScheduleError(schedulesResult.status === 'rejected');
+    setEmployeeSalesError(salesResult.status === 'rejected');
+    setEmployeeSchedules(schedulesResult.status === 'fulfilled' ? schedulesResult.value.data?.data || [] : []);
+    setEmployeeSales(salesResult.status === 'fulfilled' ? salesResult.value.data?.data || [] : []);
+    setEmployeeLoading(false);
   };
 
   const onRefresh = () => {
     setRefreshing(true);
     refreshSubscription();
-    loadDashboardData();
+    Promise.allSettled([loadDashboardData(), ...(!isAdmin ? [loadEmployeeOverview()] : [])])
+      .finally(() => setRefreshing(false));
   };
 
   const handleChangeProfilePhoto = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission requise', 'Nous avons besoin d\'accéder à vos photos pour changer votre photo de profil.');
+        Alert.alert(t('Permission requise'), t("Nous avons besoin d'accéder à vos photos pour changer votre photo de profil."));
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -171,25 +252,48 @@ export const DashboardScreen = ({ navigation }) => {
       if (!result.canceled && result.assets[0]) {
         const response = await authAPI.updateProfilePhoto(result.assets[0].uri);
         if (response.data) {
-          Alert.alert('Succès', 'Photo de profil mise à jour !');
+          Alert.alert(t('Succès'), t('Photo de profil mise à jour !'));
           onRefresh();
         }
       }
     } catch (error) {
       console.error('Error changing profile photo:', error);
-      Alert.alert('Erreur', 'Impossible de mettre à jour la photo de profil.');
+      Alert.alert(t('Erreur'), t('Impossible de mettre à jour la photo de profil.'));
     }
   };
 
   const handleLogout = () => {
     Alert.alert(
-      'Déconnexion',
-      'Êtes-vous sûr de vouloir vous déconnecter ?',
+      t('Déconnexion'),
+      t('Êtes-vous sûr de vouloir vous déconnecter ?'),
       [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Déconnexion', onPress: logout, style: 'destructive' },
+        { text: t('Annuler'), style: 'cancel' },
+        { text: t('Déconnexion'), onPress: logout, style: 'destructive' },
       ]
     );
+  };
+
+  const handleDeleteAccountRequest = () => {
+    setSettingsModalVisible(false);
+    setTimeout(() => {
+      setDeletePassword('');
+      setDeleteModalVisible(true);
+    }, 300);
+  };
+
+  const handleDeleteAccountConfirm = async () => {
+    if (!deletePassword) {
+      Alert.alert(t('Erreur'), t('Veuillez saisir votre mot de passe pour confirmer.'));
+      return;
+    }
+    setDeleteLoading(true);
+    const result = await deleteAccount(deletePassword);
+    setDeleteLoading(false);
+    if (result.success) {
+      setDeleteModalVisible(false);
+    } else {
+      Alert.alert(t('Erreur'), result.error);
+    }
   };
 
   const openStatsModal = () => {
@@ -256,7 +360,7 @@ export const DashboardScreen = ({ navigation }) => {
     const projectId = selectedProjectId || user?.projectId;
 
     if (!projectId) {
-      Alert.alert('Erreur', 'Aucun projet sélectionné');
+      Alert.alert(t('Erreur'), t('Aucun projet sélectionné'));
       return;
     }
 
@@ -292,7 +396,7 @@ export const DashboardScreen = ({ navigation }) => {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Erreur serveur: ${response.status}`);
+        throw new Error(t('Erreur serveur: {status}', { status: response.status }));
       }
 
       const arrayBuffer = await response.arrayBuffer();
@@ -310,18 +414,18 @@ export const DashboardScreen = ({ navigation }) => {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, {
           mimeType,
-          dialogTitle: 'Exporter les données',
+          dialogTitle: t('Exporter les données'),
           UTI: uti
         });
-        Alert.alert('Succès', `Export ${label} créé avec succès !`);
+        Alert.alert(t('Succès'), t('Export {label} créé avec succès !', { label: label }));
       } else {
-        Alert.alert('Succès', `Fichier sauvegardé : ${fileUri}`);
+        Alert.alert(t('Succès'), t('Fichier sauvegardé : {fileUri}', { fileUri: fileUri }));
       }
 
       closeExportModal();
     } catch (error) {
       console.error(`Erreur export ${label}:`, error);
-      Alert.alert('Erreur', `Impossible de générer l'export ${label}. Vérifiez votre connexion et réessayez.`);
+      Alert.alert(t('Erreur'), t("Impossible de générer l'export {label}. Vérifiez votre connexion et réessayez.", { label: label }));
     } finally {
       setExportLoading(false);
     }
@@ -368,17 +472,103 @@ export const DashboardScreen = ({ navigation }) => {
 
   const QuickActionButton = ({ title, icon, color, onPress }) => (
     <TouchableOpacity style={styles.actionButton} onPress={onPress} activeOpacity={0.7}>
-      <LinearGradient
-        colors={[color + '15', color + '05']}
-        style={styles.actionGradient}
-      >
+      <View style={styles.actionGradient}>
         <View style={[styles.actionIcon, { backgroundColor: color + '25' }]}>
-          <Ionicons name={icon} size={26} color={color} />
+          <Ionicons name={icon} size={21} color={color} />
         </View>
         <Text style={styles.actionText}>{title}</Text>
-      </LinearGradient>
+        <Ionicons name="chevron-forward" size={17} color={colors.textLight} />
+      </View>
     </TouchableOpacity>
   );
+
+  const selectedMonthOffset = (
+    (new Date().getFullYear() - selectedMonth.getFullYear()) * 12
+    + new Date().getMonth()
+    - selectedMonth.getMonth()
+  );
+  const legacyMonthlyStats = stats?.monthlyData?.[
+    (stats?.monthlyData?.length || 0) - 1 - selectedMonthOffset
+  ];
+  const selectedMonthlyStats = stats?.monthlyData?.find(
+    (item) => item.key === monthKey(selectedMonth)
+  ) || legacyMonthlyStats || {
+    sales: 0,
+    expenses: 0,
+    salaries: 0,
+    commissions: 0,
+    charges: 0,
+    profit: 0,
+  };
+
+  const loadMonthlyOverview = async () => {
+    const projectId = selectedProjectId || user?.projectId;
+    if (!projectId) return;
+
+    const requestId = ++monthlyRequestId.current;
+    try {
+      setMonthlyOverview(null);
+      const bounds = getMonthBounds(selectedMonth);
+      const [salesResponse, expensesResponse, payrollResponse] = await Promise.all([
+        salesAPI.getAll(projectId, bounds),
+        expensesAPI.getAll(projectId, bounds),
+        teamPayrollAPI.getPayroll(
+          projectId,
+          selectedMonth.getMonth() + 1,
+          selectedMonth.getFullYear()
+        ),
+      ]);
+      const sales = (salesResponse.data?.data || []).filter(
+        (sale) => sale.date >= bounds.startDate && sale.date < bounds.endDate
+      );
+      const expenses = (expensesResponse.data || []).filter(
+        (expense) => expense.date >= bounds.startDate && expense.date < bounds.endDate
+      );
+      const salesTotal = sales.reduce((sum, sale) => sum + (sale.amount || 0), 0);
+      const expensesTotal = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+      const salaries = payrollResponse.data?.totals?.totalSalary || 0;
+      const commissions = payrollResponse.data?.totals?.totalCommissions || 0;
+      const charges = expensesTotal + salaries + commissions;
+
+      if (requestId === monthlyRequestId.current) {
+        setMonthlyOverview({
+          sales: salesTotal,
+          expenses: expensesTotal,
+          salaries,
+          commissions,
+          charges,
+          profit: salesTotal - charges,
+        });
+      }
+    } catch (error) {
+      console.error('Error loading monthly overview:', error);
+      if (requestId === monthlyRequestId.current) setMonthlyOverview(null);
+    }
+  };
+
+  const displayedMonthlyStats = monthlyOverview || selectedMonthlyStats;
+  const selectedMonthlyCharges = displayedMonthlyStats.charges ?? (
+    (displayedMonthlyStats.expenses || 0)
+    + (displayedMonthlyStats.salaries || 0)
+    + (displayedMonthlyStats.commissions || 0)
+  );
+  const chartMonthlyData = stats?.monthlyData?.slice(-6) || [];
+  const now = new Date();
+  const todayKey = formatLocalDateKey(now);
+  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const employeeId = user?._id || user?.id;
+  const ownSales = employeeSales.filter((sale) =>
+    String(sale.employeeId?._id || sale.employeeId) === String(employeeId)
+  );
+  const todaySales = ownSales.filter((sale) => formatLocalDateKey(new Date(sale.date)) === todayKey);
+  const nextShifts = employeeSchedules
+    .filter((schedule) => {
+      const shiftDay = String(schedule.date).slice(0, 10);
+      return schedule.status === 'scheduled'
+        && (shiftDay > todayKey || (shiftDay === todayKey && schedule.endTime > currentTime));
+    })
+    .sort((left, right) => `${left.date}${left.startTime}`.localeCompare(`${right.date}${right.startTime}`))
+    .slice(0, 2);
 
   if (loading) {
     return <LoadingScreen />;
@@ -392,12 +582,7 @@ export const DashboardScreen = ({ navigation }) => {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
         <Animated.View style={[styles.header, { transform: [{ translateY: slideAnim }] }]}>
-          <LinearGradient
-            colors={gradients.gold}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.headerGradient}
-          >
+          <View style={styles.headerGradient}>
             <View style={styles.headerContent}>
               <TouchableOpacity style={styles.avatarContainer} onPress={handleChangeProfilePhoto} activeOpacity={0.8}>
                 {user?.photo ? (
@@ -412,30 +597,28 @@ export const DashboardScreen = ({ navigation }) => {
                 </View>
               </TouchableOpacity>
               <View style={styles.headerInfo}>
-                <Text style={styles.greeting}>Bonjour 👋</Text>
+                <Text style={styles.greeting}>{t('Bonjour')}</Text>
                 <Text style={styles.userName}>{user?.fullName || user?.username}</Text>
                 <View style={styles.roleContainer}>
-                  <Ionicons name="shield-checkmark" size={14} color={colors.primary} />
                   <Text style={styles.userRole}>
-                    {user?.role === 'admin' ? 'Administrateur' : user?.role === 'manager' ? 'Responsable' : 'Salarié'}
+                    {user?.role === 'admin' ? t('Administrateur') : isAdmin ? t('Responsable') : t('Salarié')}
                   </Text>
                 </View>
               </View>
             </View>
             <View style={styles.headerActions}>
-
               <TouchableOpacity onPress={() => navigation.navigate('Projects')} style={styles.projectButton}>
                 <View style={styles.projectIconContainer}>
-                  <Ionicons name="briefcase-outline" size={20} color={colors.background} />
+                  <Ionicons name="briefcase-outline" size={20} color={colors.text} />
                 </View>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-                <View style={styles.logoutIconContainer}>
-                  <Ionicons name="log-out-outline" size={22} color={colors.error} />
+              <TouchableOpacity onPress={() => setSettingsModalVisible(true)} style={styles.projectButton}>
+                <View style={styles.projectIconContainer}>
+                  <Ionicons name="settings-outline" size={20} color={colors.text} />
                 </View>
               </TouchableOpacity>
             </View>
-          </LinearGradient>
+          </View>
         </Animated.View>
 
         {selectedProjectId && (
@@ -443,7 +626,7 @@ export const DashboardScreen = ({ navigation }) => {
             <View style={styles.projectInfoContent}>
               <Ionicons name="briefcase" size={20} color={colors.primary} />
               <Text style={styles.projectInfoText}>
-                Projet: {availableProjects.find(p => p._id === selectedProjectId)?.name || currentProject?.name || 'Chargement...'}
+                {t('Projet:')}{' '}{availableProjects.find(p => p._id === selectedProjectId)?.name || currentProject?.name || t('Chargement...')}
               </Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -461,24 +644,77 @@ export const DashboardScreen = ({ navigation }) => {
         )}
 
         {stats && isAdmin && (
+          <Card style={styles.monthlyOverviewCard}>
+            <View style={styles.monthlyOverviewHeader}>
+              <View>
+                <Text style={styles.monthlyEyebrow}>{t('Activité mensuelle')}</Text>
+                <Text style={styles.monthlyTitle}>{t('Situation du mois')}</Text>
+              </View>
+              <View style={[styles.monthlyStatus, {
+                backgroundColor: displayedMonthlyStats.profit >= 0 ? colors.success + '18' : colors.error + '18',
+              }]}>
+                <Ionicons
+                  name={displayedMonthlyStats.profit >= 0 ? 'trending-up' : 'trending-down'}
+                  size={17}
+                  color={displayedMonthlyStats.profit >= 0 ? colors.success : colors.error}
+                />
+              </View>
+            </View>
+
+            <MonthNavigator
+              value={selectedMonth}
+              onChange={setSelectedMonth}
+              minimumDate={shiftMonth(new Date(), -MONTH_HISTORY_LIMIT)}
+              style={styles.monthlyNavigator}
+            />
+
+            <View style={styles.monthlyMetrics}>
+              <View style={styles.monthlyMetric}>
+                <Text style={styles.monthlyMetricLabel}>{t('Ventes')}</Text>
+                <Text style={[styles.monthlyMetricValue, { color: colors.success }]} numberOfLines={1} adjustsFontSizeToFit>
+                  {formatPrice(displayedMonthlyStats.sales || 0)}
+                </Text>
+              </View>
+              <View style={styles.monthlyMetricDivider} />
+              <View style={styles.monthlyMetric}>
+                <Text style={styles.monthlyMetricLabel}>{t('Charges')}</Text>
+                <Text style={[styles.monthlyMetricValue, { color: colors.error }]} numberOfLines={1} adjustsFontSizeToFit>
+                  {formatPrice(selectedMonthlyCharges)}
+                </Text>
+              </View>
+              <View style={styles.monthlyMetricDivider} />
+              <View style={styles.monthlyMetric}>
+                <Text style={styles.monthlyMetricLabel}>{t('Bénéfice estimé')}</Text>
+                <Text
+                  style={[styles.monthlyMetricValue, {
+                    color: displayedMonthlyStats.profit >= 0 ? colors.success : colors.error,
+                  }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
+                  {formatPrice(displayedMonthlyStats.profit || 0)}
+                </Text>
+              </View>
+            </View>
+          </Card>
+        )}
+
+        {stats && isAdmin && (
           <TouchableOpacity style={styles.statsButton} onPress={openStatsModal} activeOpacity={0.8}>
-            <LinearGradient
-              colors={[colors.primary, colors.accent]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.statsButtonGradient}
-            >
+            <View style={styles.statsButtonGradient}>
               <View style={styles.statsButtonContent}>
                 <View style={styles.statsButtonLeft}>
-                  <Ionicons name="stats-chart" size={28} color={colors.background} />
+                  <View style={styles.statsButtonIcon}>
+                    <Ionicons name="stats-chart" size={21} color={colors.primary} />
+                  </View>
                   <View style={styles.statsButtonTextContainer}>
-                    <Text style={styles.statsButtonTitle}>Statistiques détaillées</Text>
-                    <Text style={styles.statsButtonSubtitle}>Voir toutes les analyses</Text>
+                    <Text style={styles.statsButtonTitle}>{t('Statistiques détaillées')}</Text>
+                    <Text style={styles.statsButtonSubtitle}>{t('Voir toutes les analyses')}</Text>
                   </View>
                 </View>
-                <Ionicons name="chevron-up" size={24} color={colors.background} />
+                <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
               </View>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
         )}
 
@@ -499,12 +735,12 @@ export const DashboardScreen = ({ navigation }) => {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>
-                  {isPremium ? `Plan ${subscription.planLabel || 'Premium'}` : 'Passer au Premium'}
+                  {isPremium ? t('Plan {value}', { value: subscription.planLabel || t('Premium') }) : t('Passer au Premium')}
                 </Text>
                 <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 2 }}>
                   {isPremium
-                    ? (subscription.daysLeft !== null ? `${subscription.daysLeft}j restants · ${subscription.maxProjects} business` : 'Abonnement actif')
-                    : 'Débloquez toutes les fonctionnalités'}
+                    ? (subscription.daysLeft !== null ? t('{daysLeft}j restants · {maxProjects} business', { daysLeft: subscription.daysLeft, maxProjects: subscription.maxProjects }) : t('Abonnement actif'))
+                    : t('Débloquez toutes les fonctionnalités')}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.7)" />
@@ -512,17 +748,85 @@ export const DashboardScreen = ({ navigation }) => {
           </TouchableOpacity>
         )}
 
-        <Text style={styles.sectionTitle}>Gestion</Text>
+        {!isAdmin && (
+          <>
+            <Card style={styles.employeeOverviewCard}>
+              <View style={styles.employeeCardHeader}>
+                <View style={[styles.employeeCardIcon, { backgroundColor: colors.primary + '15' }]}>
+                  <Ionicons name="calendar-outline" size={21} color={colors.primary} />
+                </View>
+                <View style={styles.employeeCardHeading}>
+                  <Text style={styles.employeeEyebrow}>{t('Mon planning')}</Text>
+                  <Text style={styles.employeeCardTitle}>{t('Mes prochains services')}</Text>
+                </View>
+                <TouchableOpacity onPress={() => navigation.navigate('Planning')} accessibilityLabel={t('Voir mon planning')}>
+                  <Ionicons name="arrow-forward" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+              {employeeLoading ? (
+                <ActivityIndicator style={styles.employeeLoading} color={colors.primary} />
+              ) : employeeScheduleError ? (
+                <Text style={styles.employeeEmpty}>{t("Planning indisponible. Réessayez en actualisant l'accueil.")}</Text>
+              ) : nextShifts.length ? nextShifts.map((schedule) => (
+                <View key={schedule._id} style={styles.employeeShiftRow}>
+                  <View style={styles.employeeShiftDot} />
+                  <Text style={styles.employeeShiftDate} numberOfLines={1}>
+                    {formatShiftDate(String(schedule.date).slice(0, 10))}
+                  </Text>
+                  <Text style={styles.employeeShiftTime}>
+                    {schedule.startTime?.slice(0, 5)} – {schedule.endTime?.slice(0, 5)}
+                  </Text>
+                </View>
+              )) : (
+                <Text style={styles.employeeEmpty}>{t('Aucun service prévu dans les 14 prochains jours.')}</Text>
+              )}
+            </Card>
+
+            <Card style={styles.employeeOverviewCard}>
+              <View style={styles.employeeCardHeader}>
+                <View style={[styles.employeeCardIcon, { backgroundColor: colors.success + '15' }]}>
+                  <Ionicons name="cart-outline" size={21} color={colors.success} />
+                </View>
+                <View style={styles.employeeCardHeading}>
+                  <Text style={styles.employeeEyebrow}>{t('Mon activité')}</Text>
+                  <Text style={styles.employeeCardTitle}>{t('Mes ventes')}</Text>
+                </View>
+                <TouchableOpacity onPress={() => navigation.navigate('Sales')} accessibilityLabel={t('Voir mes ventes')}>
+                  <Ionicons name="arrow-forward" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+              {employeeLoading ? (
+                <ActivityIndicator style={styles.employeeLoading} color={colors.primary} />
+              ) : employeeSalesError ? (
+                <Text style={styles.employeeEmpty}>{t("Ventes indisponibles. Réessayez en actualisant l'accueil.")}</Text>
+              ) : (
+                <View style={styles.employeeSalesMetrics}>
+                  <View style={styles.employeeSalesMetric}>
+                    <Text style={styles.employeeMetricLabel}>{t("Aujourd'hui")}</Text>
+                    <Text style={styles.employeeMetricCount}>{todaySales.length > 1 ? t('{count} ventes', { count: todaySales.length }) : t('{count} vente', { count: todaySales.length })}</Text>
+                  </View>
+                  <View style={styles.employeeMetricDivider} />
+                  <View style={styles.employeeSalesMetric}>
+                    <Text style={styles.employeeMetricLabel}>{t('Ce mois')}</Text>
+                    <Text style={styles.employeeMetricCount}>{ownSales.length > 1 ? t('{count} ventes', { count: ownSales.length }) : t('{count} vente', { count: ownSales.length })}</Text>
+                  </View>
+                </View>
+              )}
+            </Card>
+          </>
+        )}
+
+        <Text style={styles.sectionTitle}>{isAdmin ? t('Raccourcis') : t('Accès rapides')}</Text>
         <View style={styles.actionsGrid}>
-          <QuickActionButton
-            title="Ventes"
-            icon="cart-outline"
-            color={colors.success}
-            onPress={() => navigation.navigate('Sales')}
-          />
+          {!isAdmin && <>
+            <QuickActionButton title={t('Ventes')} icon="cart-outline" color={colors.success} onPress={() => navigation.navigate('Sales')} />
+            <QuickActionButton title={t('Planning')} icon="calendar-outline" color={colors.primary} onPress={() => navigation.navigate('Planning')} />
+            <QuickActionButton title={t('Commissions')} icon="cash-outline" color={colors.warning} onPress={() => navigation.navigate('Commissions')} />
+            <QuickActionButton title={t('Produits')} icon="pricetag-outline" color={colors.info} onPress={() => navigation.navigate('Products')} />
+          </>}
           {isAdmin && (
             <QuickActionButton
-              title="Dépenses"
+              title={t('Dépenses')}
               icon="wallet-outline"
               color={colors.error}
               onPress={() => navigation.navigate('Expenses')}
@@ -530,44 +834,28 @@ export const DashboardScreen = ({ navigation }) => {
           )}
           {isAdmin && (
             <QuickActionButton
-              title="Stock"
+              title={t('Stock')}
               icon="cube-outline"
               color={colors.info}
               onPress={() => navigation.navigate('Stock')}
             />
           )}
-          {isAdmin && (
-            <QuickActionButton
-              title="Clients"
-              icon="people-outline"
-              color={colors.accent}
-              onPress={() => navigation.navigate('Customers')}
-            />
-          )}
-          {isAdmin && (
-            <QuickActionButton
-              title="Produits"
-              icon="pricetag-outline"
-              color={colors.warning}
-              onPress={() => navigation.navigate('Products')}
-            />
-          )}
           {isAdmin && <QuickActionButton
-            title="Équipe"
+            title={t('Équipe')}
             icon="people"
             color={colors.info}
             onPress={() => navigation.navigate('Team')}
           />}
           {isAdmin && (
             <QuickActionButton
-              title="Catégories"
+              title={t('Catégories')}
               icon="grid-outline"
               color={colors.warning}
               onPress={() => navigation.navigate('Categories')}
             />
           )}
           <QuickActionButton
-            title="Commerce"
+            title={t('Commerce')}
             icon="business-outline"
             color={colors.primary}
             onPress={openCommerceModal}
@@ -607,7 +895,7 @@ export const DashboardScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>💼 Outils Commerce</Text>
+              <Text style={styles.modalTitle}>{t('💼 Outils Commerce')}</Text>
               <TouchableOpacity onPress={closeCommerceModal} style={styles.closeButton}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -616,7 +904,7 @@ export const DashboardScreen = ({ navigation }) => {
             <View style={styles.modalContent}>
               <View style={styles.actionsGrid}>
                 {isAdmin && <QuickActionButton
-                  title="Simulation"
+                  title={t('Simulation')}
                   icon="calculator-outline"
                   color={colors.primary}
                   onPress={() => {
@@ -625,7 +913,7 @@ export const DashboardScreen = ({ navigation }) => {
                   }}
                 />}
                 <QuickActionButton
-                  title="Planning"
+                  title={t('Planning')}
                   icon="calendar"
                   color={colors.primary}
                   onPress={() => {
@@ -634,7 +922,7 @@ export const DashboardScreen = ({ navigation }) => {
                   }}
                 />
                 <QuickActionButton
-                  title="Commissions"
+                  title={t('Commissions')}
                   icon="cash"
                   color={colors.success}
                   onPress={() => {
@@ -643,7 +931,7 @@ export const DashboardScreen = ({ navigation }) => {
                   }}
                 />
                 <QuickActionButton
-                  title="Feedback"
+                  title={t('Feedback')}
                   icon="chatbubble-outline"
                   color={colors.primary}
                   onPress={() => {
@@ -652,7 +940,7 @@ export const DashboardScreen = ({ navigation }) => {
                   }}
                 />
                 {isAdmin && <QuickActionButton
-                  title="Exporter"
+                  title={t('Exporter')}
                   icon="cloud-download-outline"
                   color={colors.accent}
                   onPress={() => {
@@ -698,7 +986,7 @@ export const DashboardScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>📊 Statistiques complètes</Text>
+              <Text style={styles.modalTitle}>{t('📊 Statistiques complètes')}</Text>
               <TouchableOpacity onPress={closeStatsModal} style={styles.closeButton}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -712,16 +1000,16 @@ export const DashboardScreen = ({ navigation }) => {
                 <>
                   <View style={styles.statsRow}>
                     <StatCard
-                      title="Ventes totales"
+                      title={t('Ventes totales')}
                       value={formatPrice(stats.totalSales || 0)}
                       subtitle={`${stats.salesCount || 0} ventes`}
                       icon="cash"
                       color={colors.success}
                     />
                     <StatCard
-                      title="Dépenses"
+                      title={t('Dépenses')}
                       value={formatPrice(stats.totalExpenses || 0)}
-                      subtitle={`${stats.expensesCount || 0} dépenses`}
+                      subtitle={t('{value} dépenses', { value: stats.expensesCount || 0 })}
                       icon="trending-down"
                       color={colors.error}
                     />
@@ -729,14 +1017,14 @@ export const DashboardScreen = ({ navigation }) => {
 
                   <View style={styles.statsRow}>
                     <StatCard
-                      title="Masse salariale"
+                      title={t('Masse salariale')}
                       value={formatPrice((stats.totalSalaries || 0) + (stats.totalCommissions || 0))}
-                      subtitle={`Salaires + Commissions`}
+                      subtitle={t('Salaires + Commissions')}
                       icon="people"
                       color={colors.warning}
                     />
                     <StatCard
-                      title="Valeur Stock"
+                      title={t('Valeur Stock')}
                       value={formatPrice(stats.totalStock || 0)}
                       subtitle={`${stats.stockItems || 0} articles`}
                       icon="cube"
@@ -746,9 +1034,9 @@ export const DashboardScreen = ({ navigation }) => {
 
                   <View style={styles.statsRow}>
                     <StatCard
-                      title="Bénéfice Net"
+                      title={t('Bénéfice Net')}
                       value={formatPrice(stats.netProfit || 0)}
-                      subtitle="Ventes - Dépenses - Salaires"
+                      subtitle={t('Ventes - Dépenses - Salaires')}
                       icon="analytics"
                       color={stats.netProfit >= 0 ? colors.success : colors.error}
                     />
@@ -756,7 +1044,7 @@ export const DashboardScreen = ({ navigation }) => {
 
                   <Card style={styles.summaryCard}>
                     <View style={styles.summaryHeader}>
-                      <Text style={styles.summaryTitle}>Aperçu détaillé</Text>
+                      <Text style={styles.summaryTitle}>{t('Aperçu détaillé')}</Text>
                       <View style={styles.summaryIcon}>
                         <Ionicons name="bar-chart" size={24} color={colors.primary} />
                       </View>
@@ -765,35 +1053,35 @@ export const DashboardScreen = ({ navigation }) => {
                     <View style={styles.summaryRow}>
                       <View style={styles.summaryRowLeft}>
                         <View style={[styles.summaryDot, { backgroundColor: colors.success }]} />
-                        <Text style={styles.summaryLabel}>Nombre de ventes</Text>
+                        <Text style={styles.summaryLabel}>{t('Nombre de ventes')}</Text>
                       </View>
                       <Text style={styles.summaryValue}>{stats.salesCount || 0}</Text>
                     </View>
                     <View style={styles.summaryRow}>
                       <View style={styles.summaryRowLeft}>
                         <View style={[styles.summaryDot, { backgroundColor: colors.error }]} />
-                        <Text style={styles.summaryLabel}>Nombre de dépenses</Text>
+                        <Text style={styles.summaryLabel}>{t('Nombre de dépenses')}</Text>
                       </View>
                       <Text style={styles.summaryValue}>{stats.expensesCount || 0}</Text>
                     </View>
                     <View style={styles.summaryRow}>
                       <View style={styles.summaryRowLeft}>
                         <View style={[styles.summaryDot, { backgroundColor: colors.warning }]} />
-                        <Text style={styles.summaryLabel}>Salaires</Text>
+                        <Text style={styles.summaryLabel}>{t('Salaires')}</Text>
                       </View>
                       <Text style={styles.summaryValue}>{formatPrice(stats.totalSalaries || 0)}</Text>
                     </View>
                     <View style={styles.summaryRow}>
                       <View style={styles.summaryRowLeft}>
                         <View style={[styles.summaryDot, { backgroundColor: colors.accent }]} />
-                        <Text style={styles.summaryLabel}>Commissions</Text>
+                        <Text style={styles.summaryLabel}>{t('Commissions')}</Text>
                       </View>
                       <Text style={styles.summaryValue}>{formatPrice(stats.totalCommissions || 0)}</Text>
                     </View>
                     <View style={styles.summaryRow}>
                       <View style={styles.summaryRowLeft}>
                         <View style={[styles.summaryDot, { backgroundColor: colors.primary }]} />
-                        <Text style={styles.summaryLabel}>Articles en stock</Text>
+                        <Text style={styles.summaryLabel}>{t('Articles en stock')}</Text>
                       </View>
                       <Text style={styles.summaryValue}>{stats.stockItems || 0}</Text>
                     </View>
@@ -801,25 +1089,25 @@ export const DashboardScreen = ({ navigation }) => {
 
                   {stats.monthlyData && stats.monthlyData.length > 0 && (
                     <>
-                      <Text style={styles.sectionTitleModal}>Évolution mensuelle</Text>
+                      <Text style={styles.sectionTitleModal}>{t('Évolution mensuelle')}</Text>
                       <Card style={styles.chartCard}>
-                        <Text style={styles.chartTitle}>Ventes vs Dépenses (6 derniers mois)</Text>
+                        <Text style={styles.chartTitle}>{t('Ventes vs Charges (6 derniers mois)')}</Text>
                         <LineChart
                           data={{
-                            labels: stats.monthlyData.map(d => d.month.split(' ')[0]),
+                            labels: chartMonthlyData.map(d => d.month.split(' ')[0]),
                             datasets: [
                               {
-                                data: stats.monthlyData.map(d => d.sales),
+                                data: chartMonthlyData.map(d => d.sales),
                                 color: (opacity = 1) => colors.success,
                                 strokeWidth: 3
                               },
                               {
-                                data: stats.monthlyData.map(d => d.expenses),
+                                data: chartMonthlyData.map(d => d.charges ?? (d.expenses + d.salaries + d.commissions)),
                                 color: (opacity = 1) => colors.error,
                                 strokeWidth: 3
                               }
                             ],
-                            legend: ['Ventes', 'Dépenses']
+                            legend: [t('Ventes'), t('Charges')]
                           }}
                           width={screenWidth - 64}
                           height={220}
@@ -843,12 +1131,12 @@ export const DashboardScreen = ({ navigation }) => {
                       </Card>
 
                       <Card style={styles.chartCard}>
-                        <Text style={styles.chartTitle}>Bénéfices mensuels</Text>
+                        <Text style={styles.chartTitle}>{t('Bénéfices mensuels')}</Text>
                         <BarChart
                           data={{
-                            labels: stats.monthlyData.map(d => d.month.split(' ')[0]),
+                            labels: chartMonthlyData.map(d => d.month.split(' ')[0]),
                             datasets: [{
-                              data: stats.monthlyData.map(d => d.profit)
+                              data: chartMonthlyData.map(d => d.profit)
                             }]
                           }}
                           width={screenWidth - 64}
@@ -872,32 +1160,32 @@ export const DashboardScreen = ({ navigation }) => {
 
                   {stats.expensesByCategory && (
                     <Card style={styles.chartCard}>
-                      <Text style={styles.chartTitle}>Répartition des charges</Text>
+                      <Text style={styles.chartTitle}>{t('Répartition des charges')}</Text>
                       <PieChart
                         data={[
                           {
-                            name: 'Achats',
+                            name: t('Achats'),
                             population: stats.expensesByCategory.purchase || 0,
                             color: colors.primary,
                             legendFontColor: colors.textSecondary,
                             legendFontSize: 13
                           },
                           {
-                            name: 'Variables',
+                            name: t('Variables'),
                             population: stats.expensesByCategory.variable || 0,
                             color: colors.accent,
                             legendFontColor: colors.textSecondary,
                             legendFontSize: 13
                           },
                           {
-                            name: 'Fixes',
+                            name: t('Fixes'),
                             population: stats.expensesByCategory.fixed || 0,
                             color: colors.error,
                             legendFontColor: colors.textSecondary,
                             legendFontSize: 13
                           },
                           {
-                            name: 'Salaires',
+                            name: t('Salaires'),
                             population: stats.expensesByCategory.salaries || 0,
                             color: colors.warning,
                             legendFontColor: colors.textSecondary,
@@ -920,7 +1208,7 @@ export const DashboardScreen = ({ navigation }) => {
                   {stats.topProducts && stats.topProducts.length > 0 && (
                     <Card style={styles.summaryCard}>
                       <View style={styles.summaryHeader}>
-                        <Text style={styles.summaryTitle}>Top 5 Produits</Text>
+                        <Text style={styles.summaryTitle}>{t('Top 5 Produits')}</Text>
                         <View style={styles.summaryIcon}>
                           <Ionicons name="trophy" size={24} color={colors.accent} />
                         </View>
@@ -934,7 +1222,7 @@ export const DashboardScreen = ({ navigation }) => {
                             </View>
                             <View style={styles.productInfo}>
                               <Text style={styles.productName} numberOfLines={1}>{product.productName}</Text>
-                              <Text style={styles.productQuantity}>{product.quantity} ventes</Text>
+                              <Text style={styles.productQuantity}>{t('{count} ventes', { count: product.quantity })}</Text>
                             </View>
                           </View>
                           <Text style={styles.productRevenue} numberOfLines={1}>{formatPrice(product.revenue)}</Text>
@@ -982,7 +1270,7 @@ export const DashboardScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>📊 Export des données</Text>
+              <Text style={styles.modalTitle}>{t('📊 Export des données')}</Text>
               <TouchableOpacity onPress={closeExportModal} style={styles.closeButton}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -993,19 +1281,19 @@ export const DashboardScreen = ({ navigation }) => {
               showsVerticalScrollIndicator={false}
             >
               <Text style={styles.exportDescription}>
-                Sélectionnez la période et le format d'export (Excel ou PDF) pour toutes les données : ventes, dépenses, stocks, salaires, employés, commissions, bilan et clients.
+                {t("Sélectionnez la période et le format d'export (Excel ou PDF) pour toutes les données : ventes, dépenses, stocks, salaires, employés, commissions, bilan et clients.")}
               </Text>
 
               <Card style={styles.dateCard}>
                 <View style={styles.dateRow}>
-                  <Text style={styles.dateLabel}>Date de début :</Text>
+                  <Text style={styles.dateLabel}>{t('Date de début :')}</Text>
                   <TouchableOpacity
                     style={styles.dateButton}
                     onPress={() => setShowStartDatePicker(true)}
                   >
                     <Ionicons name="calendar-outline" size={20} color={colors.primary} />
                     <Text style={styles.dateText}>
-                      {startDate.toLocaleDateString('fr-FR')}
+                      {startDate.toLocaleDateString(getLocale())}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1023,14 +1311,14 @@ export const DashboardScreen = ({ navigation }) => {
 
               <Card style={styles.dateCard}>
                 <View style={styles.dateRow}>
-                  <Text style={styles.dateLabel}>Date de fin :</Text>
+                  <Text style={styles.dateLabel}>{t('Date de fin :')}</Text>
                   <TouchableOpacity
                     style={styles.dateButton}
                     onPress={() => setShowEndDatePicker(true)}
                   >
                     <Ionicons name="calendar-outline" size={20} color={colors.primary} />
                     <Text style={styles.dateText}>
-                      {endDate.toLocaleDateString('fr-FR')}
+                      {endDate.toLocaleDateString(getLocale())}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1050,41 +1338,41 @@ export const DashboardScreen = ({ navigation }) => {
               <Card style={styles.infoCard}>
                 <View style={styles.infoHeader}>
                   <Ionicons name="information-circle" size={24} color={colors.info} />
-                  <Text style={styles.infoTitle}>Contenu de l'export</Text>
+                  <Text style={styles.infoTitle}>{t("Contenu de l'export")}</Text>
                 </View>
-                <Text style={styles.infoText}>Le fichier Excel contiendra les feuilles suivantes :</Text>
+                <Text style={styles.infoText}>{t('Le fichier Excel contiendra les feuilles suivantes :')}</Text>
                 <View style={styles.infoList}>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Ventes</Text>
+                    <Text style={styles.infoItemText}>{t('Ventes')}</Text>
                   </View>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Dépenses</Text>
+                    <Text style={styles.infoItemText}>{t('Dépenses')}</Text>
                   </View>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Stocks</Text>
+                    <Text style={styles.infoItemText}>{t('Stocks')}</Text>
                   </View>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Employés</Text>
+                    <Text style={styles.infoItemText}>{t('Employés')}</Text>
                   </View>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Commissions</Text>
+                    <Text style={styles.infoItemText}>{t('Commissions')}</Text>
                   </View>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Salaires</Text>
+                    <Text style={styles.infoItemText}>{t('Salaires')}</Text>
                   </View>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Clients</Text>
+                    <Text style={styles.infoItemText}>{t('Clients')}</Text>
                   </View>
                   <View style={styles.infoItem}>
                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                    <Text style={styles.infoItemText}>Bilan</Text>
+                    <Text style={styles.infoItemText}>{t('Bilan')}</Text>
                   </View>
                 </View>
               </Card>
@@ -1105,12 +1393,12 @@ export const DashboardScreen = ({ navigation }) => {
                     {exportLoading ? (
                       <>
                         <ActivityIndicator color={colors.background} size="small" />
-                        <Text style={styles.exportButtonText}>Export...</Text>
+                        <Text style={styles.exportButtonText}>{t('Export...')}</Text>
                       </>
                     ) : (
                       <>
                         <Ionicons name="grid-outline" size={22} color={colors.background} />
-                        <Text style={styles.exportButtonText}>Excel</Text>
+                        <Text style={styles.exportButtonText}>{t('Excel')}</Text>
                       </>
                     )}
                   </LinearGradient>
@@ -1131,7 +1419,7 @@ export const DashboardScreen = ({ navigation }) => {
                     {exportLoading ? (
                       <>
                         <ActivityIndicator color={colors.background} size="small" />
-                        <Text style={styles.exportButtonText}>Export...</Text>
+                        <Text style={styles.exportButtonText}>{t('Export...')}</Text>
                       </>
                     ) : (
                       <>
@@ -1144,6 +1432,138 @@ export const DashboardScreen = ({ navigation }) => {
               </View>
             </ScrollView>
           </Animated.View>
+        </View>
+      </Modal>
+
+      {/* Modal Paramètres */}
+      <Modal
+        visible={settingsModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSettingsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setSettingsModalVisible(false)}
+          />
+          <View style={styles.currencyModalContainer}>
+            <View style={styles.currencyModalHeader}>
+              <Text style={styles.currencyModalTitle}>{t('Paramètres')}</Text>
+              <TouchableOpacity onPress={() => setSettingsModalVisible(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.settingsOptionsContainer}>
+              <TouchableOpacity
+                style={styles.settingsOption}
+                onPress={() => {
+                  setSettingsModalVisible(false);
+                  navigation.navigate('Subscription');
+                }}
+              >
+                <View style={[styles.settingsOptionIcon, { backgroundColor: colors.primary + '15' }]}>
+                  <Ionicons name="diamond-outline" size={22} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.settingsOptionTitle}>{t('Mon abonnement')}</Text>
+                  <Text style={styles.settingsOptionDesc}>{t('Gérer votre plan')}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.settingsOption}
+                onPress={() => {
+                  setSettingsModalVisible(false);
+                  handleLogout();
+                }}
+              >
+                <View style={[styles.settingsOptionIcon, { backgroundColor: colors.warning + '15' }]}>
+                  <Ionicons name="log-out-outline" size={22} color={colors.warning} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.settingsOptionTitle}>{t('Déconnexion')}</Text>
+                  <Text style={styles.settingsOptionDesc}>{t("Se déconnecter de l'application")}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
+              </TouchableOpacity>
+
+              <View style={styles.settingsDivider} />
+
+              <TouchableOpacity
+                style={styles.settingsOption}
+                onPress={handleDeleteAccountRequest}
+              >
+                <View style={[styles.settingsOptionIcon, { backgroundColor: colors.error + '15' }]}>
+                  <Ionicons name="trash-outline" size={22} color={colors.error} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingsOptionTitle, { color: colors.error }]}>{t('Supprimer mon compte')}</Text>
+                  <Text style={styles.settingsOptionDesc}>{t('Supprimer votre profil et votre accès')}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.error} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Suppression de compte */}
+      <Modal
+        visible={deleteModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setDeleteModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => !deleteLoading && setDeleteModalVisible(false)}
+          />
+          <View style={styles.deleteModalContainer}>
+            <View style={styles.deleteModalIconWrap}>
+              <Ionicons name="warning" size={40} color={colors.error} />
+            </View>
+            <Text style={styles.deleteModalTitle}>{t('Supprimer votre compte ?')}</Text>
+            <Text style={styles.deleteModalDesc}>
+              {t("Votre compte et votre profil seront supprimés définitivement. Les projets, ventes, plannings et autres données de l'entreprise seront conservés.")}
+            </Text>
+
+            <Text style={styles.deleteModalLabel}>{t('Saisissez votre mot de passe pour confirmer :')}</Text>
+            <TextInput
+              style={styles.deleteModalInput}
+              placeholder={t('Votre mot de passe')}
+              placeholderTextColor={colors.textLight}
+              secureTextEntry
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              editable={!deleteLoading}
+            />
+
+            <TouchableOpacity
+              style={[styles.deleteConfirmBtn, deleteLoading && { opacity: 0.6 }]}
+              onPress={handleDeleteAccountConfirm}
+              disabled={deleteLoading}
+            >
+              {deleteLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.deleteConfirmBtnText}>{t('Supprimer définitivement')}</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.deleteCancelBtn}
+              onPress={() => setDeleteModalVisible(false)}
+              disabled={deleteLoading}
+            >
+              <Text style={styles.deleteCancelBtnText}>{t('Annuler')}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
 
@@ -1162,7 +1582,7 @@ export const DashboardScreen = ({ navigation }) => {
           />
           <View style={styles.currencyModalContainer}>
             <View style={styles.currencyModalHeader}>
-              <Text style={styles.currencyModalTitle}>💱 Choisir la devise</Text>
+              <Text style={styles.currencyModalTitle}>{t('💱 Choisir la devise')}</Text>
               <TouchableOpacity onPress={() => setCurrencyModalVisible(false)}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -1179,7 +1599,7 @@ export const DashboardScreen = ({ navigation }) => {
                     try {
                       const projectId = selectedProjectId || user?.projectId;
                       if (!projectId) {
-                        Alert.alert('Erreur', 'Aucun projet sélectionné');
+                        Alert.alert(t('Erreur'), t('Aucun projet sélectionné'));
                         return;
                       }
 
@@ -1202,22 +1622,22 @@ export const DashboardScreen = ({ navigation }) => {
 
                       setCurrencyModalVisible(false);
                       Alert.alert(
-                        'Devise changée',
-                        `La devise du projet a été changée en ${curr.name} (${curr.symbol}). Toute l'équipe verra cette devise.`
+                        t('Devise changée'),
+                        t("La devise du projet a été changée en {name} ({symbol}). Toute l'équipe verra cette devise.", { name: curr.name, symbol: curr.symbol })
                       );
 
                       // Recharger les données du dashboard
                       loadDashboardData();
                     } catch (error) {
                       console.error('Error updating currency:', error);
-                      Alert.alert('Erreur', 'Impossible de changer la devise');
+                      Alert.alert(t('Erreur'), t('Impossible de changer la devise'));
                     }
                   }}
                 >
                   <View style={styles.currencyOptionContent}>
                     <Text style={styles.currencySymbol}>{curr.symbol}</Text>
                     <View style={styles.currencyInfo}>
-                      <Text style={styles.currencyName}>{curr.name}</Text>
+                      <Text style={styles.currencyName}>{t(curr.name)}</Text>
                       <Text style={styles.currencyCode}>{curr.code}</Text>
                     </View>
                   </View>
@@ -1229,7 +1649,7 @@ export const DashboardScreen = ({ navigation }) => {
             </View>
             <View style={styles.currencyModalFooter}>
               <Text style={styles.currencyModalNote}>
-                ℹ️ La devise sera appliquée à ce projet. Toute l'équipe verra les montants dans cette devise.
+                {t("ℹ️ La devise sera appliquée à ce projet. Toute l'équipe verra les montants dans cette devise.")}
               </Text>
             </View>
           </View>
@@ -1239,7 +1659,7 @@ export const DashboardScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -1249,7 +1669,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 104,
   },
   loadingContainer: {
     flex: 1,
@@ -1257,16 +1677,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   header: {
-    marginBottom: 28,
+    marginBottom: 16,
     marginHorizontal: -16,
   },
   headerGradient: {
-    borderRadius: 20,
-    padding: 20,
-    marginHorizontal: 16,
+    paddingTop: 54,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   headerContent: {
     flexDirection: 'row',
@@ -1274,90 +1697,83 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   avatarContainer: {
-    marginRight: 16,
+    marginRight: 12,
   },
   avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 46,
+    height: 46,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   avatarImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 2,
-    borderColor: colors.background,
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   avatarText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.background,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.onPrimary,
   },
   avatarEditBadge: {
     position: 'absolute',
     bottom: 0,
     right: 0,
     backgroundColor: colors.primary,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: colors.background,
+    borderColor: colors.surface,
   },
   headerInfo: {
     flex: 1,
   },
   greeting: {
-    fontSize: 14,
-    color: colors.background,
-    fontWeight: '600',
-    opacity: 0.9,
+    fontSize: 12,
+    color: colors.textLight,
+    fontWeight: '500',
   },
   userName: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: colors.background,
-    marginTop: 4,
-    letterSpacing: 0.3,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 2,
   },
   roleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
-    backgroundColor: colors.background + '30',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    marginTop: 3,
     alignSelf: 'flex-start',
   },
   userRole: {
     fontSize: 11,
-    color: colors.background,
-    marginLeft: 4,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    color: colors.textLight,
+    fontWeight: '500',
   },
   headerActions: {
     flexDirection: 'row',
     gap: 8,
   },
   projectButton: {
-    padding: 4,
+    padding: 2,
   },
   projectIconContainer: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.background + '40',
+    borderRadius: 8,
+    backgroundColor: colors.surfaceLight,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   logoutButton: {
     padding: 4,
@@ -1388,13 +1804,169 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
+  monthlyOverviewCard: {
+    padding: 16,
     marginBottom: 16,
+  },
+  monthlyOverviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  monthlyEyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  monthlyTitle: {
+    marginTop: 3,
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  monthlyStatus: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  monthlyNavigator: {
+    marginTop: 14,
+  },
+  monthlyMetrics: {
+    minHeight: 78,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginTop: 14,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  monthlyMetric: {
+    minWidth: 0,
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  monthlyMetricDivider: {
+    width: 1,
+    backgroundColor: colors.border,
+  },
+  monthlyMetricLabel: {
+    minHeight: 30,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.textLight,
+    textAlign: 'center',
+  },
+  monthlyMetricValue: {
+    marginTop: 4,
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  employeeOverviewCard: {
+    marginBottom: 14,
+    padding: 16,
+  },
+  employeeCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  employeeCardIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  employeeCardHeading: {
+    flex: 1,
+  },
+  employeeEyebrow: {
+    color: colors.textLight,
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  employeeCardTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  employeeLoading: {
+    marginTop: 20,
+    marginBottom: 4,
+  },
+  employeeEmpty: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 18,
+  },
+  employeeShiftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    marginTop: 14,
+    paddingTop: 14,
+    gap: 9,
+  },
+  employeeShiftDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+  },
+  employeeShiftDate: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  employeeShiftTime: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  employeeSalesMetrics: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    marginTop: 16,
+    paddingTop: 16,
+  },
+  employeeSalesMetric: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 6,
+  },
+  employeeMetricLabel: {
+    color: colors.textLight,
+    fontSize: 12,
+  },
+  employeeMetricCount: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 5,
+  },
+  employeeMetricDivider: {
+    width: 1,
+    backgroundColor: colors.border,
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
     marginTop: 8,
-    letterSpacing: 0.3,
   },
   statsRow: {
     flexDirection: 'row',
@@ -1445,7 +2017,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 26,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     letterSpacing: -0.5,
   },
@@ -1467,7 +2039,7 @@ const styles = StyleSheet.create({
   },
   summaryTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     letterSpacing: 0.3,
   },
@@ -1509,13 +2081,13 @@ const styles = StyleSheet.create({
   },
   summaryValue: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
     marginBottom: 24,
   },
   commerceCard: {
@@ -1523,33 +2095,34 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   actionButton: {
-    width: '31%',
-    aspectRatio: 1,
-    borderRadius: 20,
+    width: '48.5%',
+    minHeight: 66,
+    borderRadius: 8,
     overflow: 'hidden',
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   actionGradient: {
     flex: 1,
-    padding: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
   },
   actionIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
+    marginRight: 10,
   },
   actionText: {
-    fontSize: 11,
-    fontWeight: '700',
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.text,
-    textAlign: 'center',
-    letterSpacing: 0.3,
   },
   chartCard: {
     marginBottom: 20,
@@ -1558,7 +2131,7 @@ const styles = StyleSheet.create({
   },
   chartTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 16,
     alignSelf: 'flex-start',
@@ -1577,7 +2150,7 @@ const styles = StyleSheet.create({
   },
   rankText: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.background,
   },
   productInfo: {
@@ -1596,25 +2169,22 @@ const styles = StyleSheet.create({
   },
   productRevenue: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     flexShrink: 0,
     minWidth: 80,
     textAlign: 'right',
   },
   statsButton: {
-    borderRadius: 20,
+    borderRadius: 8,
     overflow: 'hidden',
-    marginBottom: 24,
-    marginTop: 8,
-    elevation: 4,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   statsButtonGradient: {
-    padding: 20,
+    padding: 14,
   },
   statsButtonContent: {
     flexDirection: 'row',
@@ -1624,22 +2194,28 @@ const styles = StyleSheet.create({
   statsButtonLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 12,
+  },
+  statsButtonIcon: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: colors.primary + '18',
   },
   statsButtonTextContainer: {
     gap: 4,
   },
   statsButtonTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.background,
-    letterSpacing: 0.3,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
   },
   statsButtonSubtitle: {
-    fontSize: 13,
-    color: colors.background,
-    opacity: 0.9,
-    fontWeight: '500',
+    fontSize: 12,
+    color: colors.textLight,
+    fontWeight: '400',
   },
   modalOverlay: {
     flex: 1,
@@ -1686,7 +2262,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     letterSpacing: 0.3,
   },
@@ -1703,7 +2279,7 @@ const styles = StyleSheet.create({
   },
   sectionTitleModal: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 16,
     marginTop: 12,
@@ -1771,7 +2347,7 @@ const styles = StyleSheet.create({
   },
   infoTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   infoText: {
@@ -1817,7 +2393,7 @@ const styles = StyleSheet.create({
   },
   exportButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.background,
     letterSpacing: 0.3,
   },
@@ -1856,7 +2432,7 @@ const styles = StyleSheet.create({
   },
   currencyModalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   currencyOptionsContainer: {
@@ -1883,7 +2459,7 @@ const styles = StyleSheet.create({
   },
   currencySymbol: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   currencyInfo: {
@@ -1891,7 +2467,7 @@ const styles = StyleSheet.create({
   },
   currencyName: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   currencyCode: {
@@ -1909,5 +2485,112 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  settingsOptionsContainer: {
+    gap: 4,
+  },
+  settingsOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    gap: 14,
+  },
+  settingsOptionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsOptionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  settingsOptionDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  settingsDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 8,
+  },
+  deleteModalContainer: {
+    backgroundColor: colors.background,
+    borderRadius: 20,
+    margin: 20,
+    padding: 24,
+    alignItems: 'center',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  deleteModalIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.error + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  deleteModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  deleteModalDesc: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  deleteModalLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  deleteModalInput: {
+    width: '100%',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+    color: colors.text,
+    marginBottom: 20,
+  },
+  deleteConfirmBtn: {
+    width: '100%',
+    backgroundColor: colors.error,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  deleteConfirmBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  deleteCancelBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+  },
+  deleteCancelBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
 });

@@ -12,10 +12,12 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { AppHeader } from '../components/AppHeader';
+import { EmptyState } from '../components/AppPrimitives';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -24,8 +26,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { getQuickSelectValues } from '../utils/currency';
 import { usersAPI } from '../services/api';
+import { t, useLanguage, getLocale } from '../i18n';
 
 export const TeamScreen = ({ navigation }) => {
+  useLanguage();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const { format: formatPrice, currency } = useCurrency();
   const [users, setUsers] = useState([]);
@@ -72,7 +78,7 @@ export const TeamScreen = ({ navigation }) => {
       const response = await usersAPI.getAll(user?.projectId);
       setUsers(response.data);
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible de charger les collaborateurs');
+      Alert.alert(t('Erreur'), t('Impossible de charger les collaborateurs'));
     } finally {
       setLoading(false);
     }
@@ -106,17 +112,17 @@ export const TeamScreen = ({ navigation }) => {
 
   const getMonthLabel = () => {
     const date = new Date(payrollYear, payrollMonth - 1);
-    return date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    return date.toLocaleDateString(getLocale(), { month: 'long', year: 'numeric' });
   };
 
   const getRoleLabel = (role) => {
-    const labels = { admin: 'Admin', responsable: 'Responsable', manager: 'Manager', cashier: 'Caissier' };
+    const labels = { admin: t('Admin'), responsable: t('Responsable'), manager: t('Manager'), cashier: t('Caissier') };
     return labels[role] || role;
   };
 
   const handleCreate = async () => {
     if (!formData.username || !formData.email || !formData.password || !formData.fullName) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
+      Alert.alert(t('Erreur'), t('Veuillez remplir tous les champs obligatoires'));
       return;
     }
     console.log(formData);
@@ -126,9 +132,9 @@ export const TeamScreen = ({ navigation }) => {
       setModalVisible(false);
       resetForm();
       loadUsers();
-      Alert.alert('Succès', 'Collaborateur créé avec succès');
+      Alert.alert(t('Succès'), t('Collaborateur créé avec succès'));
     } catch (error) {
-      Alert.alert('Erreur', error.response?.data?.error || 'Une erreur est survenue');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Une erreur est survenue'));
     } finally {
       setLoading(false);
     }
@@ -138,9 +144,9 @@ export const TeamScreen = ({ navigation }) => {
     try {
       await api.put(`/users/${user._id}/status`, { isActive: !user.isActive });
       loadUsers();
-      Alert.alert('Succès', `Compte ${user.isActive ? 'désactivé' : 'activé'}`);
+      Alert.alert(t('Succès'), t('Compte {value}', { value: user.isActive ? t('désactivé') : t('activé') }));
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible de modifier le statut');
+      Alert.alert(t('Erreur'), t('Impossible de modifier le statut'));
     }
   };
 
@@ -152,9 +158,9 @@ export const TeamScreen = ({ navigation }) => {
       setRoleModalVisible(false);
       setSelectedUser(null);
       loadUsers();
-      Alert.alert('Succès', 'Rôle modifié avec succès');
+      Alert.alert(t('Succès'), t('Rôle modifié avec succès'));
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible de modifier le rôle');
+      Alert.alert(t('Erreur'), t('Impossible de modifier le rôle'));
     }
   };
 
@@ -174,7 +180,7 @@ export const TeamScreen = ({ navigation }) => {
     
     const rate = parseFloat(commissionRate);
     if (isNaN(rate) || rate < 0 || rate > 100) {
-      Alert.alert('Erreur', 'Le taux doit être entre 0 et 100%');
+      Alert.alert(t('Erreur'), t('Le taux doit être entre 0 et 100%'));
       return;
     }
 
@@ -183,9 +189,9 @@ export const TeamScreen = ({ navigation }) => {
       setCommissionModalVisible(false);
       setSelectedUser(null);
       loadUsers();
-      Alert.alert('Succès', 'Taux de commission modifié avec succès');
+      Alert.alert(t('Succès'), t('Taux de commission modifié avec succès'));
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible de modifier le taux de commission');
+      Alert.alert(t('Erreur'), t('Impossible de modifier le taux de commission'));
     }
   };
 
@@ -200,7 +206,7 @@ export const TeamScreen = ({ navigation }) => {
     
     const rate = parseFloat(hourlyRate);
     if (isNaN(rate) || rate < 0) {
-      Alert.alert('Erreur', 'Le salaire horaire doit être un nombre positif');
+      Alert.alert(t('Erreur'), t('Le salaire horaire doit être un nombre positif'));
       return;
     }
 
@@ -209,9 +215,9 @@ export const TeamScreen = ({ navigation }) => {
       setSalaryModalVisible(false);
       setSelectedUser(null);
       loadUsers();
-      Alert.alert('Succès', 'Salaire horaire modifié avec succès');
+      Alert.alert(t('Succès'), t('Salaire horaire modifié avec succès'));
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible de modifier le salaire horaire');
+      Alert.alert(t('Erreur'), t('Impossible de modifier le salaire horaire'));
     }
   };
 
@@ -230,25 +236,25 @@ export const TeamScreen = ({ navigation }) => {
     if (!selectedUser) return;
 
     if (!editInfoData.fullName.trim() || !editInfoData.email.trim()) {
-      Alert.alert('Erreur', 'Veuillez remplir le nom et l\'email');
+      Alert.alert(t('Erreur'), t("Veuillez remplir le nom et l'email"));
       return;
     }
 
     // Validation email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(editInfoData.email)) {
-      Alert.alert('Erreur', 'Veuillez entrer un email valide');
+      Alert.alert(t('Erreur'), t('Veuillez entrer un email valide'));
       return;
     }
 
     // Validation mot de passe si renseigné
     if (editInfoData.newPassword) {
       if (editInfoData.newPassword.length < 6) {
-        Alert.alert('Erreur', 'Le mot de passe doit contenir au moins 6 caractères');
+        Alert.alert(t('Erreur'), t('Le mot de passe doit contenir au moins 6 caractères'));
         return;
       }
       if (editInfoData.newPassword !== editInfoData.confirmPassword) {
-        Alert.alert('Erreur', 'Les mots de passe ne correspondent pas');
+        Alert.alert(t('Erreur'), t('Les mots de passe ne correspondent pas'));
         return;
       }
     }
@@ -270,9 +276,9 @@ export const TeamScreen = ({ navigation }) => {
       setEditInfoModalVisible(false);
       setSelectedUser(null);
       loadUsers();
-      Alert.alert('Succès', 'Informations modifiées avec succès');
+      Alert.alert(t('Succès'), t('Informations modifiées avec succès'));
     } catch (error) {
-      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de modifier les informations');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Impossible de modifier les informations'));
     }
   };
 
@@ -306,7 +312,7 @@ export const TeamScreen = ({ navigation }) => {
   const pickImage = async (userForPhoto = null) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission refusée', 'Nous avons besoin de votre permission pour accéder à vos photos');
+      Alert.alert(t('Permission refusée'), t('Nous avons besoin de votre permission pour accéder à vos photos'));
       return;
     }
 
@@ -326,7 +332,7 @@ export const TeamScreen = ({ navigation }) => {
           setFormData({ ...formData, photo: base64Image });
         }
       } catch (error) {
-        Alert.alert('Erreur', 'Impossible de traiter l\'image');
+        Alert.alert(t('Erreur'), t("Impossible de traiter l'image"));
       }
     }
   };
@@ -334,7 +340,7 @@ export const TeamScreen = ({ navigation }) => {
   const takePhoto = async (userForPhoto = null) => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission refusée', 'Nous avons besoin de votre permission pour utiliser la caméra');
+      Alert.alert(t('Permission refusée'), t('Nous avons besoin de votre permission pour utiliser la caméra'));
       return;
     }
 
@@ -353,19 +359,19 @@ export const TeamScreen = ({ navigation }) => {
           setFormData({ ...formData, photo: base64Image });
         }
       } catch (error) {
-        Alert.alert('Erreur', 'Impossible de traiter l\'image');
+        Alert.alert(t('Erreur'), t("Impossible de traiter l'image"));
       }
     }
   };
 
   const showImageOptions = (userForPhoto = null) => {
     Alert.alert(
-      'Ajouter une photo',
-      'Choisissez une option',
+      t('Ajouter une photo'),
+      t('Choisissez une option'),
       [
-        { text: 'Galerie', onPress: () => pickImage(userForPhoto) },
-        { text: 'Prendre une photo', onPress: () => takePhoto(userForPhoto) },
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Galerie'), onPress: () => pickImage(userForPhoto) },
+        { text: t('Prendre une photo'), onPress: () => takePhoto(userForPhoto) },
+        { text: t('Annuler'), style: 'cancel' },
       ]
     );
   };
@@ -376,10 +382,10 @@ export const TeamScreen = ({ navigation }) => {
       const response = await api.put(`/users/${userId}/photo`, { photo: photoUri });
       console.log('Photo update response:', response.data);
       await loadUsers();
-      Alert.alert('Succès', 'Photo mise à jour avec succès');
+      Alert.alert(t('Succès'), t('Photo mise à jour avec succès'));
     } catch (error) {
       console.error('Photo update error:', error.response?.data || error.message);
-      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de mettre à jour la photo');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Impossible de mettre à jour la photo'));
     } finally {
       setLoading(false);
     }
@@ -388,11 +394,11 @@ export const TeamScreen = ({ navigation }) => {
   const getRoleInfo = (role) => {
     switch (role) {
       case 'admin':
-        return { label: 'Administrateur', icon: 'shield-checkmark', color: colors.error };
+        return { label: t('Administrateur'), icon: 'shield-checkmark', color: colors.error };
       case 'manager':
-        return { label: 'Responsable', icon: 'star', color: colors.warning };
+        return { label: t('Responsable'), icon: 'star', color: colors.warning };
       case 'cashier':
-        return { label: 'Salarié', icon: 'person', color: colors.info };
+        return { label: t('Salarié'), icon: 'person', color: colors.info };
       default:
         return { label: role, icon: 'person', color: colors.textSecondary };
     }
@@ -401,13 +407,13 @@ export const TeamScreen = ({ navigation }) => {
   const getRolePermissions = (role) => {
     switch (role) {
       case 'admin':
-        return 'Accès complet: gestion des utilisateurs, produits, ventes, clients, et configuration';
+        return t('Accès complet: gestion des utilisateurs, produits, ventes, clients, et configuration');
       case 'manager':
-        return 'Gestion des produits, ventes, clients et accès aux rapports';
+        return t('Gestion des produits, ventes, clients et accès aux rapports');
       case 'cashier':
-        return 'Ajout de ventes et consultation du catalogue';
+        return t('Ajout de ventes et consultation du catalogue');
       default:
-        return 'Permissions non définies';
+        return t('Permissions non définies');
     }
   };
 
@@ -453,11 +459,11 @@ export const TeamScreen = ({ navigation }) => {
           <View style={styles.statusBadge}>
             {item.isActive ? (
               <View style={[styles.badge, styles.badgeActive]}>
-                <Text style={styles.badgeText}>Actif</Text>
+                <Text style={styles.badgeText}>{t('Actif')}</Text>
               </View>
             ) : (
               <View style={[styles.badge, styles.badgeInactive]}>
-                <Text style={styles.badgeText}>Inactif</Text>
+                <Text style={styles.badgeText}>{t('Inactif')}</Text>
               </View>
             )}
           </View>
@@ -477,14 +483,14 @@ export const TeamScreen = ({ navigation }) => {
             <View style={styles.commissionInfo}>
               <Ionicons name="time-outline" size={20} color={colors.info} />
               <View style={styles.commissionTextContainer}>
-                <Text style={styles.commissionLabel}>Salaire horaire</Text>
+                <Text style={styles.commissionLabel}>{t('Salaire horaire')}</Text>
                 <Text style={styles.commissionValue}>{formatPrice(item.hourlyRate || 0)}/h</Text>
               </View>
             </View>
             <View style={styles.commissionInfo}>
               <Ionicons name="cash-outline" size={20} color={colors.success} />
               <View style={styles.commissionTextContainer}>
-                <Text style={styles.commissionLabel}>Commission</Text>
+                <Text style={styles.commissionLabel}>{t('Commission')}</Text>
                 <Text style={styles.commissionValue}>{item.commissionRate || 0}%</Text>
               </View>
             </View>
@@ -493,7 +499,7 @@ export const TeamScreen = ({ navigation }) => {
             <View style={styles.commissionInfo}>
               <Ionicons name="wallet-outline" size={20} color={colors.accent} />
               <View style={styles.commissionTextContainer}>
-                <Text style={styles.commissionLabel}>Total commissions</Text>
+                <Text style={styles.commissionLabel}>{t('Total commissions')}</Text>
                 <Text style={styles.commissionValue}>{formatPrice(item.totalCommissions || 0)}</Text>
               </View>
             </View>
@@ -512,7 +518,7 @@ export const TeamScreen = ({ navigation }) => {
                 color={item.isActive ? colors.error : colors.success}
               />
               <Text style={[styles.actionButtonText, { color: item.isActive ? colors.error : colors.success }]}>
-                {item.isActive ? 'Désactiver' : 'Activer'}
+                {item.isActive ? t('Désactiver') : t('Activer')}
               </Text>
             </TouchableOpacity>
           )}
@@ -523,7 +529,7 @@ export const TeamScreen = ({ navigation }) => {
               onPress={() => openEditInfoModal(item)}
             >
               <Ionicons name="create-outline" size={20} color={colors.accent} />
-              <Text style={[styles.actionButtonText, { color: colors.accent }]}>Modifier infos</Text>
+              <Text style={[styles.actionButtonText, { color: colors.accent }]}>{t('Modifier infos')}</Text>
             </TouchableOpacity>
           )}
 
@@ -533,7 +539,7 @@ export const TeamScreen = ({ navigation }) => {
               onPress={() => openRoleModal(item)}
             >
               <Ionicons name="swap-horizontal" size={20} color={colors.primary} />
-              <Text style={[styles.actionButtonText, { color: colors.primary }]}>Changer rôle</Text>
+              <Text style={[styles.actionButtonText, { color: colors.primary }]}>{t('Changer rôle')}</Text>
             </TouchableOpacity>
           )}
 
@@ -544,14 +550,14 @@ export const TeamScreen = ({ navigation }) => {
                 onPress={() => openSalaryModal(item)}
               >
                 <Ionicons name="time" size={20} color={colors.info} />
-                <Text style={[styles.actionButtonText, { color: colors.info }]}>Salaire</Text>
+                <Text style={[styles.actionButtonText, { color: colors.info }]}>{t('Salaire')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={() => openCommissionModal(item)}
               >
                 <Ionicons name="cash" size={20} color={colors.success} />
-                <Text style={[styles.actionButtonText, { color: colors.success }]}>Commission</Text>
+                <Text style={[styles.actionButtonText, { color: colors.success }]}>{t('Commission')}</Text>
               </TouchableOpacity>
             </>
           )}
@@ -559,7 +565,7 @@ export const TeamScreen = ({ navigation }) => {
 
         <View style={styles.userFooter}>
           <Text style={styles.userDate}>
-            Créé le {new Date(item.createdAt).toLocaleDateString('fr-FR')}
+            {t('Créé le {toLocaleDateString}', { toLocaleDateString: new Date(item.createdAt).toLocaleDateString(getLocale()) })}
           </Text>
         </View>
       </Card>
@@ -568,37 +574,17 @@ export const TeamScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={[colors.surface, colors.background]}
-        style={styles.header}
-      >
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>Gestion d'équipe</Text>
-            <Text style={styles.subtitle}>{users?.length || 0} membre(s)</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.addButtonWrapper}
-            onPress={() => {
-              resetForm();
-              setModalVisible(true);
-            }}
-          >
-            <LinearGradient
-              colors={[colors.primary, colors.primaryDark]}
-              style={styles.addButton}
-            >
-              <Ionicons name="person-add" size={28} color="#000" />
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
+      <AppHeader
+        title={t('Équipe')}
+        subtitle={t('{value} membre(s)', { value: users?.length || 0 })}
+        onBack={() => navigation.goBack()}
+        rightIcon="person-add-outline"
+        rightLabel={t('Ajouter un membre')}
+        onRightPress={() => {
+          resetForm();
+          setModalVisible(true);
+        }}
+      />
 
       <LinearGradient
         colors={[colors.surface + '80', colors.background]}
@@ -610,7 +596,7 @@ export const TeamScreen = ({ navigation }) => {
         >
           <Ionicons name="people" size={28} color={colors.primary} />
           <Text style={styles.statValue}>{(users && Array.isArray(users)) ? users.length : 0}</Text>
-          <Text style={styles.statLabel}>Total</Text>
+          <Text style={styles.statLabel}>{t('Total')}</Text>
         </LinearGradient>
         <LinearGradient
           colors={[colors.success + '25', colors.success + '10']}
@@ -620,7 +606,7 @@ export const TeamScreen = ({ navigation }) => {
           <Text style={styles.statValue}>
             {(users && Array.isArray(users)) ? users.filter((u) => u.isActive).length : 0}
           </Text>
-          <Text style={styles.statLabel}>Actifs</Text>
+          <Text style={styles.statLabel}>{t('Actifs')}</Text>
         </LinearGradient>
         <LinearGradient
           colors={[colors.warning + '25', colors.warning + '10']}
@@ -630,7 +616,7 @@ export const TeamScreen = ({ navigation }) => {
           <Text style={styles.statValue}>
             {(users && Array.isArray(users)) ? users.filter((u) => u.role === 'admin').length : 0}
           </Text>
-          <Text style={styles.statLabel}>Admins</Text>
+          <Text style={styles.statLabel}>{t('Admins')}</Text>
         </LinearGradient>
       </LinearGradient>
 
@@ -650,7 +636,7 @@ export const TeamScreen = ({ navigation }) => {
             <View style={styles.payrollBannerLeft}>
               <Ionicons name="wallet" size={24} color={colors.accent} />
               <View style={{ marginLeft: 12 }}>
-                <Text style={styles.payrollBannerTitle}>Masse salariale du mois</Text>
+                <Text style={styles.payrollBannerTitle}>{t('Masse salariale du mois')}</Text>
                 <Text style={styles.payrollBannerSubtitle}>{getMonthLabel()}</Text>
               </View>
             </View>
@@ -674,11 +660,11 @@ export const TeamScreen = ({ navigation }) => {
         refreshing={loading}
         onRefresh={loadUsers}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="people-outline" size={80} color={colors.textSecondary} />
-            <Text style={styles.emptyText}>Aucun collaborateur</Text>
-            <Text style={styles.emptySubtext}>Appuyez sur + pour ajouter un membre</Text>
-          </View>
+          <EmptyState
+            icon="people-outline"
+            title={t('Aucun collaborateur')}
+            description={t('Ajoutez un membre pour constituer votre équipe.')}
+          />
         }
       />
 
@@ -700,12 +686,12 @@ export const TeamScreen = ({ navigation }) => {
                     colors={[colors.primary, colors.primaryDark]}
                     style={styles.modalIcon}
                   >
-                    <Ionicons name="person-add" size={28} color="#000" />
+                    <Ionicons name="person-add" size={28} color={colors.onPrimary} />
                   </LinearGradient>
                 </View>
                 <View style={styles.modalTitleContainer}>
-                  <Text style={styles.modalTitle}>Nouveau collaborateur</Text>
-                  <Text style={styles.modalSubtitle}>Ajoutez un membre à l'équipe</Text>
+                  <Text style={styles.modalTitle}>{t('Nouveau collaborateur')}</Text>
+                  <Text style={styles.modalSubtitle}>{t("Ajoutez un membre à l'équipe")}</Text>
                 </View>
               </LinearGradient>
               <TouchableOpacity 
@@ -723,7 +709,7 @@ export const TeamScreen = ({ navigation }) => {
               {/* Photo Section */}
               {user?.role === 'admin' && (
                 <View style={styles.photoSection}>
-                  <Text style={styles.photoLabel}>Photo du collaborateur</Text>
+                  <Text style={styles.photoLabel}>{t('Photo du collaborateur')}</Text>
                   <TouchableOpacity
                     style={styles.photoPickerButton}
                     onPress={() => showImageOptions(null)}
@@ -736,13 +722,13 @@ export const TeamScreen = ({ navigation }) => {
                         />
                         <View style={styles.photoOverlay}>
                           <Ionicons name="camera" size={24} color={colors.background} />
-                          <Text style={styles.photoOverlayText}>Modifier</Text>
+                          <Text style={styles.photoOverlayText}>{t('Modifier')}</Text>
                         </View>
                       </View>
                     ) : (
                       <View style={styles.photoPlaceholder}>
                         <Ionicons name="person-circle-outline" size={64} color={colors.primary} />
-                        <Text style={styles.photoPlaceholderText}>Ajouter une photo</Text>
+                        <Text style={styles.photoPlaceholderText}>{t('Ajouter une photo')}</Text>
                       </View>
                     )}
                   </TouchableOpacity>
@@ -750,20 +736,20 @@ export const TeamScreen = ({ navigation }) => {
               )}
 
               <Input
-                placeholder="Nom complet *"
+                placeholder={t('Nom complet *')}
                 value={formData.fullName}
                 onChangeText={(text) => setFormData({ ...formData, fullName: text })}
               />
 
               <Input
-                placeholder="Nom d'utilisateur *"
+                placeholder={t("Nom d'utilisateur *")}
                 value={formData.username}
                 onChangeText={(text) => setFormData({ ...formData, username: text })}
                 autoCapitalize="none"
               />
 
               <Input
-                placeholder="Email *"
+                placeholder={t('Email *')}
                 value={formData.email}
                 onChangeText={(text) => setFormData({ ...formData, email: text })}
                 keyboardType="email-address"
@@ -771,21 +757,21 @@ export const TeamScreen = ({ navigation }) => {
               />
 
               <Input
-                placeholder="Mot de passe *"
+                placeholder={t('Mot de passe *')}
                 value={formData.password}
                 onChangeText={(text) => setFormData({ ...formData, password: text })}
                 secureTextEntry
               />
 
               <View style={styles.pickerContainer}>
-                <Text style={styles.pickerLabel}>Rôle *</Text>
+                <Text style={styles.pickerLabel}>{t('Rôle *')}</Text>
                 <Picker
                   selectedValue={formData.role}
                   onValueChange={(value) => setFormData({ ...formData, role: value })}
                   style={styles.picker}
                 >
-                  <Picker.Item label="Salarié" value="cashier" />
-                  <Picker.Item label="Manager" value="manager" />
+                  <Picker.Item label={t('Salarié')} value="cashier" />
+                  <Picker.Item label={t('Manager')} value="manager" />
                 </Picker>
               </View>
 
@@ -803,7 +789,7 @@ export const TeamScreen = ({ navigation }) => {
                 style={styles.cancelButton}
                 onPress={() => setModalVisible(false)}
               >
-                <Text style={styles.cancelButtonText}>Annuler</Text>
+                <Text style={styles.cancelButtonText}>{t('Annuler')}</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.saveButtonWrapper}
@@ -815,11 +801,11 @@ export const TeamScreen = ({ navigation }) => {
                   style={styles.saveButton}
                 >
                   {loading ? (
-                    <ActivityIndicator color="#000" />
+                    <ActivityIndicator color={colors.onPrimary} />
                   ) : (
                     <>
-                      <Ionicons name="person-add" size={20} color="#000" />
-                      <Text style={styles.saveButtonText}>Créer</Text>
+                      <Ionicons name="person-add" size={20} color={colors.onPrimary} />
+                      <Text style={styles.saveButtonText}>{t('Créer')}</Text>
                     </>
                   )}
                 </LinearGradient>
@@ -840,7 +826,7 @@ export const TeamScreen = ({ navigation }) => {
           <View style={styles.roleModalContainer}>
             <View style={styles.roleModalHeader}>
               <Ionicons name="swap-horizontal" size={32} color={colors.primary} />
-              <Text style={styles.roleModalTitle}>Changer le rôle</Text>
+              <Text style={styles.roleModalTitle}>{t('Changer le rôle')}</Text>
               {selectedUser && (
                 <Text style={styles.roleModalSubtitle}>{selectedUser.fullName}</Text>
               )}
@@ -857,9 +843,9 @@ export const TeamScreen = ({ navigation }) => {
                 >
                   <Ionicons name="person" size={32} color={colors.info} />
                   <View style={styles.roleOptionContent}>
-                    <Text style={styles.roleOptionTitle}>Salarié</Text>
+                    <Text style={styles.roleOptionTitle}>{t('Salarié')}</Text>
                     <Text style={styles.roleOptionDescription}>
-                      Ajout de ventes et consultation du catalogue
+                      {t('Ajout de ventes et consultation du catalogue')}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={24} color={colors.info} />
@@ -876,9 +862,9 @@ export const TeamScreen = ({ navigation }) => {
                 >
                   <Ionicons name="star" size={32} color={colors.warning} />
                   <View style={styles.roleOptionContent}>
-                    <Text style={styles.roleOptionTitle}>Responsable</Text>
+                    <Text style={styles.roleOptionTitle}>{t('Responsable')}</Text>
                     <Text style={styles.roleOptionDescription}>
-                      Gestion des produits, ventes, clients et rapports
+                      {t('Gestion des produits, ventes, clients et rapports')}
                     </Text>
                   </View>
                   <Ionicons name="chevron-forward" size={24} color={colors.warning} />
@@ -894,7 +880,7 @@ export const TeamScreen = ({ navigation }) => {
                 setSelectedUser(null);
               }}
             >
-              <Text style={styles.roleCancelButtonText}>Annuler</Text>
+              <Text style={styles.roleCancelButtonText}>{t('Annuler')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -936,7 +922,7 @@ export const TeamScreen = ({ navigation }) => {
                 </LinearGradient>
               </View>
               <View style={styles.commissionHeaderText}>
-                <Text style={styles.commissionModalTitle}>💰 Modifier la commission</Text>
+                <Text style={styles.commissionModalTitle}>{t('💰 Modifier la commission')}</Text>
                 {selectedUser && (
                   <Text style={styles.commissionModalSubtitle}>{selectedUser.fullName}</Text>
                 )}
@@ -965,7 +951,7 @@ export const TeamScreen = ({ navigation }) => {
                   >
                     <Ionicons name="trending-up" size={24} color={colors.primary} />
                     <View style={styles.currentStatContent}>
-                      <Text style={styles.currentStatLabel}>Taux actuel</Text>
+                      <Text style={styles.currentStatLabel}>{t('Taux actuel')}</Text>
                       <Text style={styles.currentStatValue}>{selectedUser.commissionRate || 0}%</Text>
                     </View>
                   </LinearGradient>
@@ -975,7 +961,7 @@ export const TeamScreen = ({ navigation }) => {
                   >
                     <Ionicons name="wallet" size={24} color={colors.accent} />
                     <View style={styles.currentStatContent}>
-                      <Text style={styles.currentStatLabel}>Total gagné</Text>
+                      <Text style={styles.currentStatLabel}>{t('Total gagné')}</Text>
                       <Text style={styles.currentStatValue}>
                         {formatPrice(selectedUser.totalCommissions || 0)}
                       </Text>
@@ -986,7 +972,7 @@ export const TeamScreen = ({ navigation }) => {
 
               {/* Sélection rapide */}
               <View style={styles.quickSelectContainer}>
-                <Text style={styles.quickSelectTitle}>⚡ Sélection rapide</Text>
+                <Text style={styles.quickSelectTitle}>{t('⚡ Sélection rapide')}</Text>
                 <View style={styles.quickSelectButtons}>
                   {[2, 5, 10, 15, 20].map((rate) => (
                     <TouchableOpacity
@@ -1019,7 +1005,7 @@ export const TeamScreen = ({ navigation }) => {
 
               {/* Saisie personnalisée */}
               <View style={styles.customInputSection}>
-                <Text style={styles.customInputTitle}>🎯 Taux personnalisé</Text>
+                <Text style={styles.customInputTitle}>{t('🎯 Taux personnalisé')}</Text>
                 <LinearGradient
                   colors={[colors.success + '15', colors.success + '08']}
                   style={styles.commissionInputContainer}
@@ -1036,7 +1022,7 @@ export const TeamScreen = ({ navigation }) => {
                     <Text style={styles.commissionPercentSymbol}>%</Text>
                   </View>
                   <Text style={styles.commissionHint}>
-                    Entrez un taux entre 0 et 100%
+                    {t('Entrez un taux entre 0 et 100%')}
                   </Text>
                 </LinearGradient>
               </View>
@@ -1055,13 +1041,13 @@ export const TeamScreen = ({ navigation }) => {
                     >
                       <View style={styles.exampleHeader}>
                         <Ionicons name="calculator-outline" size={20} color={colors.info} />
-                        <Text style={styles.exampleTitle}>Exemple de calcul</Text>
+                        <Text style={styles.exampleTitle}>{t('Exemple de calcul')}</Text>
                       </View>
                       {exampleValues.map((value, index) => (
                         <View key={index} style={styles.exampleRow}>
-                          <Text style={styles.exampleLabel}>Vente de {formatPrice(value)}</Text>
+                          <Text style={styles.exampleLabel}>{t('Vente de {price}', { price: formatPrice(value) })}</Text>
                           <Text style={styles.exampleValue}>
-                            → {formatPrice(value * parseFloat(commissionRate) / 100)} de commission
+                            {t('→ {price} de commission', { price: formatPrice(value * parseFloat(commissionRate) / 100) })}
                           </Text>
                         </View>
                       ))}
@@ -1081,7 +1067,7 @@ export const TeamScreen = ({ navigation }) => {
                 }}
               >
                 <Ionicons name="close-outline" size={22} color={colors.textSecondary} />
-                <Text style={styles.commissionCancelButtonText}>Annuler</Text>
+                <Text style={styles.commissionCancelButtonText}>{t('Annuler')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.commissionSaveButtonWrapper}
@@ -1092,7 +1078,7 @@ export const TeamScreen = ({ navigation }) => {
                   style={styles.commissionSaveButton}
                 >
                   <Ionicons name="checkmark-circle" size={22} color="#fff" />
-                  <Text style={styles.commissionSaveButtonText}>Valider la commission</Text>
+                  <Text style={styles.commissionSaveButtonText}>{t('Valider la commission')}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -1134,7 +1120,7 @@ export const TeamScreen = ({ navigation }) => {
                 </LinearGradient>
               </View>
               <View style={styles.commissionHeaderText}>
-                <Text style={styles.commissionModalTitle}>💶 Modifier le salaire horaire</Text>
+                <Text style={styles.commissionModalTitle}>{t('💶 Modifier le salaire horaire')}</Text>
                 {selectedUser && (
                   <Text style={styles.commissionModalSubtitle}>{selectedUser.fullName}</Text>
                 )}
@@ -1162,7 +1148,7 @@ export const TeamScreen = ({ navigation }) => {
                   >
                     <Ionicons name="time-outline" size={24} color={colors.primary} />
                     <View style={styles.currentStatContent}>
-                      <Text style={styles.currentStatLabel}>Actuel</Text>
+                      <Text style={styles.currentStatLabel}>{t('Actuel')}</Text>
                       <Text style={styles.currentStatValue}>{formatPrice(selectedUser.hourlyRate || 0)}/h</Text>
                     </View>
                   </LinearGradient>
@@ -1172,7 +1158,7 @@ export const TeamScreen = ({ navigation }) => {
                   >
                     <Ionicons name="calculator" size={24} color={colors.accent} />
                     <View style={styles.currentStatContent}>
-                      <Text style={styles.currentStatLabel}>Mensuel estimé</Text>
+                      <Text style={styles.currentStatLabel}>{t('Mensuel estimé')}</Text>
                       <Text style={styles.currentStatValue}>
                         {formatPrice((selectedUser.hourlyRate || 0) * 60 * 4.33)}
                       </Text>
@@ -1182,7 +1168,7 @@ export const TeamScreen = ({ navigation }) => {
               )}
 
               <View style={styles.quickSelectContainer}>
-                <Text style={styles.quickSelectTitle}>⚡ Sélection rapide</Text>
+                <Text style={styles.quickSelectTitle}>{t('⚡ Sélection rapide')}</Text>
                 <View style={styles.quickSelectButtons}>
                   {getQuickSelectValues(currency.code).slice(0, 5).map((rate) => (
                     <TouchableOpacity
@@ -1224,7 +1210,7 @@ export const TeamScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.customInputSection}>
-                <Text style={styles.customInputTitle}>🎯 Salaire personnalisé</Text>
+                <Text style={styles.customInputTitle}>{t('🎯 Salaire personnalisé')}</Text>
                 <LinearGradient
                   colors={[colors.info + '15', colors.info + '08']}
                   style={styles.commissionInputContainer}
@@ -1241,7 +1227,7 @@ export const TeamScreen = ({ navigation }) => {
                     <Text style={styles.commissionPercentSymbol}>{currency.symbol}/h</Text>
                   </View>
                   <Text style={styles.commissionHint}>
-                    Salaire par heure de travail
+                    {t('Salaire par heure de travail')}
                   </Text>
                 </LinearGradient>
               </View>
@@ -1254,24 +1240,24 @@ export const TeamScreen = ({ navigation }) => {
                   >
                     <View style={styles.exampleHeader}>
                       <Ionicons name="calculator-outline" size={20} color={colors.success} />
-                      <Text style={styles.exampleTitle}>Estimation de salaire</Text>
+                      <Text style={styles.exampleTitle}>{t('Estimation de salaire')}</Text>
                     </View>
                     <View style={styles.exampleRow}>
-                      <Text style={styles.exampleLabel}>10h de travail</Text>
+                      <Text style={styles.exampleLabel}>{t('10h de travail')}</Text>
                       <Text style={styles.exampleValue}>
-                        → {formatPrice(10 * parseFloat(hourlyRate))} / jour
+                        {t('→ {price} / jour', { price: formatPrice(10 * parseFloat(hourlyRate)) })}
                       </Text>
                     </View>
                     <View style={styles.exampleRow}>
-                      <Text style={styles.exampleLabel}>60h / semaine (6 jours)</Text>
+                      <Text style={styles.exampleLabel}>{t('60h / semaine (6 jours)')}</Text>
                       <Text style={styles.exampleValue}>
-                        → {formatPrice(60 * parseFloat(hourlyRate))} / semaine
+                        {t('→ {price} / semaine', { price: formatPrice(60 * parseFloat(hourlyRate)) })}
                       </Text>
                     </View>
                     <View style={styles.exampleRow}>
-                      <Text style={styles.exampleLabel}>260h / mois (6j x 4.33 sem)</Text>
+                      <Text style={styles.exampleLabel}>{t('260h / mois (6j x 4.33 sem)')}</Text>
                       <Text style={styles.exampleValue}>
-                        → {formatPrice(260 * parseFloat(hourlyRate))} / mois
+                        {t('→ {price} / mois', { price: formatPrice(260 * parseFloat(hourlyRate)) })}
                       </Text>
                     </View>
                   </LinearGradient>
@@ -1288,7 +1274,7 @@ export const TeamScreen = ({ navigation }) => {
                 }}
               >
                 <Ionicons name="close-outline" size={22} color={colors.textSecondary} />
-                <Text style={styles.commissionCancelButtonText}>Annuler</Text>
+                <Text style={styles.commissionCancelButtonText}>{t('Annuler')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.commissionSaveButtonWrapper}
@@ -1299,7 +1285,7 @@ export const TeamScreen = ({ navigation }) => {
                   style={styles.commissionSaveButton}
                 >
                   <Ionicons name="checkmark-circle" size={22} color="#fff" />
-                  <Text style={styles.commissionSaveButtonText}>Valider le salaire</Text>
+                  <Text style={styles.commissionSaveButtonText}>{t('Valider le salaire')}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -1338,8 +1324,8 @@ export const TeamScreen = ({ navigation }) => {
                 </LinearGradient>
               </View>
               <View style={styles.commissionHeaderText}>
-                <Text style={styles.commissionModalTitle}>Masse salariale</Text>
-                <Text style={styles.commissionModalSubtitle}>Salaires cumulés par employé</Text>
+                <Text style={styles.commissionModalTitle}>{t('Masse salariale')}</Text>
+                <Text style={styles.commissionModalSubtitle}>{t('Salaires cumulés par employé')}</Text>
               </View>
               <TouchableOpacity
                 style={styles.commissionCloseButton}
@@ -1373,7 +1359,7 @@ export const TeamScreen = ({ navigation }) => {
                     style={styles.payrollTotalCard}
                   >
                     <Ionicons name="cash" size={22} color={colors.accent} />
-                    <Text style={styles.payrollTotalLabel}>Total à payer</Text>
+                    <Text style={styles.payrollTotalLabel}>{t('Total à payer')}</Text>
                     <Text style={[styles.payrollTotalValue, { color: colors.accent }]}>
                       {formatPrice(payrollData.totals.totalPayroll)}
                     </Text>
@@ -1384,7 +1370,7 @@ export const TeamScreen = ({ navigation }) => {
                       style={[styles.payrollTotalCard, { flex: 1 }]}
                     >
                       <Ionicons name="time" size={18} color={colors.info} />
-                      <Text style={styles.payrollTotalLabel}>Salaires</Text>
+                      <Text style={styles.payrollTotalLabel}>{t('Salaires')}</Text>
                       <Text style={[styles.payrollTotalSmallValue, { color: colors.info }]}>
                         {formatPrice(payrollData.totals.totalSalary)}
                       </Text>
@@ -1394,7 +1380,7 @@ export const TeamScreen = ({ navigation }) => {
                       style={[styles.payrollTotalCard, { flex: 1 }]}
                     >
                       <Ionicons name="trending-up" size={18} color={colors.success} />
-                      <Text style={styles.payrollTotalLabel}>Commissions</Text>
+                      <Text style={styles.payrollTotalLabel}>{t('Commissions')}</Text>
                       <Text style={[styles.payrollTotalSmallValue, { color: colors.success }]}>
                         {formatPrice(payrollData.totals.totalCommissions)}
                       </Text>
@@ -1405,7 +1391,7 @@ export const TeamScreen = ({ navigation }) => {
                     style={styles.payrollTotalCard}
                   >
                     <Ionicons name="hourglass" size={18} color={colors.primary} />
-                    <Text style={styles.payrollTotalLabel}>Heures totales</Text>
+                    <Text style={styles.payrollTotalLabel}>{t('Heures totales')}</Text>
                     <Text style={[styles.payrollTotalSmallValue, { color: colors.primary }]}>
                       {payrollData.totals.totalHours.toFixed(1)}h
                     </Text>
@@ -1413,7 +1399,7 @@ export const TeamScreen = ({ navigation }) => {
                 </View>
 
                 {/* Liste des employés */}
-                <Text style={styles.payrollSectionTitle}>Détail par employé</Text>
+                <Text style={styles.payrollSectionTitle}>{t('Détail par employé')}</Text>
                 {payrollData.employees.map((emp, index) => (
                   <View key={emp.user._id} style={styles.payrollEmployeeCard}>
                     <View style={styles.payrollEmployeeHeader}>
@@ -1439,12 +1425,12 @@ export const TeamScreen = ({ navigation }) => {
                       </View>
                       <View style={styles.payrollDetailItem}>
                         <Ionicons name="wallet-outline" size={14} color={colors.info} />
-                        <Text style={styles.payrollDetailText}>Salaire: {formatPrice(emp.salary)}</Text>
+                        <Text style={styles.payrollDetailText}>{t('Salaire: {price}', { price: formatPrice(emp.salary) })}</Text>
                       </View>
                       {emp.commissions > 0 && (
                         <View style={styles.payrollDetailItem}>
                           <Ionicons name="trending-up-outline" size={14} color={colors.success} />
-                          <Text style={styles.payrollDetailText}>Comm: {formatPrice(emp.commissions)}</Text>
+                          <Text style={styles.payrollDetailText}>{t('Comm: {price}', { price: formatPrice(emp.commissions) })}</Text>
                         </View>
                       )}
                     </View>
@@ -1455,7 +1441,7 @@ export const TeamScreen = ({ navigation }) => {
                   <View style={{ alignItems: 'center', padding: 30 }}>
                     <Ionicons name="calendar-outline" size={50} color={colors.textSecondary} />
                     <Text style={{ color: colors.textSecondary, marginTop: 10, textAlign: 'center' }}>
-                      Aucun planning complété pour ce mois
+                      {t('Aucun planning complété pour ce mois')}
                     </Text>
                   </View>
                 )}
@@ -1499,7 +1485,7 @@ export const TeamScreen = ({ navigation }) => {
                 </LinearGradient>
               </View>
               <View style={styles.commissionHeaderText}>
-                <Text style={styles.commissionModalTitle}>✏️ Modifier les informations</Text>
+                <Text style={styles.commissionModalTitle}>{t('✏️ Modifier les informations')}</Text>
                 {selectedUser && (
                   <Text style={styles.commissionModalSubtitle}>{selectedUser.username}</Text>
                 )}
@@ -1527,7 +1513,7 @@ export const TeamScreen = ({ navigation }) => {
                   >
                     <Ionicons name="person-outline" size={24} color={colors.primary} />
                     <View style={styles.currentStatContent}>
-                      <Text style={styles.currentStatLabel}>Nom actuel</Text>
+                      <Text style={styles.currentStatLabel}>{t('Nom actuel')}</Text>
                       <Text style={styles.currentStatValue}>{selectedUser.fullName}</Text>
                     </View>
                   </LinearGradient>
@@ -1537,7 +1523,7 @@ export const TeamScreen = ({ navigation }) => {
                   >
                     <Ionicons name="mail-outline" size={24} color={colors.info} />
                     <View style={styles.currentStatContent}>
-                      <Text style={styles.currentStatLabel}>Email actuel</Text>
+                      <Text style={styles.currentStatLabel}>{t('Email actuel')}</Text>
                       <Text style={styles.currentStatValue}>{selectedUser.email}</Text>
                     </View>
                   </LinearGradient>
@@ -1545,7 +1531,7 @@ export const TeamScreen = ({ navigation }) => {
               )}
 
               <View style={styles.customInputSection}>
-                <Text style={styles.customInputTitle}>👤 Nom complet</Text>
+                <Text style={styles.customInputTitle}>{t('👤 Nom complet')}</Text>
                 <LinearGradient
                   colors={[colors.accent + '15', colors.accent + '08']}
                   style={styles.commissionInputContainer}
@@ -1553,7 +1539,7 @@ export const TeamScreen = ({ navigation }) => {
                   <View style={styles.editInfoInputWrapper}>
                     <Ionicons name="person-outline" size={24} color={colors.accent} />
                     <Input
-                      placeholder="Nom complet"
+                      placeholder={t('Nom complet')}
                       value={editInfoData.fullName}
                       onChangeText={(text) => setEditInfoData({ ...editInfoData, fullName: text })}
                       style={styles.editInfoInput}
@@ -1563,7 +1549,7 @@ export const TeamScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.customInputSection}>
-                <Text style={styles.customInputTitle}>📧 Adresse email</Text>
+                <Text style={styles.customInputTitle}>{t('📧 Adresse email')}</Text>
                 <LinearGradient
                   colors={[colors.accent + '15', colors.accent + '08']}
                   style={styles.commissionInputContainer}
@@ -1586,12 +1572,12 @@ export const TeamScreen = ({ navigation }) => {
                 <>
                   <View style={styles.passwordSectionDivider}>
                     <View style={styles.dividerLine} />
-                    <Text style={styles.dividerText}>Mot de passe</Text>
+                    <Text style={styles.dividerText}>{t('Mot de passe')}</Text>
                     <View style={styles.dividerLine} />
                   </View>
 
                   <View style={styles.customInputSection}>
-                    <Text style={styles.customInputTitle}>🔑 Nouveau mot de passe</Text>
+                    <Text style={styles.customInputTitle}>{t('🔑 Nouveau mot de passe')}</Text>
                     <LinearGradient
                       colors={[colors.warning + '15', colors.warning + '08']}
                       style={styles.commissionInputContainer}
@@ -1599,7 +1585,7 @@ export const TeamScreen = ({ navigation }) => {
                       <View style={styles.editInfoInputWrapper}>
                         <Ionicons name="lock-closed-outline" size={24} color={colors.warning} />
                         <Input
-                          placeholder="Laisser vide pour ne pas modifier"
+                          placeholder={t('Laisser vide pour ne pas modifier')}
                           value={editInfoData.newPassword}
                           onChangeText={(text) => setEditInfoData({ ...editInfoData, newPassword: text })}
                           secureTextEntry
@@ -1610,7 +1596,7 @@ export const TeamScreen = ({ navigation }) => {
                   </View>
 
                   <View style={styles.customInputSection}>
-                    <Text style={styles.customInputTitle}>🔑 Confirmer le mot de passe</Text>
+                    <Text style={styles.customInputTitle}>{t('🔑 Confirmer le mot de passe')}</Text>
                     <LinearGradient
                       colors={[colors.warning + '15', colors.warning + '08']}
                       style={styles.commissionInputContainer}
@@ -1618,7 +1604,7 @@ export const TeamScreen = ({ navigation }) => {
                       <View style={styles.editInfoInputWrapper}>
                         <Ionicons name="lock-closed-outline" size={24} color={colors.warning} />
                         <Input
-                          placeholder="Confirmer le nouveau mot de passe"
+                          placeholder={t('Confirmer le nouveau mot de passe')}
                           value={editInfoData.confirmPassword}
                           onChangeText={(text) => setEditInfoData({ ...editInfoData, confirmPassword: text })}
                           secureTextEntry
@@ -1636,10 +1622,10 @@ export const TeamScreen = ({ navigation }) => {
               >
                 <View style={styles.exampleHeader}>
                   <Ionicons name="information-circle" size={20} color={colors.warning} />
-                  <Text style={[styles.exampleTitle, { color: colors.warning }]}>Information</Text>
+                  <Text style={[styles.exampleTitle, { color: colors.warning }]}>{t('Information')}</Text>
                 </View>
                 <Text style={styles.exampleLabel}>
-                  Ces informations seront utilisées pour identifier le collaborateur et communiquer avec lui.
+                  {t('Ces informations seront utilisées pour identifier le collaborateur et communiquer avec lui.')}
                 </Text>
               </LinearGradient>
             </ScrollView>
@@ -1653,7 +1639,7 @@ export const TeamScreen = ({ navigation }) => {
                 }}
               >
                 <Ionicons name="close-outline" size={22} color={colors.textSecondary} />
-                <Text style={styles.commissionCancelButtonText}>Annuler</Text>
+                <Text style={styles.commissionCancelButtonText}>{t('Annuler')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.commissionSaveButtonWrapper}
@@ -1664,7 +1650,7 @@ export const TeamScreen = ({ navigation }) => {
                   style={styles.commissionSaveButton}
                 >
                   <Ionicons name="checkmark-circle" size={22} color="#fff" />
-                  <Text style={styles.commissionSaveButtonText}>Enregistrer</Text>
+                  <Text style={styles.commissionSaveButtonText}>{t('Enregistrer')}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -1675,7 +1661,7 @@ export const TeamScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -1708,7 +1694,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 2,
   },
@@ -1741,7 +1727,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginTop: 6,
   },
@@ -1819,7 +1805,7 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   userUsername: {
@@ -1963,7 +1949,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -2048,13 +2034,13 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#000',
+    fontWeight: '700',
+    color: colors.onPrimary,
   },
   // Styles du modal de changement de rôle
   roleModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -2077,7 +2063,7 @@ const styles = StyleSheet.create({
   },
   roleModalTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginTop: 12,
   },
@@ -2105,7 +2091,7 @@ const styles = StyleSheet.create({
   },
   roleOptionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -2162,7 +2148,7 @@ const styles = StyleSheet.create({
   },
   payrollBannerAmount: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.accent,
   },
   payrollMonthSelector: {
@@ -2213,11 +2199,11 @@ const styles = StyleSheet.create({
   },
   payrollTotalValue: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   payrollTotalSmallValue: {
     fontSize: 17,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   payrollSectionTitle: {
     fontSize: 15,
@@ -2269,7 +2255,7 @@ const styles = StyleSheet.create({
   },
   payrollEmployeeTotal: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.accent,
     marginLeft: 8,
   },
@@ -2322,13 +2308,13 @@ const styles = StyleSheet.create({
   },
   commissionValue: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   // Styles pour le modal de commission amélioré
   commissionModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   commissionModalBackdrop: {
@@ -2382,7 +2368,7 @@ const styles = StyleSheet.create({
   },
   commissionModalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -2426,7 +2412,7 @@ const styles = StyleSheet.create({
   },
   currentStatValue: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   // Sélection rapide
@@ -2435,7 +2421,7 @@ const styles = StyleSheet.create({
   },
   quickSelectTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 12,
   },
@@ -2471,7 +2457,7 @@ const styles = StyleSheet.create({
   },
   quickSelectButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   quickSelectButtonTextSmall: {
@@ -2495,7 +2481,7 @@ const styles = StyleSheet.create({
   },
   customInputTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 12,
   },
@@ -2513,12 +2499,12 @@ const styles = StyleSheet.create({
   commissionInput: {
     flex: 1,
     fontSize: 40,
-    fontWeight: 'bold',
+    fontWeight: '700',
     textAlign: 'center',
   },
   commissionPercentSymbol: {
     fontSize: 40,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.success,
   },
   commissionHint: {
@@ -2557,7 +2543,7 @@ const styles = StyleSheet.create({
   },
   exampleTitle: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.info,
   },
   exampleRow: {
@@ -2622,7 +2608,7 @@ const styles = StyleSheet.create({
   },
   commissionSaveButtonText: {
     fontSize: 15,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#fff',
   },
   // Styles pour la section photo

@@ -12,17 +12,37 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { AppHeader } from '../components/AppHeader';
 import { Card } from '../components/Card';
 import { Input } from '../components/Input';
 import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import api from '../services/api';
+import { t, useLanguage, getLocale } from '../i18n';
+
+const formatDateKey = (date) => {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getScheduleDateKey = (date) => {
+  if (typeof date === 'string' && date.length >= 10) {
+    return date.slice(0, 10);
+  }
+  return formatDateKey(date);
+};
 
 export const PlanningScreen = ({ navigation }) => {
+  useLanguage();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user, selectedProjectId } = useAuth();
   const { format: formatPrice, currency } = useCurrency();
   const [schedules, setSchedules] = useState([]);
@@ -61,13 +81,13 @@ export const PlanningScreen = ({ navigation }) => {
   const isCashier = user?.role === 'cashier';
 
   const daysOfWeek = [
-    { label: 'Lundi', value: 1, short: 'Lun' },
-    { label: 'Mardi', value: 2, short: 'Mar' },
-    { label: 'Mercredi', value: 3, short: 'Mer' },
-    { label: 'Jeudi', value: 4, short: 'Jeu' },
-    { label: 'Vendredi', value: 5, short: 'Ven' },
-    { label: 'Samedi', value: 6, short: 'Sam' },
-    { label: 'Dimanche', value: 0, short: 'Dim' },
+    { label: t('Lundi'), value: 1, short: t('Lun') },
+    { label: t('Mardi'), value: 2, short: t('Mar') },
+    { label: t('Mercredi'), value: 3, short: t('Mer') },
+    { label: t('Jeudi'), value: 4, short: t('Jeu') },
+    { label: t('Vendredi'), value: 5, short: t('Ven') },
+    { label: t('Samedi'), value: 6, short: t('Sam') },
+    { label: t('Dimanche'), value: 0, short: t('Dim') },
   ];
 
   const weekDebounceRef = useRef(null);
@@ -91,8 +111,8 @@ export const PlanningScreen = ({ navigation }) => {
 
       const params = {
         projectId: selectedProjectId || user?.projectId,
-        startDate: weekStart.toISOString(),
-        endDate: weekEnd.toISOString(),
+        startDate: `${formatDateKey(weekStart)}T00:00:00.000Z`,
+        endDate: `${formatDateKey(weekEnd)}T23:59:59.999Z`,
       };
 
       if (isCashier) {
@@ -103,7 +123,7 @@ export const PlanningScreen = ({ navigation }) => {
       setSchedules(response.data.data || []);
     } catch (error) {
       console.error('Erreur chargement planning:', error);
-      Alert.alert('Erreur', 'Impossible de charger les plannings');
+      Alert.alert(t('Erreur'), t('Impossible de charger les plannings'));
     } finally {
       setLoading(false);
     }
@@ -122,12 +142,12 @@ export const PlanningScreen = ({ navigation }) => {
 
   const handleCreateOrUpdate = async () => {
     if (!formData.userId) {
-      Alert.alert('Erreur', 'Veuillez sélectionner un employé');
+      Alert.alert(t('Erreur'), t('Veuillez sélectionner un employé'));
       return;
     }
 
     if (formData.isRecurring && formData.recurringDays.length === 0) {
-      Alert.alert('Erreur', 'Veuillez sélectionner au moins un jour pour la récurrence');
+      Alert.alert(t('Erreur'), t('Veuillez sélectionner au moins un jour pour la récurrence'));
       return;
     }
 
@@ -135,17 +155,17 @@ export const PlanningScreen = ({ navigation }) => {
       setLoading(true);
       const dataToSend = {
         ...formData,
-        date: formData.date.toISOString().split('T')[0],
-        endDate: formData.endDate ? formData.endDate.toISOString().split('T')[0] : null,
+        date: formatDateKey(formData.date),
+        endDate: formData.endDate ? formatDateKey(formData.endDate) : null,
         projectId: selectedProjectId || user?.projectId,
       };
 
       const response = await api.post('/schedules', dataToSend);
       
       if (response.data.count) {
-        Alert.alert('Succès', response.data.message);
+        Alert.alert(t('Succès'), response.data.message);
       } else {
-        Alert.alert('Succès', 'Planning créé');
+        Alert.alert(t('Succès'), t('Planning créé'));
       }
 
       setModalVisible(false);
@@ -153,7 +173,7 @@ export const PlanningScreen = ({ navigation }) => {
       loadSchedules();
     } catch (error) {
       console.error('Erreur sauvegarde planning:', error);
-      Alert.alert('Erreur', error.response?.data?.error || 'Une erreur est survenue');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Une erreur est survenue'));
     } finally {
       setLoading(false);
     }
@@ -161,20 +181,20 @@ export const PlanningScreen = ({ navigation }) => {
 
   const handleDelete = async (id) => {
     Alert.alert(
-      'Confirmation',
-      'Voulez-vous vraiment supprimer ce planning ?',
+      t('Confirmation'),
+      t('Voulez-vous vraiment supprimer ce planning ?'),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
         {
-          text: 'Supprimer',
+          text: t('Supprimer'),
           style: 'destructive',
           onPress: async () => {
             try {
               await api.delete(`/schedules/${id}`);
               loadSchedules();
-              Alert.alert('Succès', 'Planning supprimé');
+              Alert.alert(t('Succès'), t('Planning supprimé'));
             } catch (error) {
-              Alert.alert('Erreur', 'Impossible de supprimer le planning');
+              Alert.alert(t('Erreur'), t('Impossible de supprimer le planning'));
             }
           },
         },
@@ -200,13 +220,16 @@ export const PlanningScreen = ({ navigation }) => {
     const d = new Date(date);
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Lundi
-    return new Date(d.setDate(diff));
+    d.setDate(diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
   };
 
   const getWeekEnd = (date) => {
     const start = getWeekStart(date);
     const end = new Date(start);
     end.setDate(end.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
     return end;
   };
 
@@ -224,7 +247,7 @@ export const PlanningScreen = ({ navigation }) => {
   const schedulesByDay = useMemo(() => {
     const map = {};
     for (const schedule of schedules) {
-      const key = new Date(schedule.date).toDateString();
+      const key = getScheduleDateKey(schedule.date);
       if (!map[key]) map[key] = [];
       map[key].push(schedule);
     }
@@ -232,7 +255,7 @@ export const PlanningScreen = ({ navigation }) => {
   }, [schedules]);
 
   const getSchedulesForDay = useCallback((date) => {
-    return schedulesByDay[date.toDateString()] || [];
+    return schedulesByDay[formatDateKey(date)] || [];
   }, [schedulesByDay]);
 
   const previousWeek = useCallback(() => {
@@ -268,13 +291,13 @@ export const PlanningScreen = ({ navigation }) => {
   const getStatusInfo = (status) => {
     switch (status) {
       case 'scheduled':
-        return { label: 'Planifié', color: colors.info, icon: 'calendar' };
+        return { label: t('Planifié'), color: colors.info, icon: 'calendar' };
       case 'completed':
-        return { label: 'Terminé', color: colors.success, icon: 'checkmark-circle' };
+        return { label: t('Terminé'), color: colors.success, icon: 'checkmark-circle' };
       case 'absent':
-        return { label: 'Absent', color: colors.error, icon: 'close-circle' };
+        return { label: t('Absent'), color: colors.error, icon: 'close-circle' };
       case 'cancelled':
-        return { label: 'Annulé', color: colors.textSecondary, icon: 'ban' };
+        return { label: t('Annulé'), color: colors.textSecondary, icon: 'ban' };
       default:
         return { label: status, color: colors.textSecondary, icon: 'help-circle' };
     }
@@ -303,7 +326,7 @@ export const PlanningScreen = ({ navigation }) => {
       setSalaryModalVisible(true);
     } catch (error) {
       console.error('Erreur chargement salaire:', error);
-      Alert.alert('Erreur', 'Impossible de charger les statistiques de salaire');
+      Alert.alert(t('Erreur'), t('Impossible de charger les statistiques de salaire'));
     } finally {
       setLoading(false);
     }
@@ -338,14 +361,14 @@ export const PlanningScreen = ({ navigation }) => {
         notes: editScheduleData.notes,
       });
 
-      Alert.alert('Succès', 'Horaires modifiés avec succès');
+      Alert.alert(t('Succès'), t('Horaires modifiés avec succès'));
       setEditScheduleModalVisible(false);
       setSelectedSchedule(null);
       setEditScheduleData({ startTime: '', endTime: '', notes: '' });
       loadSchedules();
     } catch (error) {
       console.error('Erreur mise à jour horaires:', error);
-      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de modifier les horaires');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Impossible de modifier les horaires'));
     } finally {
       setLoading(false);
     }
@@ -362,9 +385,9 @@ export const PlanningScreen = ({ navigation }) => {
         dailySalary: dailySalaryValue
       });
 
-      Alert.alert('Succès', dailySalaryValue !== null
-        ? `Salaire journalier modifié à ${formatPrice(dailySalaryValue)}`
-        : 'Salaire remis au calcul par défaut (taux horaire)');
+      Alert.alert(t('Succès'), dailySalaryValue !== null
+        ? t('Salaire journalier modifié à {price}', { price: formatPrice(dailySalaryValue) })
+        : t('Salaire remis au calcul par défaut (taux horaire)'));
 
       setEditSalaryModalVisible(false);
       setSelectedSchedule(null);
@@ -372,7 +395,7 @@ export const PlanningScreen = ({ navigation }) => {
       loadSchedules();
     } catch (error) {
       console.error('Erreur mise à jour salaire:', error);
-      Alert.alert('Erreur', error.response?.data?.error || 'Impossible de modifier le salaire');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Impossible de modifier le salaire'));
     } finally {
       setLoading(false);
     }
@@ -382,16 +405,16 @@ export const PlanningScreen = ({ navigation }) => {
     try {
       await api.put(`/schedules/${scheduleId}`, { status: newStatus });
       const statusLabels = {
-        completed: 'terminé',
-        scheduled: 'planifié',
-        absent: 'absent',
-        cancelled: 'annulé'
+        completed: t('terminé'),
+        scheduled: t('planifié'),
+        absent: t('absent'),
+        cancelled: t('annulé')
       };
-      Alert.alert('Succès', `Planning marqué comme ${statusLabels[newStatus]}`);
+      Alert.alert(t('Succès'), t('Planning marqué comme {value}', { value: statusLabels[newStatus] }));
       loadSchedules();
     } catch (error) {
       console.error('Erreur mise à jour statut:', error);
-      Alert.alert('Erreur', 'Impossible de modifier le statut');
+      Alert.alert(t('Erreur'), t('Impossible de modifier le statut'));
     }
   };
 
@@ -405,7 +428,7 @@ export const PlanningScreen = ({ navigation }) => {
           </TouchableOpacity>
           <View style={styles.weekLabel}>
             <Text style={styles.weekLabelText}>
-              Semaine du {weekDays[0].getDate()} {weekDays[0].toLocaleDateString('fr-FR', { month: 'short' })} au {weekDays[6].getDate()} {weekDays[6].toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })}
+              {t('Semaine du {getDate} {toLocaleDateString} au {getDate2} {toLocaleDateString2}', { getDate: weekDays[0].getDate(), toLocaleDateString: weekDays[0].toLocaleDateString(getLocale(), { month: 'short' }), getDate2: weekDays[6].getDate(), toLocaleDateString2: weekDays[6].toLocaleDateString(getLocale(), { month: 'short', year: 'numeric' }) })}
             </Text>
           </View>
           <TouchableOpacity style={styles.weekNavButton} onPress={nextWeek}>
@@ -423,15 +446,15 @@ export const PlanningScreen = ({ navigation }) => {
               <View style={styles.dayHeader}>
                 <View style={styles.dayTitleContainer}>
                   <Text style={[styles.dayName, isToday && styles.dayNameToday]}>
-                    {day.toLocaleDateString('fr-FR', { weekday: 'long' })}
+                    {day.toLocaleDateString(getLocale(), { weekday: 'long' })}
                   </Text>
                   <Text style={[styles.dayDate, isToday && styles.dayDateToday]}>
-                    {day.getDate()} {day.toLocaleDateString('fr-FR', { month: 'long' })}
+                    {day.getDate()} {day.toLocaleDateString(getLocale(), { month: 'long' })}
                   </Text>
                 </View>
                 {isToday && (
                   <View style={styles.todayBadge}>
-                    <Text style={styles.todayBadgeText}>Aujourd'hui</Text>
+                    <Text style={styles.todayBadgeText}>{t("Aujourd'hui")}</Text>
                   </View>
                 )}
               </View>
@@ -440,7 +463,7 @@ export const PlanningScreen = ({ navigation }) => {
                 <View style={styles.daySchedules}>
                   {daySchedules.map((schedule) => {
                     const statusInfo = getStatusInfo(schedule.status);
-                    const userName = schedule.userId?.fullName || schedule.userId?.username || 'Inconnu';
+                    const userName = schedule.userId?.fullName || schedule.userId?.username || t('Inconnu');
 
                     return (
                       <View key={schedule._id}>
@@ -493,7 +516,7 @@ export const PlanningScreen = ({ navigation }) => {
                             <View style={styles.dailySalaryBadge}>
                               <Ionicons name="cash-outline" size={14} color={colors.accent} />
                               <Text style={styles.dailySalaryText}>
-                                Salaire fixé: {formatPrice(schedule.dailySalary)}
+                                {t('Salaire fixé: {price}', { price: formatPrice(schedule.dailySalary) })}
                               </Text>
                             </View>
                           )}
@@ -503,7 +526,7 @@ export const PlanningScreen = ({ navigation }) => {
                           {/* Boutons de changement de statut */}
                           {isAdmin && (
                             <View style={styles.statusButtonsContainer}>
-                              <Text style={styles.statusButtonsLabel}>Statut:</Text>
+                              <Text style={styles.statusButtonsLabel}>{t('Statut:')}</Text>
                               <View style={styles.statusButtons}>
                                 <TouchableOpacity
                                   style={[
@@ -522,7 +545,7 @@ export const PlanningScreen = ({ navigation }) => {
                                     styles.statusButtonText,
                                     schedule.status === 'completed' && styles.statusButtonTextActive,
                                     { color: schedule.status === 'completed' ? '#fff' : colors.success }
-                                  ]}>Terminé</Text>
+                                  ]}>{t('Terminé')}</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                   style={[
@@ -541,7 +564,7 @@ export const PlanningScreen = ({ navigation }) => {
                                     styles.statusButtonText,
                                     schedule.status === 'absent' && styles.statusButtonTextActive,
                                     { color: schedule.status === 'absent' ? '#fff' : colors.error }
-                                  ]}>Absent</Text>
+                                  ]}>{t('Absent')}</Text>
                                 </TouchableOpacity>
                               </View>
                             </View>
@@ -554,7 +577,7 @@ export const PlanningScreen = ({ navigation }) => {
               ) : (
                 <View style={styles.emptyDay}>
                   <Ionicons name="calendar-outline" size={32} color={colors.textSecondary} />
-                  <Text style={styles.emptyDayText}>Aucun planning</Text>
+                  <Text style={styles.emptyDayText}>{t('Aucun planning')}</Text>
                 </View>
               )}
             </Card>
@@ -566,41 +589,17 @@ export const PlanningScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={[colors.surface, colors.background]}
-        style={styles.header}
-      >
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color={colors.primary} />
-          </TouchableOpacity>
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>📅 Planning</Text>
-            <Text style={styles.subtitle}>
-              {isCashier ? 'Mon planning' : 'Gestion des horaires'}
-            </Text>
-          </View>
-          {isAdmin && (
-            <TouchableOpacity
-              style={styles.addButtonWrapper}
-              onPress={() => {
-                resetForm();
-                setModalVisible(true);
-              }}
-            >
-              <LinearGradient
-                colors={[colors.primary, colors.primaryDark]}
-                style={styles.addButton}
-              >
-                <Ionicons name="add" size={28} color="#000" />
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
-        </View>
-      </LinearGradient>
+      <AppHeader
+        title={t('Planning')}
+        subtitle={isCashier ? t('Mon planning') : t('Gestion des horaires')}
+        onBack={() => navigation.goBack()}
+        rightIcon={isAdmin ? 'add' : undefined}
+        rightLabel={t('Ajouter un planning')}
+        onRightPress={isAdmin ? () => {
+          resetForm();
+          setModalVisible(true);
+        } : undefined}
+      />
 
       <LinearGradient
         colors={[colors.surface + '80', colors.background]}
@@ -612,7 +611,7 @@ export const PlanningScreen = ({ navigation }) => {
         >
           <Ionicons name="calendar" size={28} color={colors.primary} />
           <Text style={styles.statValue}>{schedules.length}</Text>
-          <Text style={styles.statLabel}>Total</Text>
+          <Text style={styles.statLabel}>{t('Total')}</Text>
         </LinearGradient>
         <LinearGradient
           colors={[colors.success + '25', colors.success + '10']}
@@ -622,7 +621,7 @@ export const PlanningScreen = ({ navigation }) => {
           <Text style={styles.statValue}>
             {schedules.filter(s => s.status === 'completed').length}
           </Text>
-          <Text style={styles.statLabel}>Terminés</Text>
+          <Text style={styles.statLabel}>{t('Terminés')}</Text>
         </LinearGradient>
         <LinearGradient
           colors={[colors.info + '25', colors.info + '10']}
@@ -630,7 +629,7 @@ export const PlanningScreen = ({ navigation }) => {
         >
           <Ionicons name="time" size={28} color={colors.info} />
           <Text style={styles.statValue}>{totalCompletedHours.toFixed(0)}h</Text>
-          <Text style={styles.statLabel}>Heures</Text>
+          <Text style={styles.statLabel}>{t('Heures')}</Text>
         </LinearGradient>
       </LinearGradient>
 
@@ -647,8 +646,8 @@ export const PlanningScreen = ({ navigation }) => {
           <View style={styles.salaryButtonContent}>
             <Ionicons name="wallet" size={28} color="#fff" />
             <View style={styles.salaryButtonTextContainer}>
-              <Text style={styles.salaryButtonTitle}>💰 Mon Salaire Mensuel</Text>
-              <Text style={styles.salaryButtonSubtitle}>Voir le détail de ma rémunération</Text>
+              <Text style={styles.salaryButtonTitle}>{t('💰 Mon Salaire Mensuel')}</Text>
+              <Text style={styles.salaryButtonSubtitle}>{t('Voir le détail de ma rémunération')}</Text>
             </View>
           </View>
           <Ionicons name="chevron-forward" size={24} color="#fff" />
@@ -674,13 +673,13 @@ export const PlanningScreen = ({ navigation }) => {
                     colors={[colors.primary, colors.primaryDark]}
                     style={styles.modalIcon}
                   >
-                    <Ionicons name="calendar" size={28} color="#000" />
+                    <Ionicons name="calendar" size={28} color={colors.onPrimary} />
                   </LinearGradient>
                 </View>
                 <View style={styles.modalTitleContainer}>
-                  <Text style={styles.modalTitle}>Nouveau planning</Text>
+                  <Text style={styles.modalTitle}>{t('Nouveau planning')}</Text>
                   <Text style={styles.modalSubtitle}>
-                    {formData.isRecurring ? 'Planning récurrent' : 'Planning unique'}
+                    {formData.isRecurring ? t('Planning récurrent') : t('Planning unique')}
                   </Text>
                 </View>
               </LinearGradient>
@@ -697,13 +696,13 @@ export const PlanningScreen = ({ navigation }) => {
 
             <ScrollView style={styles.modalForm} showsVerticalScrollIndicator={false}>
               <View style={styles.pickerContainer}>
-                <Text style={styles.pickerLabel}>Employé *</Text>
+                <Text style={styles.pickerLabel}>{t('Employé *')}</Text>
                 <Picker
                   selectedValue={formData.userId}
                   onValueChange={(value) => setFormData({ ...formData, userId: value })}
                   style={styles.picker}
                 >
-                  <Picker.Item label="Sélectionner un employé" value="" />
+                  <Picker.Item label={t('Sélectionner un employé')} value="" />
                   {users.map((u) => (
                     <Picker.Item
                       key={u._id}
@@ -730,9 +729,9 @@ export const PlanningScreen = ({ navigation }) => {
                       color={formData.isRecurring ? colors.accent : colors.textSecondary} 
                     />
                     <View style={styles.recurringToggleText}>
-                      <Text style={styles.recurringToggleTitle}>Planning récurrent</Text>
+                      <Text style={styles.recurringToggleTitle}>{t('Planning récurrent')}</Text>
                       <Text style={styles.recurringToggleSubtitle}>
-                        {formData.isRecurring ? 'Répéter tous les jours sélectionnés' : 'Activer pour planifier plusieurs jours'}
+                        {formData.isRecurring ? t('Répéter tous les jours sélectionnés') : t('Activer pour planifier plusieurs jours')}
                       </Text>
                     </View>
                   </View>
@@ -751,7 +750,7 @@ export const PlanningScreen = ({ navigation }) => {
               {formData.isRecurring && (
                 <>
                   <View style={styles.daysSelectionContainer}>
-                    <Text style={styles.pickerLabel}>⚡ Sélectionner les jours</Text>
+                    <Text style={styles.pickerLabel}>{t('⚡ Sélectionner les jours')}</Text>
                     <View style={styles.daysGrid}>
                       {daysOfWeek.map((day) => (
                         <TouchableOpacity
@@ -788,9 +787,9 @@ export const PlanningScreen = ({ navigation }) => {
                   >
                     <Ionicons name="calendar-outline" size={20} color={colors.primary} />
                     <View style={styles.dateButtonContent}>
-                      <Text style={styles.dateButtonLabel}>Jusqu'au</Text>
+                      <Text style={styles.dateButtonLabel}>{t("Jusqu'au")}</Text>
                       <Text style={styles.dateButtonText}>
-                        {formData.endDate ? formData.endDate.toLocaleDateString('fr-FR') : '3 mois par défaut'}
+                        {formData.endDate ? formData.endDate.toLocaleDateString(getLocale()) : t('3 mois par défaut')}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -819,10 +818,10 @@ export const PlanningScreen = ({ navigation }) => {
                 <Ionicons name="calendar-outline" size={20} color={colors.primary} />
                 <View style={styles.dateButtonContent}>
                   <Text style={styles.dateButtonLabel}>
-                    {formData.isRecurring ? 'À partir du' : 'Date'}
+                    {formData.isRecurring ? t('À partir du') : t('Date')}
                   </Text>
                   <Text style={styles.dateButtonText}>
-                    {formData.date.toLocaleDateString('fr-FR', {
+                    {formData.date.toLocaleDateString(getLocale(), {
                       weekday: 'long',
                       day: 'numeric',
                       month: 'long',
@@ -848,7 +847,7 @@ export const PlanningScreen = ({ navigation }) => {
 
               <View style={styles.timePickerRow}>
                 <View style={styles.timePickerColumn}>
-                  <Text style={styles.pickerLabel}>Heure de début *</Text>
+                  <Text style={styles.pickerLabel}>{t('Heure de début *')}</Text>
                   <Input
                     placeholder="09:00"
                     value={formData.startTime}
@@ -856,7 +855,7 @@ export const PlanningScreen = ({ navigation }) => {
                   />
                 </View>
                 <View style={styles.timePickerColumn}>
-                  <Text style={styles.pickerLabel}>Heure de fin *</Text>
+                  <Text style={styles.pickerLabel}>{t('Heure de fin *')}</Text>
                   <Input
                     placeholder="17:00"
                     value={formData.endTime}
@@ -866,7 +865,7 @@ export const PlanningScreen = ({ navigation }) => {
               </View>
 
               <Input
-                placeholder="Notes (optionnel)"
+                placeholder={t('Notes (optionnel)')}
                 value={formData.notes}
                 onChangeText={(text) => setFormData({ ...formData, notes: text })}
                 multiline
@@ -882,7 +881,7 @@ export const PlanningScreen = ({ navigation }) => {
                   resetForm();
                 }}
               >
-                <Text style={styles.cancelButtonText}>Annuler</Text>
+                <Text style={styles.cancelButtonText}>{t('Annuler')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.saveButtonWrapper}
@@ -894,12 +893,12 @@ export const PlanningScreen = ({ navigation }) => {
                   style={styles.saveButton}
                 >
                   {loading ? (
-                    <ActivityIndicator color="#000" />
+                    <ActivityIndicator color={colors.onPrimary} />
                   ) : (
                     <>
-                      <Ionicons name="checkmark-circle" size={20} color="#000" />
+                      <Ionicons name="checkmark-circle" size={20} color={colors.onPrimary} />
                       <Text style={styles.saveButtonText}>
-                        {formData.isRecurring ? 'Créer les plannings' : 'Créer'}
+                        {formData.isRecurring ? t('Créer les plannings') : t('Créer')}
                       </Text>
                     </>
                   )}
@@ -931,9 +930,9 @@ export const PlanningScreen = ({ navigation }) => {
                   </LinearGradient>
                 </View>
                 <View style={styles.modalTitleContainer}>
-                  <Text style={styles.modalTitle}>💰 Mon Salaire</Text>
+                  <Text style={styles.modalTitle}>{t('💰 Mon Salaire')}</Text>
                   <Text style={styles.modalSubtitle}>
-                    {salaryStats?.period?.label || 'Mois actuel'}
+                    {salaryStats?.period?.label || t('Mois actuel')}
                   </Text>
                 </View>
               </LinearGradient>
@@ -950,7 +949,7 @@ export const PlanningScreen = ({ navigation }) => {
                 <>
                   {/* Résumé financier */}
                   <View style={styles.salarySection}>
-                    <Text style={styles.salarySectionTitle}>📊 Résumé Financier</Text>
+                    <Text style={styles.salarySectionTitle}>{t('📊 Résumé Financier')}</Text>
                     <View style={styles.salaryStatsGrid}>
                       <LinearGradient
                         colors={[colors.primary + '15', colors.primary + '08']}
@@ -960,7 +959,7 @@ export const PlanningScreen = ({ navigation }) => {
                         <Text style={styles.salaryStatValue}>
                           {formatPrice(salaryStats.salary.hourly)}
                         </Text>
-                        <Text style={styles.salaryStatLabel}>Salaire horaire</Text>
+                        <Text style={styles.salaryStatLabel}>{t('Salaire horaire')}</Text>
                         <Text style={styles.salaryStatDetail}>
                           {salaryStats.hours.total}h × {formatPrice(salaryStats.user.hourlyRate)}/h
                         </Text>
@@ -974,9 +973,9 @@ export const PlanningScreen = ({ navigation }) => {
                         <Text style={styles.salaryStatValue}>
                           {formatPrice(salaryStats.salary.commissions)}
                         </Text>
-                        <Text style={styles.salaryStatLabel}>Commissions</Text>
+                        <Text style={styles.salaryStatLabel}>{t('Commissions')}</Text>
                         <Text style={styles.salaryStatDetail}>
-                          {salaryStats.user.commissionRate}% sur ventes
+                          {t('{commissionRate}% sur ventes', { commissionRate: salaryStats.user.commissionRate })}
                         </Text>
                       </LinearGradient>
                     </View>
@@ -988,12 +987,12 @@ export const PlanningScreen = ({ navigation }) => {
                       <View style={styles.totalSalaryContent}>
                         <Ionicons name="wallet" size={40} color={colors.accent} />
                         <View style={styles.totalSalaryText}>
-                          <Text style={styles.totalSalaryLabel}>Salaire Total</Text>
+                          <Text style={styles.totalSalaryLabel}>{t('Salaire Total')}</Text>
                           <Text style={styles.totalSalaryValue}>
                             {formatPrice(salaryStats.salary.total)}
                           </Text>
                           <Text style={styles.totalSalarySubtext}>
-                            Pour le mois de {salaryStats.period.label}
+                            {t('Pour le mois de {label}', { label: salaryStats.period.label })}
                           </Text>
                         </View>
                       </View>
@@ -1002,25 +1001,25 @@ export const PlanningScreen = ({ navigation }) => {
 
                   {/* Détail des heures */}
                   <View style={styles.salarySection}>
-                    <Text style={styles.salarySectionTitle}>⏱️ Détail des Heures</Text>
+                    <Text style={styles.salarySectionTitle}>{t('⏱️ Détail des Heures')}</Text>
                     <View style={styles.hoursDetailGrid}>
                       <View style={styles.hoursDetailItem}>
                         <Ionicons name="time-outline" size={24} color={colors.info} />
-                        <Text style={styles.hoursDetailLabel}>Total heures</Text>
+                        <Text style={styles.hoursDetailLabel}>{t('Total heures')}</Text>
                         <Text style={styles.hoursDetailValue}>
                           {salaryStats.hours.total}h
                         </Text>
                       </View>
                       <View style={styles.hoursDetailItem}>
                         <Ionicons name="checkmark-circle" size={24} color={colors.success} />
-                        <Text style={styles.hoursDetailLabel}>Jours travaillés</Text>
+                        <Text style={styles.hoursDetailLabel}>{t('Jours travaillés')}</Text>
                         <Text style={styles.hoursDetailValue}>
                           {salaryStats.hours.completed}
                         </Text>
                       </View>
                       <View style={styles.hoursDetailItem}>
                         <Ionicons name="stats-chart" size={24} color={colors.primary} />
-                        <Text style={styles.hoursDetailLabel}>Moyenne/jour</Text>
+                        <Text style={styles.hoursDetailLabel}>{t('Moyenne/jour')}</Text>
                         <Text style={styles.hoursDetailValue}>
                           {salaryStats.hours.average}h
                         </Text>
@@ -1031,28 +1030,28 @@ export const PlanningScreen = ({ navigation }) => {
                   {/* Détail des commissions */}
                   {salaryStats.commissions.count > 0 && (
                     <View style={styles.salarySection}>
-                      <Text style={styles.salarySectionTitle}>💸 Détail des Commissions</Text>
+                      <Text style={styles.salarySectionTitle}>{t('💸 Détail des Commissions')}</Text>
                       <View style={styles.commissionsDetail}>
                         <View style={styles.commissionDetailRow}>
-                          <Text style={styles.commissionDetailLabel}>Total commissions</Text>
+                          <Text style={styles.commissionDetailLabel}>{t('Total commissions')}</Text>
                           <Text style={styles.commissionDetailValue}>
                             {formatPrice(salaryStats.commissions.total)}
                           </Text>
                         </View>
                         <View style={styles.commissionDetailRow}>
-                          <Text style={styles.commissionDetailLabel}>En attente</Text>
+                          <Text style={styles.commissionDetailLabel}>{t('En attente')}</Text>
                           <Text style={[styles.commissionDetailValue, { color: colors.warning }]}>
                             {formatPrice(salaryStats.commissions.pending)}
                           </Text>
                         </View>
                         <View style={styles.commissionDetailRow}>
-                          <Text style={styles.commissionDetailLabel}>Payées</Text>
+                          <Text style={styles.commissionDetailLabel}>{t('Payées')}</Text>
                           <Text style={[styles.commissionDetailValue, { color: colors.success }]}>
                             {formatPrice(salaryStats.commissions.paid)}
                           </Text>
                         </View>
                         <View style={styles.commissionDetailRow}>
-                          <Text style={styles.commissionDetailLabel}>Nombre de ventes</Text>
+                          <Text style={styles.commissionDetailLabel}>{t('Nombre de ventes')}</Text>
                           <Text style={styles.commissionDetailValue}>
                             {salaryStats.commissions.count}
                           </Text>
@@ -1064,7 +1063,7 @@ export const PlanningScreen = ({ navigation }) => {
                   {/* Statistiques hebdomadaires */}
                   {salaryStats.weeklyStats && salaryStats.weeklyStats.length > 0 && (
                     <View style={styles.salarySection}>
-                      <Text style={styles.salarySectionTitle}>📅 Détail Hebdomadaire</Text>
+                      <Text style={styles.salarySectionTitle}>{t('📅 Détail Hebdomadaire')}</Text>
                       {salaryStats.weeklyStats.map((week, index) => (
                         <LinearGradient
                           key={index}
@@ -1079,7 +1078,7 @@ export const PlanningScreen = ({ navigation }) => {
                           </View>
                           <View style={styles.weeklyStatDetails}>
                             <Text style={styles.weeklyStatDetail}>
-                              {week.hours}h sur {week.days} jour(s)
+                              {t('{hours}h sur {days} jour(s)', { hours: week.hours, days: week.days })}
                             </Text>
                           </View>
                         </LinearGradient>
@@ -1100,7 +1099,7 @@ export const PlanningScreen = ({ navigation }) => {
                   style={styles.saveButton}
                 >
                   <Ionicons name="checkmark" size={20} color="#fff" />
-                  <Text style={styles.saveButtonText}>Fermer</Text>
+                  <Text style={styles.saveButtonText}>{t('Fermer')}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -1129,9 +1128,9 @@ export const PlanningScreen = ({ navigation }) => {
                   </LinearGradient>
                 </View>
                 <View style={styles.modalTitleContainer}>
-                  <Text style={styles.modalTitle}>Modifier le Salaire</Text>
+                  <Text style={styles.modalTitle}>{t('Modifier le Salaire')}</Text>
                   <Text style={styles.modalSubtitle}>
-                    {selectedSchedule && new Date(selectedSchedule.date).toLocaleDateString('fr-FR', {
+                    {selectedSchedule && new Date(selectedSchedule.date).toLocaleDateString(getLocale(), {
                       weekday: 'long',
                       day: 'numeric',
                       month: 'long'
@@ -1158,7 +1157,7 @@ export const PlanningScreen = ({ navigation }) => {
                     <View style={styles.scheduleInfoRow}>
                       <Ionicons name="person" size={20} color={colors.primary} />
                       <Text style={styles.scheduleInfoText}>
-                        {selectedSchedule.userId?.fullName || selectedSchedule.userId?.username || 'Employé'}
+                        {selectedSchedule.userId?.fullName || selectedSchedule.userId?.username || t('Employé')}
                       </Text>
                     </View>
                     <View style={styles.scheduleInfoRow}>
@@ -1170,30 +1169,30 @@ export const PlanningScreen = ({ navigation }) => {
                   </View>
 
                   <Text style={styles.editSalaryLabel}>
-                    Salaire journalier ({formatPrice(currency.symbol)})
+                    {t('Salaire journalier ({price})', { price: formatPrice(currency.symbol) })}
                   </Text>
                   <Text style={styles.editSalaryHelpText}>
-                    Laissez vide pour utiliser le calcul par défaut (taux horaire × heures)
+                    {t('Laissez vide pour utiliser le calcul par défaut (taux horaire × heures)')}
                   </Text>
                   <Input
-                    placeholder="Ex: 80 (laisser vide = taux horaire)"
+                    placeholder={t('Ex: 80 (laisser vide = taux horaire)')}
                     value={editDailySalary}
                     onChangeText={setEditDailySalary}
                     keyboardType="numeric"
                   />
 
                   <View style={styles.salaryComparisonCard}>
-                    <Text style={styles.salaryComparisonTitle}>Salaire actuel</Text>
+                    <Text style={styles.salaryComparisonTitle}>{t('Salaire actuel')}</Text>
                     {selectedSchedule.dailySalary !== null && selectedSchedule.dailySalary !== undefined ? (
                       <View style={styles.salaryComparisonRow}>
-                        <Text style={styles.salaryComparisonLabel}>Salaire journalier fixé:</Text>
-                        <Text style={[styles.salaryComparisonValue, { color: colors.accent, fontWeight: 'bold' }]}>
+                        <Text style={styles.salaryComparisonLabel}>{t('Salaire journalier fixé:')}</Text>
+                        <Text style={[styles.salaryComparisonValue, { color: colors.accent, fontWeight: '700' }]}>
                           {formatPrice(selectedSchedule.dailySalary)}
                         </Text>
                       </View>
                     ) : (
                       <View style={styles.salaryComparisonRow}>
-                        <Text style={styles.salaryComparisonLabel}>Calcul par défaut:</Text>
+                        <Text style={styles.salaryComparisonLabel}>{t('Calcul par défaut:')}</Text>
                         <Text style={styles.salaryComparisonValue}>
                           {selectedSchedule.duration}h × {formatPrice(selectedSchedule.userId?.hourlyRate || 0)}/h = {formatPrice((selectedSchedule.duration || 0) * (selectedSchedule.userId?.hourlyRate || 0))}
                         </Text>
@@ -1201,8 +1200,8 @@ export const PlanningScreen = ({ navigation }) => {
                     )}
                     {editDailySalary.trim() !== '' && (
                       <View style={[styles.salaryComparisonRow, { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }]}>
-                        <Text style={styles.salaryComparisonLabel}>Nouveau salaire:</Text>
-                        <Text style={[styles.salaryComparisonValue, { color: colors.success, fontWeight: 'bold' }]}>
+                        <Text style={styles.salaryComparisonLabel}>{t('Nouveau salaire:')}</Text>
+                        <Text style={[styles.salaryComparisonValue, { color: colors.success, fontWeight: '700' }]}>
                           {formatPrice(parseFloat(editDailySalary) || 0)}
                         </Text>
                       </View>
@@ -1221,7 +1220,7 @@ export const PlanningScreen = ({ navigation }) => {
                   setEditDailySalary('');
                 }}
               >
-                <Text style={styles.cancelButtonText}>Annuler</Text>
+                <Text style={styles.cancelButtonText}>{t('Annuler')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.saveButtonWrapper}
@@ -1238,7 +1237,7 @@ export const PlanningScreen = ({ navigation }) => {
                     <>
                       <Ionicons name="checkmark-circle" size={20} color="#fff" />
                       <Text style={[styles.saveButtonText, { color: '#fff' }]}>
-                        {editDailySalary.trim() === '' ? 'Remettre par défaut' : 'Enregistrer'}
+                        {editDailySalary.trim() === '' ? t('Remettre par défaut') : t('Enregistrer')}
                       </Text>
                     </>
                   )}
@@ -1270,9 +1269,9 @@ export const PlanningScreen = ({ navigation }) => {
                   </LinearGradient>
                 </View>
                 <View style={styles.modalTitleContainer}>
-                  <Text style={styles.modalTitle}>Modifier les Horaires</Text>
+                  <Text style={styles.modalTitle}>{t('Modifier les Horaires')}</Text>
                   <Text style={styles.modalSubtitle}>
-                    {selectedSchedule && new Date(selectedSchedule.date).toLocaleDateString('fr-FR', {
+                    {selectedSchedule && new Date(selectedSchedule.date).toLocaleDateString(getLocale(), {
                       weekday: 'long',
                       day: 'numeric',
                       month: 'long'
@@ -1299,14 +1298,14 @@ export const PlanningScreen = ({ navigation }) => {
                     <View style={styles.scheduleInfoRow}>
                       <Ionicons name="person" size={20} color={colors.primary} />
                       <Text style={styles.scheduleInfoText}>
-                        {selectedSchedule.userId?.fullName || selectedSchedule.userId?.username || 'Employé'}
+                        {selectedSchedule.userId?.fullName || selectedSchedule.userId?.username || t('Employé')}
                       </Text>
                     </View>
                   </View>
 
                   <View style={styles.timePickerRow}>
                     <View style={styles.timePickerColumn}>
-                      <Text style={styles.pickerLabel}>Heure de début *</Text>
+                      <Text style={styles.pickerLabel}>{t('Heure de début *')}</Text>
                       <Input
                         placeholder="09:00"
                         value={editScheduleData.startTime}
@@ -1314,7 +1313,7 @@ export const PlanningScreen = ({ navigation }) => {
                       />
                     </View>
                     <View style={styles.timePickerColumn}>
-                      <Text style={styles.pickerLabel}>Heure de fin *</Text>
+                      <Text style={styles.pickerLabel}>{t('Heure de fin *')}</Text>
                       <Input
                         placeholder="17:00"
                         value={editScheduleData.endTime}
@@ -1323,9 +1322,9 @@ export const PlanningScreen = ({ navigation }) => {
                     </View>
                   </View>
 
-                  <Text style={styles.pickerLabel}>Notes (optionnel)</Text>
+                  <Text style={styles.pickerLabel}>{t('Notes (optionnel)')}</Text>
                   <Input
-                    placeholder="Notes..."
+                    placeholder={t('Notes...')}
                     value={editScheduleData.notes}
                     onChangeText={(text) => setEditScheduleData({ ...editScheduleData, notes: text })}
                     multiline
@@ -1344,7 +1343,7 @@ export const PlanningScreen = ({ navigation }) => {
                   setEditScheduleData({ startTime: '', endTime: '', notes: '' });
                 }}
               >
-                <Text style={styles.cancelButtonText}>Annuler</Text>
+                <Text style={styles.cancelButtonText}>{t('Annuler')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.saveButtonWrapper}
@@ -1361,7 +1360,7 @@ export const PlanningScreen = ({ navigation }) => {
                     <>
                       <Ionicons name="checkmark-circle" size={20} color="#fff" />
                       <Text style={[styles.saveButtonText, { color: '#fff' }]}>
-                        Enregistrer
+                        {t('Enregistrer')}
                       </Text>
                     </>
                   )}
@@ -1375,7 +1374,7 @@ export const PlanningScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -1408,7 +1407,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 2,
   },
@@ -1440,7 +1439,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginTop: 6,
   },
@@ -1479,7 +1478,7 @@ const styles = StyleSheet.create({
   },
   weekLabelText: {
     fontSize: 15,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     textAlign: 'center',
   },
@@ -1504,7 +1503,7 @@ const styles = StyleSheet.create({
   },
   dayName: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     textTransform: 'capitalize',
     marginBottom: 4,
@@ -1529,7 +1528,7 @@ const styles = StyleSheet.create({
   },
   todayBadgeText: {
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.primary,
   },
   daySchedules: {
@@ -1638,7 +1637,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -1696,7 +1695,7 @@ const styles = StyleSheet.create({
   },
   recurringToggleTitle: {
     fontSize: 15,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -1756,11 +1755,11 @@ const styles = StyleSheet.create({
   },
   dayChipText: {
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   dayChipTextSelected: {
-    color: '#000',
+    color: colors.onPrimary,
   },
   dateButton: {
     flexDirection: 'row',
@@ -1829,8 +1828,8 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#000',
+    fontWeight: '700',
+    color: colors.onPrimary,
   },
   // Styles pour le bouton de salaire
   salaryButton: {
@@ -1860,7 +1859,7 @@ const styles = StyleSheet.create({
   },
   salaryButtonTitle: {
     fontSize: 17,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#fff',
   },
   salaryButtonSubtitle: {
@@ -1874,7 +1873,7 @@ const styles = StyleSheet.create({
   },
   salarySectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 12,
   },
@@ -1894,7 +1893,7 @@ const styles = StyleSheet.create({
   },
   salaryStatValue: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   salaryStatLabel: {
@@ -1931,7 +1930,7 @@ const styles = StyleSheet.create({
   },
   totalSalaryValue: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -1961,7 +1960,7 @@ const styles = StyleSheet.create({
   },
   hoursDetailValue: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   commissionsDetail: {
@@ -1986,7 +1985,7 @@ const styles = StyleSheet.create({
   },
   commissionDetailValue: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   weeklyStatCard: {
@@ -2009,7 +2008,7 @@ const styles = StyleSheet.create({
   },
   weeklyStatSalary: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.accent,
   },
   weeklyStatDetails: {
@@ -2085,7 +2084,7 @@ const styles = StyleSheet.create({
   },
   editSalaryLabel: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 6,
   },
@@ -2105,7 +2104,7 @@ const styles = StyleSheet.create({
   },
   salaryComparisonTitle: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 12,
   },

@@ -1,0 +1,23 @@
+KIT DE TEST — IMPORT CSV BUSSNESSAPP
+
+Importez les fichiers dans cet ordre afin que les références existent :
+
+1. 01-produits-test-complet.csv
+2. 02-stock-test-complet.csv
+3. 03-clients-test-complet.csv
+4. 04-ventes-test-complet.csv
+5. 05-depenses-test-complet.csv
+
+Dans l'application :
+- ouvrez Importer des données ;
+- choisissez le type correspondant au fichier ;
+- sélectionnez le CSV ;
+- vérifiez que « Structure reconnue » s'affiche ;
+- lancez l'import.
+
+Pour le fichier Ventes, activez « Mettre à jour le stock » uniquement si vous
+souhaitez déduire les quantités vendues. Les données utilisent le suffixe
+20260814 afin de limiter les collisions avec vos données existantes.
+
+Chaque fichier est encodé en UTF-8 avec BOM, utilise le séparateur point-virgule
+et couvre toutes les colonnes reconnues pour son type d'import.
