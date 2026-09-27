@@ -25,6 +25,8 @@ import { StockScreen } from './src/screens/StockScreen';
 import { CustomersScreen } from './src/screens/CustomersScreen';
 import { FeedbackScreen } from './src/screens/FeedbackScreen';
 import { ProductsScreen } from './src/screens/ProductsScreen';
+import { CatalogueScreen } from './src/screens/CatalogueScreen';
+import { isEmployeeRole } from './src/utils/roles';
 import { TeamScreen } from './src/screens/TeamScreen';
 import { ProjectsScreen } from './src/screens/ProjectsScreen';
 import { PlanningScreen } from './src/screens/PlanningScreen';
@@ -72,6 +74,7 @@ const TAB_ICONS = {
   Dashboard: ['home', 'home-outline'],
   Sales: ['cart', 'cart-outline'],
   Products: ['pricetag', 'pricetag-outline'],
+  Catalogue: ['pricetags', 'pricetags-outline'],
   Customers: ['people', 'people-outline'],
   More: ['grid', 'grid-outline'],
 };
@@ -79,6 +82,7 @@ const TAB_ICONS = {
 const MainTabs = () => {
   const { colors } = useTheme();
   const { t } = useI18n();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 8);
 
@@ -114,7 +118,10 @@ const MainTabs = () => {
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} options={{ title: t('Accueil') }} />
       <Tab.Screen name="Sales" component={SalesScreen} options={{ title: t('Ventes') }} />
-      <Tab.Screen name="Products" component={ProductsScreen} options={{ title: t('Produits') }} />
+      {/* Les salariés n'ont que le catalogue (sans prix de revient ni marge) */}
+      {isEmployeeRole(user?.role)
+        ? <Tab.Screen name="Catalogue" component={CatalogueScreen} options={{ title: t('Catalogue') }} />
+        : <Tab.Screen name="Products" component={ProductsScreen} options={{ title: t('Produits') }} />}
       <Tab.Screen
         name="Customers"
         component={PremiumGate(CustomersScreen, 'Customers', 'CRM Clients')}
@@ -185,6 +192,11 @@ const MainStack = () => {
       name="Simulation"
       component={PremiumGate(SimulationScreen, 'Simulation', 'Simulation Business Plan')}
       options={{ title: t('Simulation Business Plan') }}
+    />
+    <Stack.Screen
+      name="CatalogueView"
+      component={CatalogueScreen}
+      options={{ headerShown: false }}
     />
     <Stack.Screen
       name="Expenses"

@@ -42,6 +42,7 @@ import api, {
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { getMonthBounds, MONTH_HISTORY_LIMIT, monthKey, shiftMonth, startOfMonth } from '../utils/monthPeriod';
 import { t, useLanguage, getLocale } from '../i18n';
+import { isEmployeeRole } from '../utils/roles';
 
 const screenWidth = Dimensions.get('window').width;
 const formatLocalDateKey = (date) => (
@@ -822,7 +823,7 @@ export const DashboardScreen = ({ navigation }) => {
             <QuickActionButton title={t('Ventes')} icon="cart-outline" color={colors.success} onPress={() => navigation.navigate('Sales')} />
             <QuickActionButton title={t('Planning')} icon="calendar-outline" color={colors.primary} onPress={() => navigation.navigate('Planning')} />
             <QuickActionButton title={t('Commissions')} icon="cash-outline" color={colors.warning} onPress={() => navigation.navigate('Commissions')} />
-            <QuickActionButton title={t('Produits')} icon="pricetag-outline" color={colors.info} onPress={() => navigation.navigate('Products')} />
+            <QuickActionButton title={t('Catalogue')} icon="pricetags-outline" color={colors.info} onPress={() => navigation.navigate('Catalogue')} />
           </>}
           {isAdmin && (
             <QuickActionButton
@@ -832,7 +833,7 @@ export const DashboardScreen = ({ navigation }) => {
               onPress={() => navigation.navigate('Expenses')}
             />
           )}
-          {isAdmin && (
+          {!isEmployeeRole(user?.role) && (
             <QuickActionButton
               title={t('Stock')}
               icon="cube-outline"
@@ -1023,13 +1024,15 @@ export const DashboardScreen = ({ navigation }) => {
                       icon="people"
                       color={colors.warning}
                     />
-                    <StatCard
-                      title={t('Valeur Stock')}
-                      value={formatPrice(stats.totalStock || 0)}
-                      subtitle={`${stats.stockItems || 0} articles`}
-                      icon="cube"
-                      color={colors.primary}
-                    />
+                    {!isEmployeeRole(user?.role) && (
+                      <StatCard
+                        title={t('Valeur Stock')}
+                        value={formatPrice(stats.totalStock || 0)}
+                        subtitle={`${stats.stockItems || 0} articles`}
+                        icon="cube"
+                        color={colors.primary}
+                      />
+                    )}
                   </View>
 
                   <View style={styles.statsRow}>
@@ -1078,13 +1081,15 @@ export const DashboardScreen = ({ navigation }) => {
                       </View>
                       <Text style={styles.summaryValue}>{formatPrice(stats.totalCommissions || 0)}</Text>
                     </View>
-                    <View style={styles.summaryRow}>
-                      <View style={styles.summaryRowLeft}>
-                        <View style={[styles.summaryDot, { backgroundColor: colors.primary }]} />
-                        <Text style={styles.summaryLabel}>{t('Articles en stock')}</Text>
+                    {!isEmployeeRole(user?.role) && (
+                      <View style={styles.summaryRow}>
+                        <View style={styles.summaryRowLeft}>
+                          <View style={[styles.summaryDot, { backgroundColor: colors.primary }]} />
+                          <Text style={styles.summaryLabel}>{t('Articles en stock')}</Text>
+                        </View>
+                        <Text style={styles.summaryValue}>{stats.stockItems || 0}</Text>
                       </View>
-                      <Text style={styles.summaryValue}>{stats.stockItems || 0}</Text>
-                    </View>
+                    )}
                   </Card>
 
                   {stats.monthlyData && stats.monthlyData.length > 0 && (

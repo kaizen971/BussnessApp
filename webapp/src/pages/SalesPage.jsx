@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import toast from 'react-hot-toast'
+import { useSearchParams } from 'react-router-dom'
 import {
   ShoppingCart, Plus, Minus, Trash2, Search, Undo2, Pencil, Share2, Wallet,
   Package, User, Store, X, CheckCircle2, MessageCircle, Copy, Upload,
@@ -128,7 +129,7 @@ function SearchSelect({ label, icon: Icon, items, value, onChange, getLabel, get
 
 // ============= Point de vente (produits + panier) =============
 
-function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice, onValidated }) {
+function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice, onValidated, initialProductId, onInitialProductAdded }) {
   const [cart, setCart] = useState([])
   const [productSearch, setProductSearch] = useState('')
   const [customerId, setCustomerId] = useState('')
@@ -163,6 +164,14 @@ function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice,
       }]
     })
   }
+
+  // Bouton « Vendre » du catalogue : le produit arrive déjà dans le panier
+  useEffect(() => {
+    if (!initialProductId || products.length === 0) return
+    const product = products.find(p => p._id === initialProductId)
+    if (product) addToCart(product)
+    onInitialProductAdded()
+  }, [initialProductId, products])
 
   const updateQuantity = (productId, quantity) => {
     if (quantity <= 0) {
@@ -399,6 +408,7 @@ export default function SalesPage() {
   const [salesHasMore, setSalesHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [tab, setTab] = useState('pos')
+  const [searchParams, setSearchParams] = useSearchParams()
   const [refundTarget, setRefundTarget] = useState(null)
   const [refunding, setRefunding] = useState(false)
   const [editingSale, setEditingSale] = useState(null)
@@ -557,6 +567,8 @@ export default function SalesPage() {
           user={user}
           formatPrice={formatPrice}
           onValidated={loadData}
+          initialProductId={searchParams.get('produit')}
+          onInitialProductAdded={() => setSearchParams({}, { replace: true })}
         />
       )}
 

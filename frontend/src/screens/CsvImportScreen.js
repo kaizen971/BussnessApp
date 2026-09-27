@@ -24,8 +24,11 @@ import {
   inspectCsv,
 } from '../utils/csvImport'
 import { t, useLanguage } from '../i18n'
+import { isEmployeeRole } from '../utils/roles'
 
 const IMPORT_TYPE_KEYS = Object.keys(CSV_IMPORT_TYPES)
+// Produits (prix de revient) et stock : import réservé aux responsables
+const OWNER_ONLY_TYPES = ['products', 'stock']
 
 function formatFileSize(size = 0) {
   if (size < 1024) return `${size} o`
@@ -38,7 +41,10 @@ export const CsvImportScreen = () => {
   const { colors } = useTheme()
   const styles = useThemedStyles(createStyles)
   const { user, selectedProjectId } = useAuth()
-  const [selectedType, setSelectedType] = useState('products')
+  const typeKeys = isEmployeeRole(user?.role)
+    ? IMPORT_TYPE_KEYS.filter((type) => !OWNER_ONLY_TYPES.includes(type))
+    : IMPORT_TYPE_KEYS
+  const [selectedType, setSelectedType] = useState(typeKeys[0])
   const [file, setFile] = useState(null)
   const [csvContent, setCsvContent] = useState('')
   const [inspection, setInspection] = useState(null)
@@ -179,7 +185,7 @@ export const CsvImportScreen = () => {
         <Text style={styles.stepLabel}>{t('Étape 1')}</Text>
         <Text style={styles.sectionTitle}>{t('Données à ajouter')}</Text>
         <View style={styles.typeGrid}>
-          {IMPORT_TYPE_KEYS.map((type) => {
+          {typeKeys.map((type) => {
             const item = CSV_IMPORT_TYPES[type]
             const selected = type === selectedType
             return (

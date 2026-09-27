@@ -3,18 +3,20 @@ import {
   LayoutDashboard, ShoppingCart, TrendingDown, Package, FolderKanban, Tags,
   MessageSquare, Calculator, Boxes, Users, UserCog, CalendarDays, Percent,
   Crown, LogOut, Menu, X, ChevronRight, PanelLeftClose, PanelLeft, Lock,
-  GraduationCap, Briefcase, ChevronDown,
+  GraduationCap, Briefcase, ChevronDown, BookOpen,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useSubscription } from '../contexts/SubscriptionContext'
+import { isEmployeeRole } from '../utils/roles'
 
 const mainNav = [
   { to: '/', icon: LayoutDashboard, label: 'Tableau de bord', end: true },
   { to: '/ventes', icon: ShoppingCart, label: 'Ventes' },
   { to: '/depenses', icon: TrendingDown, label: 'Dépenses' },
-  { to: '/produits', icon: Package, label: 'Produits' },
-  { to: '/stock', icon: Boxes, label: 'Stock' },
+  { to: '/produits', icon: Package, label: 'Produits', ownerOnly: true },
+  { to: '/catalogue', icon: BookOpen, label: 'Catalogue' },
+  { to: '/stock', icon: Boxes, label: 'Stock', ownerOnly: true },
   { to: '/planning', icon: CalendarDays, label: 'Planning' },
   { to: '/projets', icon: FolderKanban, label: 'Mes business' },
   { to: '/categories', icon: Tags, label: 'Catégories' },
@@ -34,6 +36,7 @@ const PAGE_TITLES = {
   '/ventes': 'Ventes',
   '/depenses': 'Dépenses',
   '/produits': 'Produits',
+  '/catalogue': 'Catalogue',
   '/projets': 'Mes business',
   '/categories': 'Catégories',
   '/feedback': 'Feedback',
@@ -148,7 +151,7 @@ export default function Layout() {
           {!collapsed && (
             <p className="px-3 pb-2 text-[10px] font-semibold text-gray-600 uppercase tracking-widest">Gestion</p>
           )}
-          {mainNav.map((item) => (
+          {mainNav.filter((item) => !item.ownerOnly || !isEmployeeRole(user?.role)).map((item) => (
             <NavItem key={item.to} {...item} collapsed={collapsed} />
           ))}
 

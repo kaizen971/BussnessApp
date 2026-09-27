@@ -8,13 +8,15 @@ import { ThemePicker } from '../components/ThemePicker'
 import { LanguagePicker } from '../components/LanguagePicker'
 import { useI18n } from '../i18n'
 import { radius, spacing, typography } from '../utils/designSystem'
+import { isEmployeeRole } from '../utils/roles'
 
 const GROUPS = [
   {
     title: 'Gestion',
     items: [
+      { route: 'CatalogueView', label: 'Catalogue', detail: 'Produits à présenter au client', icon: 'pricetags-outline', owner: true },
       { route: 'Expenses', label: 'Dépenses', detail: 'Charges et paiements', icon: 'wallet-outline', admin: true },
-      { route: 'Stock', label: 'Stock', detail: 'Niveaux et mouvements', icon: 'cube-outline' },
+      { route: 'Stock', label: 'Stock', detail: 'Niveaux et mouvements', icon: 'cube-outline', owner: true },
       { route: 'Categories', label: 'Catégories', detail: 'Organisation du catalogue', icon: 'grid-outline', admin: true },
       { route: 'CsvImport', label: 'Importer des données', detail: 'Produits, stock, ventes, clients et dépenses', icon: 'document-text-outline', admin: true },
     ],
@@ -52,10 +54,12 @@ export const MoreScreen = ({ navigation }) => {
   const { canAccessScreen } = useSubscription()
   const { t } = useI18n()
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'responsable'
+  // Réservé aux responsables : Catalogue (déjà en onglet pour les salariés) et Stock
+  const isOwner = !isEmployeeRole(user?.role)
 
   const groups = GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => !item.admin || isAdmin),
+    items: group.items.filter((item) => (!item.admin || isAdmin) && (!item.owner || isOwner)),
   })).filter((group) => group.items.length > 0)
 
   return (

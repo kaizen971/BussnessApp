@@ -14,6 +14,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useCurrency } from '../contexts/CurrencyContext'
 import { useSubscription } from '../contexts/SubscriptionContext'
 import { dashboardAPI, projectsAPI, authAPI, exportAPI, downloadBlob } from '../services/api'
+import { isEmployeeRole } from '../utils/roles'
 import { Modal, ConfirmDialog, Stat, SkeletonCard, Spinner } from '../components/ui'
 import { SERIES, CATEGORICAL, CHART_TEXT, TOOLTIP_STYLE } from '../utils/chartTheme'
 
@@ -273,7 +274,7 @@ export default function DashboardPage() {
             <Stat label="Ventes totales" value={formatPrice(stats.totalSales || 0)} sub={`${stats.salesCount || 0} ventes`} icon={Banknote} />
             <Stat label="Dépenses" value={formatPrice(stats.totalExpenses || 0)} sub={`${stats.expensesCount || 0} dépenses`} icon={TrendingDown} color="bg-red-500/80" iconClass="text-white" className="stagger-1" />
             <Stat label="Masse salariale" value={formatPrice((stats.totalSalaries || 0) + (stats.totalCommissions || 0))} sub="Salaires + Commissions" icon={Users} color="bg-amber-500/80" iconClass="text-white" className="stagger-2" />
-            <Stat label="Valeur Stock" value={formatPrice(stats.totalStock || 0)} sub={`${stats.stockItems || 0} articles`} icon={Boxes} color="bg-night-600" iconClass="text-gold-400" className="stagger-3" />
+            {!isEmployeeRole(user?.role) && <Stat label="Valeur Stock" value={formatPrice(stats.totalStock || 0)} sub={`${stats.stockItems || 0} articles`} icon={Boxes} color="bg-night-600" iconClass="text-gold-400" className="stagger-3" />}
           </div>
 
           {/* Bénéfice net — chiffre héro */}
@@ -382,7 +383,7 @@ export default function DashboardPage() {
                 ['Nombre de dépenses', stats.expensesCount || 0, SERIES.red],
                 ['Salaires', formatPrice(stats.totalSalaries || 0), SERIES.blue],
                 ['Commissions', formatPrice(stats.totalCommissions || 0), SERIES.violet],
-                ['Articles en stock', stats.stockItems || 0, SERIES.gold],
+                ...(isEmployeeRole(user?.role) ? [] : [['Articles en stock', stats.stockItems || 0, SERIES.gold]]),
               ].map(([label, value, dot]) => (
                 <div key={label} className="flex items-center justify-between border-b border-night-700/60 pb-2.5">
                   <span className="flex items-center gap-2.5 text-[13px] text-gray-400">

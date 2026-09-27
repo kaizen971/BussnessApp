@@ -17,6 +17,7 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
@@ -34,6 +35,8 @@ const { width } = Dimensions.get('window');
 
 export const SalesScreen = () => {
   useLanguage();
+  const navigation = useNavigation();
+  const route = useRoute();
   const { colors } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
@@ -188,6 +191,15 @@ export const SalesScreen = () => {
 
     playSound('add');
   };
+
+  // Bouton « Vendre » du catalogue : ajoute le produit au panier et ouvre la saisie
+  const catalogueProductId = route.params?.addProductId;
+  useEffect(() => {
+    if (!catalogueProductId || products.length === 0) return;
+    handleAddToCart(catalogueProductId);
+    setModalVisible(true);
+    navigation.setParams({ addProductId: undefined });
+  }, [catalogueProductId, products]);
 
   // Modifier la quantité d'un produit dans le panier
   const updateCartItemQuantity = (productId, quantity) => {

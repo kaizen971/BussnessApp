@@ -16,6 +16,8 @@ import DashboardPage from './pages/DashboardPage'
 import SalesPage from './pages/SalesPage'
 import ExpensesPage from './pages/ExpensesPage'
 import ProductsPage from './pages/ProductsPage'
+import CataloguePage from './pages/CataloguePage'
+import { isEmployeeRole } from './utils/roles'
 import ProjectsPage from './pages/ProjectsPage'
 import CategoriesPage from './pages/CategoriesPage'
 import FeedbackPage from './pages/FeedbackPage'
@@ -36,6 +38,13 @@ function PublicOnly({ children }) {
   return children
 }
 
+// Pages réservées aux responsables : Produits (prix de revient, marge) et Stock
+function OwnerOnly({ children }) {
+  const { user } = useAuth()
+  if (isEmployeeRole(user?.role)) return <Navigate to="/catalogue" replace />
+  return children
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -48,7 +57,8 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="ventes" element={<SalesPage />} />
         <Route path="depenses" element={<ExpensesPage />} />
-        <Route path="produits" element={<ProductsPage />} />
+        <Route path="produits" element={<OwnerOnly><ProductsPage /></OwnerOnly>} />
+        <Route path="catalogue" element={<CataloguePage />} />
         <Route path="projets" element={<ProjectsPage />} />
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="feedback" element={<FeedbackPage />} />
@@ -56,9 +66,7 @@ function AppRoutes() {
         <Route path="simulation" element={
           <PremiumRoute screenKey="Simulation" featureName="Simulation Business Plan"><SimulationPage /></PremiumRoute>
         } />
-        <Route path="stock" element={
-          <StockPage />
-        } />
+        <Route path="stock" element={<OwnerOnly><StockPage /></OwnerOnly>} />
         <Route path="clients" element={
           <PremiumRoute screenKey="Customers" featureName="CRM Clients"><CustomersPage /></PremiumRoute>
         } />
