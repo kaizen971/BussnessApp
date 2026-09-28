@@ -96,9 +96,9 @@ test('requireProject répond 403 pour un business étranger', async () => {
   assert.strictEqual(nextCalled, false);
 });
 
-test('vendeurs et managers sont des salariés', () => {
+test('seul le vendeur est un salarié, le manager a les accès d\'encadrement', () => {
   assert.strictEqual(isEmployeeRole('cashier'), true);
-  assert.strictEqual(isEmployeeRole('manager'), true);
+  assert.strictEqual(isEmployeeRole('manager'), false);
   assert.strictEqual(isEmployeeRole('admin'), false);
   assert.strictEqual(isEmployeeRole('responsable'), false);
 });

@@ -4,10 +4,10 @@
 
 const PROJECT_DENIED = { error: 'Accès non autorisé à ce projet' };
 
-// Rôles « salarié » : ils ne voient pas les données sensibles (prix de revient, stock…)
-const EMPLOYEE_ROLES = ['cashier', 'manager'];
-// Rôles « responsable » : accès complet (produits, stock, marges)
-const OWNER_ROLES = ['admin', 'responsable'];
+// Rôle « salarié » (vendeur) : il ne voit pas les données sensibles (prix de revient, stock…)
+const EMPLOYEE_ROLES = ['cashier'];
+// Rôles d'encadrement : accès complet (produits, stock, marges), manager compris
+const OWNER_ROLES = ['admin', 'responsable', 'manager'];
 const isEmployeeRole = (role) => EMPLOYEE_ROLES.includes(role);
 
 const createProjectAccess = ({ mongoose, Project, User }) => {
