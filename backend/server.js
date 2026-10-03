@@ -3094,7 +3094,7 @@ app.get('/BussnessApp/users', authenticateToken, checkRole('admin', 'manager', '
   }
 });
 
-app.post('/BussnessApp/users', authenticateToken, checkRole('admin'), async (req, res) => {
+app.post('/BussnessApp/users', authenticateToken, checkRole('admin', 'responsable', 'manager'), async (req, res) => {
   try {
     const { username, email, password, fullName, role, projectId, photo } = req.body;
 
@@ -3102,7 +3102,17 @@ app.post('/BussnessApp/users', authenticateToken, checkRole('admin'), async (req
       return res.status(403).json({ error: 'Impossible de créer un compte administrateur. Il ne peut y avoir qu\'un seul administrateur par projet.' });
     }
 
+    if (req.user.role === 'manager' && !['cashier', 'manager'].includes(role || 'cashier')) {
+      return res.status(403).json({ error: 'Ce rôle ne peut pas être attribué par un manager' });
+    }
+
     if (!(await canAccessProject(req, projectId))) {
+      return res.status(403).json(PROJECT_DENIED);
+    }
+
+    // Un responsable peut créer des comptes seulement dans un business qui lui appartient.
+    if (req.user.role === 'responsable' &&
+        !(await Project.exists({ _id: projectId, ownerId: req.user.id }))) {
       return res.status(403).json(PROJECT_DENIED);
     }
 
