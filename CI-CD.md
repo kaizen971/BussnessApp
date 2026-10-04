@@ -15,6 +15,14 @@ Configuration une seule fois :
 
 Le script local `/Users/jordanhoomiz/Desktop/Deploy EAS/build-android.command` utilise le même profil EAS et lit maintenant le `versionCode` distant pour nommer l'AAB. Les builds cloud et Mac partagent ainsi la même séquence de versions.
 
+### Build et publication depuis le Mac
+
+Double-cliquer sur `/Users/jordanhoomiz/Desktop/Deploy EAS/build-et-publier-android.command` : le choix par défaut construit un AAB local et l'envoie en test interne. Le choix 2 envoie en production. Le script source est `scripts/build-and-submit-android.command`.
+
+Le premier envoi nécessite une clé JSON de compte de service Google Play dans les identifiants EAS. Le choix 4 du script ouvre `eas credentials --platform android` pour importer cette clé. La clé JSON ne doit pas être ajoutée au dépôt. Une fois enregistrée sur EAS, elle servira aussi au workflow GitHub.
+
+Pour récupérer le build cloud versionCode 56 du 4 octobre 2026 sans le reconstruire, utiliser `build-et-publier-android.command submit-build 4aa689ee-8b5f-4fad-a04e-d0957480a190 internal`. Le script accepte aussi `submit-file CHEMIN_AAB internal` pour envoyer un AAB existant.
+
 ## Serveur Lightsail
 
 Le workflow **Serveur Lightsail** se lance après un push sur la branche du serveur touchant le backend, la webapp ou le back-office. Il peut aussi être relancé manuellement. Il vérifie la syntaxe du serveur, construit les deux sites, récupère le commit exact sur le serveur, installe les dépendances backend, redémarre PM2, sauvegarde les anciens fichiers web, publie les nouveaux et vérifie les URL publiques.
