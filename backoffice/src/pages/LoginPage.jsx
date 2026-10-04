@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Shield, Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../contexts/AuthContext'
@@ -127,7 +127,14 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-[13px] font-medium text-gray-400 mb-2">Mot de passe</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-[13px] font-medium text-gray-400">Mot de passe</label>
+              {!needsInit && (
+                <Link to="/forgot-password" className="text-[12.5px] font-medium text-primary-400 hover:text-primary-300 transition-colors">
+                  Mot de passe oublié ?
+                </Link>
+              )}
+            </div>
             <div className="relative">
               <input type={showPassword ? 'text' : 'password'} value={form.password} onChange={set('password')} className={`${inputClass('password')} pr-12`} placeholder="Min. 6 caractères" autoComplete={needsInit ? 'new-password' : 'current-password'} />
               <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 p-0.5">

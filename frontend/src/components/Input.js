@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { View, TextInput, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { control, radius, spacing, typography } from '../utils/designSystem';
 
 export const Input = ({
   label,
@@ -15,14 +16,19 @@ export const Input = ({
   keyboardType = 'default',
   autoCapitalize = 'sentences',
   style,
+  onFocus,
+  onBlur,
   ...props
 }) => {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [isSecure, setIsSecure] = useState(secureTextEntry);
+  const [focused, setFocused] = useState(false);
 
   return (
     <View style={[styles.container, style]}>
       {label && <Text style={styles.label}>{label}</Text>}
-      <View style={[styles.inputContainer, error && styles.inputError]}>
+      <View style={[styles.inputContainer, focused && styles.inputFocused, error && styles.inputError]}>
         {icon && (
           <Ionicons name={icon} size={20} color={colors.textSecondary} style={styles.icon} />
         )}
@@ -36,6 +42,14 @@ export const Input = ({
           multiline={multiline}
           keyboardType={keyboardType}
           autoCapitalize={autoCapitalize}
+          onFocus={(event) => {
+            setFocused(true);
+            onFocus?.(event);
+          }}
+          onBlur={(event) => {
+            setFocused(false);
+            onBlur?.(event);
+          }}
           {...props}
         />
         {secureTextEntry && (
@@ -53,24 +67,27 @@ export const Input = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
+    ...typography.label,
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: spacing.xs,
   },
   inputContainer: {
+    minHeight: control.height,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 2,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: radius.md,
+    borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.sm,
+  },
+  inputFocused: {
+    borderColor: colors.primary,
   },
   inputError: {
     borderColor: colors.error,
@@ -80,22 +97,21 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    paddingVertical: 14,
-    fontSize: 16,
+    paddingVertical: 12,
+    fontSize: 15,
     color: colors.text,
   },
   multiline: {
     minHeight: 100,
     textAlignVertical: 'top',
-    paddingTop: 14,
+    paddingTop: 12,
   },
   eyeIcon: {
     padding: 4,
   },
   errorText: {
-    fontSize: 12,
+    ...typography.caption,
     color: colors.error,
-    marginTop: 4,
-    marginLeft: 4,
+    marginTop: spacing.xxs,
   },
 });

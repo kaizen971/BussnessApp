@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
-import { subscriptionAPI } from '../services/api';
+import { AppState } from 'react-native';
+import { subscriptionAPI, setOnSubscriptionRequired } from '../services/api';
 import { useAuth } from './AuthContext';
 
 const SubscriptionContext = createContext();
@@ -12,13 +13,33 @@ export const useSubscription = () => {
   return context;
 };
 
-const PREMIUM_SCREENS = ['Simulation', 'Commissions', 'Stock', 'Customers', 'Planning', 'Team'];
+const PREMIUM_SCREENS = ['Simulation', 'Commissions', 'Customers', 'Team'];
 
 export const SubscriptionProvider = ({ children }) => {
   const { isAuthenticated, isAdmin } = useAuth();
   const [subscription, setSubscription] = useState(null);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Accès au business (tous les rôles) : { locked, isOwner, reason, offer? } — voir /subscription/access
+  const [access, setAccess] = useState(null);
+  const [accessChecked, setAccessChecked] = useState(false);
+
+  const loadAccess = useCallback(async () => {
+    if (!isAuthenticated) {
+      setAccess(null);
+      setAccessChecked(false);
+      return;
+    }
+    try {
+      const res = await subscriptionAPI.getAccess();
+      setAccess(res.data);
+    } catch (err) {
+      // En cas d'erreur réseau on ne bloque pas : le serveur refuse de toute façon les requêtes (402)
+      console.error('Error loading access:', err);
+    } finally {
+      setAccessChecked(true);
+    }
+  }, [isAuthenticated]);
 
   const loadSubscription = useCallback(async () => {
     if (!isAuthenticated || !isAdmin) {
@@ -50,12 +71,33 @@ export const SubscriptionProvider = ({ children }) => {
     if (isAuthenticated) {
       loadSubscription();
       loadPlans();
+      loadAccess();
     } else {
       setSubscription(null);
       setPlans([]);
+      setAccess(null);
+      setAccessChecked(false);
       setLoading(false);
     }
-  }, [isAuthenticated, loadSubscription, loadPlans]);
+  }, [isAuthenticated, loadSubscription, loadPlans, loadAccess]);
+
+  // Une réponse 402 du serveur (abonnement terminé pendant l'utilisation) rafraîchit l'état d'accès
+  useEffect(() => {
+    setOnSubscriptionRequired(() => { loadAccess(); });
+    return () => setOnSubscriptionRequired(null);
+  }, [loadAccess]);
+
+  // Retour dans l'app (ex. après un paiement par le lien reçu par email) : on revérifie
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && isAuthenticated) loadAccess();
+    });
+    return () => sub.remove();
+  }, [isAuthenticated, loadAccess]);
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([loadSubscription(), loadAccess()]);
+  }, [loadSubscription, loadAccess]);
 
   const isPremium = subscription?.hasSubscription === true && subscription?.status === 'active';
 
@@ -71,7 +113,11 @@ export const SubscriptionProvider = ({ children }) => {
     loading,
     isPremium,
     canAccessScreen,
-    refreshSubscription: loadSubscription,
+    refreshSubscription: refreshAll,
+    access,
+    isLocked: access?.locked === true,
+    accessChecked,
+    refreshAccess: loadAccess,
     premiumScreens: PREMIUM_SCREENS,
   };
 

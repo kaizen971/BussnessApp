@@ -1,5 +1,6 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { t, getLanguage } from '../i18n';
 
 // URL du serveur AWS Lightsail (HTTPS)
 const API_BASE_URL = 'https://businessapp.installpostiz.com/bussnessapp';
@@ -15,9 +16,37 @@ const api = axios.create({
 // Cache en mémoire pour éviter de lire AsyncStorage à chaque requête
 let cachedToken = null;
 let refreshPromise = null;
+let onSessionInvalidated = null;
 
 export const setCachedToken = (token) => { cachedToken = token; };
 export const clearCachedToken = () => { cachedToken = null; };
+
+let onSubscriptionRequired = null;
+
+/** Enregistré par SubscriptionContext : le serveur a répondu 402 (essai / abonnement terminé) */
+export const setOnSubscriptionRequired = (callback) => {
+  onSubscriptionRequired = callback;
+};
+
+/** Enregistré par AuthContext pour forcer la déconnexion UI si la session est morte */
+export const setOnSessionInvalidated = (callback) => {
+  onSessionInvalidated = callback;
+};
+
+const invalidateSession = async () => {
+  await Promise.all([
+    AsyncStorage.removeItem('userToken'),
+    AsyncStorage.removeItem('userData'),
+  ]);
+  cachedToken = null;
+  if (typeof onSessionInvalidated === 'function') {
+    try {
+      await onSessionInvalidated();
+    } catch (e) {
+      console.error('Session invalidation callback failed:', e);
+    }
+  }
+};
 
 const refreshAuthToken = async () => {
   if (refreshPromise) return refreshPromise;
@@ -26,7 +55,7 @@ const refreshAuthToken = async () => {
     const token = cachedToken || await AsyncStorage.getItem('userToken');
     if (!token) throw new Error('No token to refresh');
 
-    const response = await api.post('/auth/refresh', null, {
+    const response = await api.post('/auth/refresh', {}, {
       headers: { Authorization: `Bearer ${token}` },
       skipAuthRefresh: true,
     });
@@ -59,6 +88,7 @@ api.interceptors.request.use(
     if (cachedToken) {
       config.headers.Authorization = `Bearer ${cachedToken}`;
     }
+    config.headers['Accept-Language'] = getLanguage();
     return config;
   },
   (error) => {
@@ -66,11 +96,23 @@ api.interceptors.request.use(
   }
 );
 
+// Les messages du serveur sont en français : on les traduit s'ils figurent au dictionnaire
+const translateServerMessages = (data, isError) => {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+  if (typeof data.error === 'string') data.error = t(data.error);
+  // `message` n'est traduit que dans une réponse de statut (évite de toucher aux contenus, ex. feedbacks)
+  if (typeof data.message === 'string' && (isError || 'success' in data)) data.message = t(data.message);
+};
+
 // Add response interceptor for better error handling
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    translateServerMessages(response.data, false);
+    return response;
+  },
   async (error) => {
     if (error.response) {
+      translateServerMessages(error.response.data, true);
       // Server responded with error status
       console.error('API Error Response:', {
         status: error.response.status,
@@ -79,9 +121,13 @@ api.interceptors.response.use(
       });
 
       const originalRequest = error.config;
+      const errorCode = error.response.data?.code;
       const isExpiredToken =
         error.response.status === 403 &&
-        error.response.data?.code === 'TOKEN_EXPIRED';
+        errorCode === 'TOKEN_EXPIRED';
+      const isInvalidToken =
+        (error.response.status === 401 || error.response.status === 403) &&
+        (errorCode === 'TOKEN_INVALID' || errorCode === 'NO_TOKEN');
 
       if (isExpiredToken && originalRequest && !originalRequest._retry && !originalRequest.skipAuthRefresh) {
         originalRequest._retry = true;
@@ -91,11 +137,19 @@ api.interceptors.response.use(
           originalRequest.headers.Authorization = `Bearer ${refreshed.token}`;
           return api(originalRequest);
         } catch (refreshError) {
-          await AsyncStorage.removeItem('userToken');
-          await AsyncStorage.removeItem('userData');
-          cachedToken = null;
+          await invalidateSession();
           return Promise.reject(refreshError);
         }
+      }
+
+      // Essai / abonnement terminé : l'app affiche l'écran de renouvellement
+      if (error.response.status === 402 && errorCode === 'SUBSCRIPTION_REQUIRED' && typeof onSubscriptionRequired === 'function') {
+        onSubscriptionRequired();
+      }
+
+      // Token invalide / absent : déconnexion propre (évite l'écran bloqué)
+      if (isInvalidToken && originalRequest && !originalRequest.skipAuthRefresh) {
+        await invalidateSession();
       }
     } else if (error.request) {
       // Request was made but no response received
@@ -115,6 +169,7 @@ export const authAPI = {
   refreshToken: () => refreshAuthToken(),
   getCurrentUser: () => api.get('/auth/me'),
   changePassword: (oldPassword, newPassword) => api.post('/auth/change-password', { oldPassword, newPassword }),
+  deleteAccount: (password) => api.post('/auth/delete-account', { password }),
   updateProfilePhoto: (imageUri) => {
     const formData = new FormData();
     formData.append('profilePhoto', {
@@ -140,7 +195,7 @@ export const projectsAPI = {
 
 // Sales API
 export const salesAPI = {
-  getAll: (projectId) => api.get('/sales', { params: { projectId } }),
+  getAll: (projectId, filters = {}) => api.get('/sales', { params: { projectId, ...filters } }),
   create: (data) => api.post('/sales', data),
   update: (saleId, data) => api.put(`/sales/${saleId}`, data),
   refund: (saleId) => api.post(`/sales/${saleId}/refund`),
@@ -148,7 +203,7 @@ export const salesAPI = {
 
 // Expenses API
 export const expensesAPI = {
-  getAll: (projectId) => api.get('/expenses', { params: { projectId } }),
+  getAll: (projectId, filters = {}) => api.get('/expenses', { params: { projectId, ...filters } }),
   create: (data) => api.post('/expenses', data),
   update: (id, data) => api.put(`/expenses/${id}`, data),
   delete: (id) => api.delete(`/expenses/${id}`),
@@ -189,7 +244,7 @@ export const dashboardAPI = {
 
 // Team Payroll API
 export const teamPayrollAPI = {
-  getPayroll: (projectId, month, year) => api.get(`/projects/${projectId}/team-payroll`, { params: { month, year } }),
+  getPayroll: (projectId, month, year, scope) => api.get(`/projects/${projectId}/team-payroll`, { params: { month, year, scope } }),
 };
 
 // Feedback API
@@ -262,10 +317,21 @@ export const exportAPI = {
   },
 };
 
+export const csvImportAPI = {
+  importData: (projectId, type, csv, options = {}) => api.post('/import-csv', {
+    projectId,
+    type,
+    csv,
+    options,
+  }),
+};
+
 // Subscription API
 export const subscriptionAPI = {
   getMySubscription: () => api.get('/subscription/my'),
+  getAccess: () => api.get('/subscription/access'),
   getPlans: () => api.get('/subscription/plans'),
+  validateReceipt: (data) => api.post('/subscription/validate-receipt', data),
 };
 
 // Legal API (pas besoin d'authentification)

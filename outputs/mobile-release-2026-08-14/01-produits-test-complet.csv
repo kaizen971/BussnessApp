@@ -1,0 +1,3 @@
+﻿nom;prix_vente;prix_revient;categorie;description;stock_initial;stock_minimum
+Produit Démo Café 20260814;25.5;10.25;Tests CSV;"Produit physique; édition ""démo""";20;5
+Service Conseil Test 20260814;80;15;Services;Prestation de conseil importée;0;0

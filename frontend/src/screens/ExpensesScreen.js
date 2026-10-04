@@ -9,18 +9,29 @@ import {
   TouchableOpacity,
   Switch,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
+import { EmptyState, FloatingActionButton, SegmentedControl } from '../components/AppPrimitives';
+import { MonthNavigator } from '../components/MonthNavigator';
 import { expensesAPI, teamPayrollAPI } from '../services/api';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { getMonthBounds, MONTH_HISTORY_LIMIT, shiftMonth, startOfMonth } from '../utils/monthPeriod';
+import { t, useLanguage, getLocale } from '../i18n';
 
 export const ExpensesScreen = () => {
+  useLanguage();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { format: formatPrice } = useCurrency();
   const [expenses, setExpenses] = useState([]);
@@ -30,6 +41,8 @@ export const ExpensesScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [recurringModalVisible, setRecurringModalVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'recurring' ou 'payroll'
+  const [periodMode, setPeriodMode] = useState('month');
+  const [selectedMonth, setSelectedMonth] = useState(startOfMonth());
   const [editingExpense, setEditingExpense] = useState(null);
   const [formData, setFormData] = useState({
     amount: '',
@@ -42,18 +55,26 @@ export const ExpensesScreen = () => {
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   useEffect(() => {
-    loadExpenses();
     loadRecurringExpenses();
-    if (isAdmin) loadPayroll();
   }, []);
+
+  useEffect(() => {
+    loadExpenses();
+    if (isAdmin) loadPayroll();
+  }, [periodMode, selectedMonth, user?.projectId]);
 
   const loadExpenses = async () => {
     try {
-      const response = await expensesAPI.getAll(user?.projectId);
-      setExpenses(response.data);
+      const filters = periodMode === 'month' ? getMonthBounds(selectedMonth) : {};
+      const response = await expensesAPI.getAll(user?.projectId, filters);
+      const receivedExpenses = response.data || [];
+      setExpenses(periodMode === 'month'
+        ? receivedExpenses.filter((expense) => expense.date >= filters.startDate && expense.date < filters.endDate)
+        : receivedExpenses
+      );
     } catch (error) {
       console.error('Error loading expenses:', error);
-      Alert.alert('Erreur', 'Impossible de charger les dépenses');
+      Alert.alert(t('Erreur'), t('Impossible de charger les dépenses'));
     } finally {
       setLoading(false);
     }
@@ -70,11 +91,11 @@ export const ExpensesScreen = () => {
 
   const loadPayroll = async () => {
     try {
-      const now = new Date();
       const response = await teamPayrollAPI.getPayroll(
         user?.projectId,
-        now.getMonth() + 1,
-        now.getFullYear()
+        selectedMonth.getMonth() + 1,
+        selectedMonth.getFullYear(),
+        periodMode === 'all' ? 'all' : undefined
       );
       setPayrollData(response.data);
     } catch (error) {
@@ -84,12 +105,12 @@ export const ExpensesScreen = () => {
 
   const handleAddExpense = async () => {
     if (!formData.amount) {
-      Alert.alert('Erreur', 'Veuillez saisir un montant');
+      Alert.alert(t('Erreur'), t('Veuillez saisir un montant'));
       return;
     }
 
     if (formData.isRecurring && (!formData.recurringDay || formData.recurringDay < 1 || formData.recurringDay > 28)) {
-      Alert.alert('Erreur', 'Veuillez saisir un jour valide (1-28)');
+      Alert.alert(t('Erreur'), t('Veuillez saisir un jour valide (1-28)'));
       return;
     }
 
@@ -112,9 +133,9 @@ export const ExpensesScreen = () => {
       setModalVisible(false);
       loadExpenses();
       loadRecurringExpenses();
-      Alert.alert('Succès', formData.isRecurring ? 'Dépense récurrente ajoutée avec succès' : 'Dépense ajoutée avec succès');
+      Alert.alert(t('Succès'), formData.isRecurring ? t('Dépense récurrente ajoutée avec succès') : t('Dépense ajoutée avec succès'));
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible d\'ajouter la dépense');
+      Alert.alert(t('Erreur'), t("Impossible d'ajouter la dépense"));
     }
   };
 
@@ -132,7 +153,7 @@ export const ExpensesScreen = () => {
 
   const handleUpdateExpense = async () => {
     if (!formData.amount) {
-      Alert.alert('Erreur', 'Veuillez saisir un montant');
+      Alert.alert(t('Erreur'), t('Veuillez saisir un montant'));
       return;
     }
 
@@ -149,28 +170,28 @@ export const ExpensesScreen = () => {
       setEditingExpense(null);
       setModalVisible(false);
       loadExpenses();
-      Alert.alert('Succès', 'Dépense modifiée avec succès');
+      Alert.alert(t('Succès'), t('Dépense modifiée avec succès'));
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible de modifier la dépense');
+      Alert.alert(t('Erreur'), t('Impossible de modifier la dépense'));
     }
   };
 
   const handleDeleteExpense = async (id) => {
     Alert.alert(
-      'Confirmer la suppression',
-      'Voulez-vous vraiment supprimer cette dépense ?',
+      t('Confirmer la suppression'),
+      t('Voulez-vous vraiment supprimer cette dépense ?'),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
         {
-          text: 'Supprimer',
+          text: t('Supprimer'),
           style: 'destructive',
           onPress: async () => {
             try {
               await expensesAPI.delete(id);
               loadExpenses();
-              Alert.alert('Succès', 'Dépense supprimée');
+              Alert.alert(t('Succès'), t('Dépense supprimée'));
             } catch (error) {
-              Alert.alert('Erreur', 'Impossible de supprimer la dépense');
+              Alert.alert(t('Erreur'), t('Impossible de supprimer la dépense'));
             }
           }
         }
@@ -186,20 +207,20 @@ export const ExpensesScreen = () => {
 
   const handleDeleteRecurring = async (id) => {
     Alert.alert(
-      'Confirmer la suppression',
-      'Voulez-vous vraiment supprimer cette dépense récurrente ? Elle ne sera plus générée automatiquement.',
+      t('Confirmer la suppression'),
+      t('Voulez-vous vraiment supprimer cette dépense récurrente ? Elle ne sera plus générée automatiquement.'),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
         {
-          text: 'Supprimer',
+          text: t('Supprimer'),
           style: 'destructive',
           onPress: async () => {
             try {
               await expensesAPI.deleteRecurring(id);
               loadRecurringExpenses();
-              Alert.alert('Succès', 'Dépense récurrente supprimée');
+              Alert.alert(t('Succès'), t('Dépense récurrente supprimée'));
             } catch (error) {
-              Alert.alert('Erreur', 'Impossible de supprimer la dépense récurrente');
+              Alert.alert(t('Erreur'), t('Impossible de supprimer la dépense récurrente'));
             }
           }
         }
@@ -210,13 +231,13 @@ export const ExpensesScreen = () => {
   const getCategoryInfo = (category) => {
     switch (category) {
       case 'purchase':
-        return { label: 'Achat', color: colors.error, icon: 'cart-outline' };
+        return { label: t('Achat'), color: colors.error, icon: 'cart-outline' };
       case 'variable':
-        return { label: 'Variable', color: colors.accent, icon: 'trending-up-outline' };
+        return { label: t('Variable'), color: colors.accent, icon: 'trending-up-outline' };
       case 'fixed':
-        return { label: 'Fixe', color: colors.info, icon: 'lock-closed-outline' };
+        return { label: t('Fixe'), color: colors.info, icon: 'lock-closed-outline' };
       default:
-        return { label: 'Autre', color: colors.textSecondary, icon: 'wallet-outline' };
+        return { label: t('Autre'), color: colors.textSecondary, icon: 'wallet-outline' };
     }
   };
 
@@ -249,7 +270,7 @@ export const ExpensesScreen = () => {
               <Text style={styles.expenseDescription}>{item.description}</Text>
             )}
             <Text style={styles.expenseDate}>
-              {new Date(item.date).toLocaleDateString('fr-FR', {
+              {new Date(item.date).toLocaleDateString(getLocale(), {
                 day: '2-digit',
                 month: 'short',
                 year: 'numeric',
@@ -299,7 +320,7 @@ export const ExpensesScreen = () => {
               <Text style={styles.expenseDescription}>{item.description}</Text>
             )}
             <Text style={styles.expenseDate}>
-              Tous les {item.recurringDay} du mois
+              {t('Tous les {recurringDay} du mois', { recurringDay: item.recurringDay })}
             </Text>
           </View>
           <TouchableOpacity
@@ -328,17 +349,17 @@ export const ExpensesScreen = () => {
           <View style={styles.headerRow}>
             <Text style={styles.expenseAmount}>-{formatPrice(item.totalDue)}</Text>
             <View style={[styles.categoryBadge, { backgroundColor: colors.warning + '20' }]}>
-              <Text style={[styles.categoryText, { color: colors.warning }]}>Salaire</Text>
+              <Text style={[styles.categoryText, { color: colors.warning }]}>{t('Salaire')}</Text>
             </View>
           </View>
           <Text style={styles.expenseDescription}>{item.user.fullName || item.user.username}</Text>
           <View style={styles.payrollDetails}>
             <Text style={styles.expenseDate}>
-              {item.daysWorked}j travaillés • {item.hours.toFixed(1)}h
+              {t('{daysWorked}j travaillés • {hours}h', { daysWorked: item.daysWorked, hours: item.hours.toFixed(1) })}
             </Text>
             {item.commissions > 0 && (
               <Text style={[styles.expenseDate, { color: colors.accent }]}>
-                + {formatPrice(item.commissions)} commissions
+                {t('+ {price} commissions', { price: formatPrice(item.commissions) })}
               </Text>
             )}
           </View>
@@ -350,63 +371,51 @@ export const ExpensesScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <View style={styles.periodControls}>
+          <SegmentedControl
+            value={periodMode}
+            onChange={setPeriodMode}
+            options={[
+              { value: 'month', label: t('Ce mois'), icon: 'calendar-outline' },
+              { value: 'all', label: t('Depuis le début'), icon: 'infinite-outline' },
+            ]}
+          />
+          {periodMode === 'month' && (
+            <MonthNavigator
+              value={selectedMonth}
+              onChange={setSelectedMonth}
+              minimumDate={shiftMonth(new Date(), -MONTH_HISTORY_LIMIT)}
+            />
+          )}
+        </View>
         <Card style={styles.totalCard}>
-          <Text style={styles.totalLabel}>Total des charges</Text>
+          <Text style={styles.totalLabel}>
+            {periodMode === 'month' ? t('Charges du mois') : t('Charges depuis le début')}
+          </Text>
           <Text style={styles.totalAmount}>{formatPrice(totalCharges)}</Text>
           <View style={styles.totalBreakdown}>
             <Text style={styles.totalBreakdownItem}>
-              Dépenses: {formatPrice(totalExpenses)}
+              {t('Dépenses: {price}', { price: formatPrice(totalExpenses) })}
             </Text>
             {isAdmin && (
               <Text style={[styles.totalBreakdownItem, { color: colors.warning }]}>
-                Masse salariale: {formatPrice(totalPayroll)}
+                {t('Masse salariale: {price}', { price: formatPrice(totalPayroll) })}
               </Text>
             )}
           </View>
         </Card>
       </View>
 
-      {/* Onglets */}
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'all' && styles.activeTab]}
-          onPress={() => setActiveTab('all')}
-        >
-          <Text style={[styles.tabText, activeTab === 'all' && styles.activeTabText]}>
-            Dépenses
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'recurring' && styles.activeTab]}
-          onPress={() => setActiveTab('recurring')}
-        >
-          <Ionicons
-            name="repeat"
-            size={16}
-            color={activeTab === 'recurring' ? colors.primary : colors.textSecondary}
-            style={{ marginRight: 4 }}
-          />
-          <Text style={[styles.tabText, activeTab === 'recurring' && styles.activeTabText]}>
-            Récurrentes
-          </Text>
-        </TouchableOpacity>
-        {isAdmin && (
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'payroll' && styles.activeTab]}
-            onPress={() => setActiveTab('payroll')}
-          >
-            <Ionicons
-              name="people"
-              size={16}
-              color={activeTab === 'payroll' ? colors.warning : colors.textSecondary}
-              style={{ marginRight: 4 }}
-            />
-            <Text style={[styles.tabText, activeTab === 'payroll' && styles.activeTabText]}>
-              Salaires
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      <SegmentedControl
+        value={activeTab}
+        onChange={setActiveTab}
+        style={styles.tabsContainer}
+        options={[
+          { value: 'all', label: t('Dépenses'), icon: 'receipt-outline' },
+          { value: 'recurring', label: t('Récurrentes'), icon: 'repeat-outline' },
+          ...(isAdmin ? [{ value: 'payroll', label: t('Salaires'), icon: 'people-outline' }] : []),
+        ]}
+      />
 
       {activeTab === 'all' ? (
         <FlatList
@@ -415,10 +424,11 @@ export const ExpensesScreen = () => {
           keyExtractor={(item) => item._id}
           contentContainerStyle={styles.listContainer}
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="wallet-outline" size={64} color={colors.textLight} />
-              <Text style={styles.emptyText}>Aucune dépense enregistrée</Text>
-            </View>
+            <EmptyState
+              icon="wallet-outline"
+              title={t('Aucune dépense enregistrée')}
+              description={t('Ajoutez une dépense pour suivre précisément vos charges.')}
+            />
           }
         />
       ) : activeTab === 'recurring' ? (
@@ -430,18 +440,18 @@ export const ExpensesScreen = () => {
           ListHeaderComponent={
             recurringExpenses.length > 0 ? (
               <Card style={[styles.totalCard, { backgroundColor: colors.warning + '10', marginBottom: 16 }]}>
-                <Text style={styles.totalLabel}>Total mensuel récurrent</Text>
+                <Text style={styles.totalLabel}>{t('Total mensuel récurrent')}</Text>
                 <Text style={[styles.totalAmount, { color: colors.warning }]}>{formatPrice(totalRecurring)}</Text>
-                <Text style={styles.totalCount}>{recurringExpenses.length} dépense(s) récurrente(s)</Text>
+                <Text style={styles.totalCount}>{t('{length} dépense(s) récurrente(s)', { length: recurringExpenses.length })}</Text>
               </Card>
             ) : null
           }
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="repeat" size={64} color={colors.textLight} />
-              <Text style={styles.emptyText}>Aucune dépense récurrente</Text>
-              <Text style={styles.emptySubtext}>Les dépenses récurrentes sont générées automatiquement chaque mois</Text>
-            </View>
+            <EmptyState
+              icon="repeat-outline"
+              title={t('Aucune dépense récurrente')}
+              description={t('Les dépenses récurrentes seront générées automatiquement chaque mois.')}
+            />
           }
         />
       ) : (
@@ -454,56 +464,65 @@ export const ExpensesScreen = () => {
             payrollData ? (
               <Card style={[styles.totalCard, { backgroundColor: colors.warning + '10', marginBottom: 16 }]}>
                 <Text style={styles.totalLabel}>
-                  Masse salariale — {payrollData.period?.label}
+                  {t('Masse salariale — {label}', { label: payrollData.period?.label })}
                 </Text>
                 <Text style={[styles.totalAmount, { color: colors.warning }]}>
                   {formatPrice(payrollData.totals?.totalPayroll || 0)}
                 </Text>
                 <View style={styles.payrollSummary}>
                   <Text style={styles.totalCount}>
-                    Salaires: {formatPrice(payrollData.totals?.totalSalary || 0)}
+                    {t('Salaires: {price}', { price: formatPrice(payrollData.totals?.totalSalary || 0) })}
                   </Text>
                   <Text style={styles.totalCount}>
-                    Commissions: {formatPrice(payrollData.totals?.totalCommissions || 0)}
+                    {t('Commissions: {price}', { price: formatPrice(payrollData.totals?.totalCommissions || 0) })}
                   </Text>
                   <Text style={styles.totalCount}>
-                    {payrollData.totals?.totalHours?.toFixed(1) || 0}h totales
+                    {payrollData.totals?.totalHours?.toFixed(1) || 0}{t('h totales')}
                   </Text>
                 </View>
               </Card>
             ) : null
           }
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="people-outline" size={64} color={colors.textLight} />
-              <Text style={styles.emptyText}>Aucun salaire ce mois</Text>
-              <Text style={styles.emptySubtext}>Les salaires sont calculés à partir du planning complété</Text>
-            </View>
+            <EmptyState
+              icon="people-outline"
+              title={t('Aucun salaire ce mois')}
+              description={t('Les salaires sont calculés à partir du planning complété.')}
+            />
           }
         />
       )}
 
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => setModalVisible(true)}
-        >
-          <Ionicons name="add" size={28} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      <FloatingActionButton
+        label={t('Ajouter une dépense')}
+        onPress={() => setModalVisible(true)}
+      />
 
       <Modal
         visible={modalVisible}
         animationType="slide"
         transparent
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={handleCloseModal}
       >
-        <View style={styles.modalOverlay}>
-          <ScrollView style={styles.modalScrollView}>
-            <View style={styles.modalContent}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView
+            style={styles.modalScrollView}
+            contentContainerStyle={[
+              styles.modalScrollContent,
+              { paddingTop: Math.max(insets.top, 16) },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
-                  {editingExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
+                  {editingExpense ? t('Modifier la dépense') : t('Nouvelle dépense')}
                 </Text>
                 <TouchableOpacity onPress={handleCloseModal}>
                   <Ionicons name="close" size={24} color={colors.text} />
@@ -511,22 +530,22 @@ export const ExpensesScreen = () => {
               </View>
 
               <View style={styles.pickerContainer}>
-                <Text style={styles.pickerLabel}>Catégorie *</Text>
+                <Text style={styles.pickerLabel}>{t('Catégorie *')}</Text>
                 <View style={styles.pickerWrapper}>
                   <Picker
                     selectedValue={formData.category}
                     onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
                     style={styles.picker}
                   >
-                    <Picker.Item label="Achat" value="purchase" />
-                    <Picker.Item label="Variable" value="variable" />
-                    <Picker.Item label="Fixe" value="fixed" />
+                    <Picker.Item label={t('Achat')} value="purchase" />
+                    <Picker.Item label={t('Variable')} value="variable" />
+                    <Picker.Item label={t('Fixe')} value="fixed" />
                   </Picker>
                 </View>
               </View>
 
               <Input
-                label="Montant *"
+                label={t('Montant *')}
                 value={formData.amount}
                 onChangeText={(value) => setFormData(prev => ({ ...prev, amount: value }))}
                 placeholder="0.00"
@@ -535,10 +554,10 @@ export const ExpensesScreen = () => {
               />
 
               <Input
-                label="Description"
+                label={t('Description')}
                 value={formData.description}
                 onChangeText={(value) => setFormData(prev => ({ ...prev, description: value }))}
-                placeholder="Détails de la dépense"
+                placeholder={t('Détails de la dépense')}
                 icon="document-text-outline"
                 multiline
               />
@@ -549,7 +568,7 @@ export const ExpensesScreen = () => {
                   <View style={styles.switchRow}>
                     <View style={styles.switchLabel}>
                       <Ionicons name="repeat" size={20} color={colors.warning} />
-                      <Text style={styles.switchText}>Dépense récurrente</Text>
+                      <Text style={styles.switchText}>{t('Dépense récurrente')}</Text>
                     </View>
                     <Switch
                       value={formData.isRecurring}
@@ -561,10 +580,10 @@ export const ExpensesScreen = () => {
                   {formData.isRecurring && (
                     <View style={styles.recurringOptions}>
                       <Text style={styles.recurringInfo}>
-                        Cette dépense sera automatiquement créée chaque mois
+                        {t('Cette dépense sera automatiquement créée chaque mois')}
                       </Text>
                       <View style={styles.dayPickerContainer}>
-                        <Text style={styles.pickerLabel}>Jour du mois (1-28)</Text>
+                        <Text style={styles.pickerLabel}>{t('Jour du mois (1-28)')}</Text>
                         <View style={styles.pickerWrapper}>
                           <Picker
                             selectedValue={formData.recurringDay}
@@ -584,25 +603,29 @@ export const ExpensesScreen = () => {
 
               <Button
                 title={editingExpense
-                  ? "Modifier la dépense"
-                  : (formData.isRecurring ? "Ajouter la dépense récurrente" : "Ajouter la dépense")}
+                  ? t('Modifier la dépense')
+                  : (formData.isRecurring ? t('Ajouter la dépense récurrente') : t('Ajouter la dépense'))}
                 onPress={editingExpense ? handleUpdateExpense : handleAddExpense}
               />
             </View>
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
   header: {
     padding: 16,
+  },
+  periodControls: {
+    gap: 8,
+    marginBottom: 12,
   },
   totalCard: {
     alignItems: 'center',
@@ -615,7 +638,7 @@ const styles = StyleSheet.create({
   },
   totalAmount: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.error,
     marginBottom: 4,
   },
@@ -653,7 +676,7 @@ const styles = StyleSheet.create({
   },
   expenseAmount: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.error,
   },
   categoryBadge: {
@@ -709,8 +732,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     padding: 24,
     paddingBottom: 40,
   },
@@ -722,7 +745,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   pickerContainer: {
@@ -790,6 +813,10 @@ const styles = StyleSheet.create({
   },
   modalScrollView: {
     flex: 1,
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
   },
   recurringSection: {
     marginVertical: 16,
