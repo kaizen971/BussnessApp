@@ -178,6 +178,7 @@ export const customersAPI = {
 export const usersAPI = {
   getAll: (projectId) => api.get('/users', { params: { projectId } }),
   create: (data) => api.post('/users', data),
+  remove: (id, projectId, confirmation) => api.delete(`/users/${id}`, { data: { projectId, confirmation } }),
 };
 
 // Dashboard API

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Briefcase, User, Lock, Eye, EyeOff } from 'lucide-react'
+import { User, Lock, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+import BrandLogo from '../components/BrandLogo'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
@@ -37,9 +38,7 @@ export default function LoginPage() {
         <div className="absolute -top-32 -right-32 w-96 h-96 bg-gold-500/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -left-24 w-96 h-96 bg-gold-500/5 rounded-full blur-3xl" />
         <div className="relative max-w-md text-center animate-in">
-          <div className="w-24 h-24 bg-gradient-gold-deep rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-gold">
-            <Briefcase className="w-12 h-12 text-night-950" />
-          </div>
+          <BrandLogo className="w-28 h-28 mx-auto mb-8 shadow-gold" decorative />
           <h1 className="text-4xl font-extrabold text-gradient-gold tracking-tight">
             Entreprendre avec succès
           </h1>
@@ -64,9 +63,7 @@ export default function LoginPage() {
         <div className="w-full max-w-md animate-in">
           {/* Logo mobile */}
           <div className="lg:hidden text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-gold-deep rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-gold">
-              <Briefcase className="w-8 h-8 text-night-950" />
-            </div>
+            <BrandLogo className="w-20 h-20 mx-auto mb-4 shadow-gold" decorative />
             <h1 className="text-2xl font-extrabold text-gradient-gold">EAS</h1>
             <p className="text-sm text-gray-400 mt-1">Gérez votre business intelligemment</p>
           </div>

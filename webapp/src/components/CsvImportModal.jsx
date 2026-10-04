@@ -88,17 +88,17 @@ export const CSV_IMPORT_TYPES = {
     title: 'Importer des dépenses',
     entityLabel: 'dépense(s)',
     filename: 'modele-depenses.csv',
-    intro: 'Catégories acceptées : « achat » (matières/marchandises), « variable » (charges variables), « fixe » (loyer, abonnements…).',
+    intro: 'Utilisez le nom exact d’une catégorie proposée dans le formulaire de dépense. Les anciennes valeurs achat, variable et fixe restent acceptées.',
     columns: [
       { key: 'montant', required: true, description: 'Montant de la dépense', example: '150.00' },
-      { key: 'categorie', required: true, description: 'achat, variable ou fixe', example: 'fixe' },
+      { key: 'categorie', required: true, description: 'Catégorie de dépenses', example: 'Loyer & locaux' },
       { key: 'description', required: false, description: 'Description libre', example: 'Loyer boutique juin' },
       { key: 'date', required: false, description: 'JJ/MM/AAAA (défaut : aujourd\'hui)', example: '01/06/2026' },
     ],
     sampleRows: [
-      ['150.00', 'fixe', 'Loyer boutique juin', '01/06/2026'],
-      ['80.00', 'achat', 'Réassort tissus', '05/06/2026'],
-      ['25.50', 'variable', 'Essence livraisons', '12/06/2026'],
+      ['150.00', 'Loyer & locaux', 'Loyer boutique juin', '01/06/2026'],
+      ['80.00', 'Achats / Marchandises / Matières premières', 'Réassort tissus', '05/06/2026'],
+      ['25.50', 'Transport & déplacements', 'Essence livraisons', '12/06/2026'],
     ],
   },
 }

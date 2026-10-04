@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useSubscription } from '../contexts/SubscriptionContext'
 import { isEmployeeRole } from '../utils/roles'
+import BrandLogo from './BrandLogo'
 
 const mainNav = [
   { to: '/', icon: LayoutDashboard, label: 'Tableau de bord', end: true },
@@ -125,15 +126,11 @@ export default function Layout() {
         {/* Logo */}
         <div className={`flex items-center h-16 border-b border-white/[0.06] flex-shrink-0 ${collapsed ? 'justify-center px-3' : 'justify-between px-5'}`}>
           {collapsed ? (
-            <div className="w-9 h-9 bg-gradient-gold-deep rounded-xl flex items-center justify-center shadow-gold-sm">
-              <Briefcase className="w-5 h-5 text-night-950" />
-            </div>
+            <BrandLogo className="w-9 h-9 shadow-gold-sm" decorative />
           ) : (
             <>
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-gradient-gold-deep rounded-xl flex items-center justify-center shadow-gold-sm">
-                  <Briefcase className="w-5 h-5 text-night-950" />
-                </div>
+                <BrandLogo className="w-9 h-9 shadow-gold-sm" decorative />
                 <div>
                   <h1 className="text-[15px] font-bold tracking-tight leading-tight text-cream">EAS</h1>
                   <p className="text-[10px] text-gold-500 font-semibold uppercase tracking-widest">Entreprendre</p>

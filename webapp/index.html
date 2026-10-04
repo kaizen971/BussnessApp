@@ -2,7 +2,7 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💼</text></svg>" />
+    <link rel="icon" type="image/png" href="%BASE_URL%favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="EAS - Entreprendre avec Succès : gérez votre business depuis votre navigateur" />
     <meta name="theme-color" content="#0D0D0D" />
@@ -17,21 +17,16 @@
         background: #0D0D0D; z-index: 9999; transition: opacity 0.3s;
       }
       #app-loader .logo {
-        width: 48px; height: 48px; background: linear-gradient(135deg, #B8941E, #FFD700);
-        border-radius: 16px; display: flex; align-items: center; justify-content: center;
+        width: 72px; height: 72px; display: flex; align-items: center; justify-content: center;
         box-shadow: 0 8px 24px -4px rgba(212, 175, 55, 0.35);
         animation: loaderPulse 1.5s ease-in-out infinite;
       }
-      #app-loader .spinner {
-        width: 20px; height: 20px; border: 2.5px solid rgba(0,0,0,0.25);
-        border-top-color: #0D0D0D; border-radius: 50%; animation: loaderSpin 0.8s linear infinite;
-      }
-      @keyframes loaderSpin { to { transform: rotate(360deg); } }
+      #app-loader .logo img { width: 100%; height: 100%; object-fit: contain; }
       @keyframes loaderPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
     </style>
   </head>
   <body>
-    <div id="app-loader"><div class="logo"><div class="spinner"></div></div></div>
+    <div id="app-loader"><div class="logo"><img src="%BASE_URL%eas-logo.png" alt="Entreprendre avec succès" /></div></div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>

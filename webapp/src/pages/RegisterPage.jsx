@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
-  UserPlus, User, AtSign, Mail, Lock, Check, CheckCircle2, Tag, Clock,
+  User, AtSign, Mail, Lock, Check, CheckCircle2, Tag, Clock,
   Building2, Leaf, Star, Gem, AlertCircle, Eye, EyeOff, ArrowLeft,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { subscriptionAPI, legalAPI } from '../services/api'
 import { Modal, Spinner } from '../components/ui'
+import BrandLogo from '../components/BrandLogo'
 
 const DURATION_LABELS = { days: 'jour(s)', months: 'mois', years: 'an(s)', lifetime: 'À vie' }
 
@@ -237,9 +238,7 @@ export default function RegisterPage() {
       <div className="max-w-xl mx-auto animate-in">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-gold-deep rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-gold">
-            {step === 1 ? <UserPlus className="w-8 h-8 text-night-950" /> : <Tag className="w-8 h-8 text-night-950" />}
-          </div>
+          <BrandLogo className="w-20 h-20 mx-auto mb-4 shadow-gold" />
           <h1 className="text-2xl sm:text-3xl font-extrabold text-cream">{stepTitles[step].title}</h1>
           <p className="text-sm text-gray-400 mt-1.5">{stepTitles[step].subtitle}</p>
 

@@ -8,6 +8,7 @@ import { useCurrency } from '../contexts/CurrencyContext'
 import { expensesAPI, teamPayrollAPI } from '../services/api'
 import { Modal, ConfirmDialog, EmptyState, PageHeader, TabBar, SkeletonTable, Spinner } from '../components/ui'
 import CsvImportModal from '../components/CsvImportModal'
+import { EXPENSE_CATEGORIES, LEGACY_EXPENSE_CATEGORIES, getExpenseCategoryLabel } from '../constants/expenseCategories'
 
 const CATEGORY_INFO = {
   purchase: { label: 'Achat', className: 'bg-red-500/10 text-red-400 ring-red-500/20', icon: ShoppingCart, iconColor: 'text-red-400', iconBg: 'bg-red-500/10' },
@@ -15,9 +16,12 @@ const CATEGORY_INFO = {
   fixed: { label: 'Fixe', className: 'bg-sky-500/10 text-sky-400 ring-sky-500/20', icon: Lock, iconColor: 'text-sky-400', iconBg: 'bg-sky-500/10' },
 }
 
-const getCategoryInfo = (category) => CATEGORY_INFO[category] || { label: 'Autre', className: 'bg-white/5 text-gray-400 ring-white/10', icon: Wallet, iconColor: 'text-gray-400', iconBg: 'bg-white/5' }
+const getCategoryInfo = (category) => ({
+  ...(CATEGORY_INFO[category] || { className: 'bg-white/5 text-gray-400 ring-white/10', icon: Wallet, iconColor: 'text-gray-400', iconBg: 'bg-white/5' }),
+  label: getExpenseCategoryLabel(category),
+})
 
-const EMPTY_FORM = { amount: '', category: 'variable', description: '', isRecurring: false, recurringDay: '1' }
+const EMPTY_FORM = { amount: '', category: 'purchase', description: '', isRecurring: false, recurringDay: '1' }
 
 export default function ExpensesPage() {
   const { user } = useAuth()
@@ -337,24 +341,14 @@ export default function ExpensesPage() {
           </div>
           <div>
             <label className="input-label">Catégorie</label>
-            <div className="grid grid-cols-3 gap-2">
-              {Object.entries(CATEGORY_INFO).map(([key, cat]) => {
-                const CatIcon = cat.icon
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setFormData(p => ({ ...p, category: key }))}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all ${
-                      formData.category === key ? 'border-gold-500 bg-gold-500/10' : 'border-night-600 bg-night-900 hover:border-night-500'
-                    }`}
-                  >
-                    <CatIcon className={`w-5 h-5 ${cat.iconColor}`} />
-                    <span className="text-[12px] font-medium text-gray-300">{cat.label}</span>
-                  </button>
-                )
-              })}
-            </div>
+            <select
+              value={formData.category}
+              onChange={(e) => setFormData(p => ({ ...p, category: e.target.value }))}
+              className="input-field"
+            >
+              {EXPENSE_CATEGORIES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+              {LEGACY_EXPENSE_CATEGORIES.filter(({ value }) => value === formData.category).map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+            </select>
           </div>
           <div>
             <label className="input-label">Description</label>

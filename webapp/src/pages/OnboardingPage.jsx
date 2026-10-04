@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
-import { GraduationCap, Lightbulb, TrendingUp, ArrowRight, Briefcase } from 'lucide-react'
+import { GraduationCap, Lightbulb, TrendingUp, ArrowRight } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+import BrandLogo from '../components/BrandLogo'
 
 const CHOICES = [
   {
@@ -43,9 +44,7 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-gradient-to-b from-gold-700/30 via-night-900 to-night-950 py-12 px-4 sm:px-6">
       <div className="max-w-3xl mx-auto">
         <div className="text-center mb-10 animate-in">
-          <div className="w-20 h-20 bg-gradient-gold-deep rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-gold">
-            <Briefcase className="w-10 h-10 text-night-950" />
-          </div>
+          <BrandLogo className="w-24 h-24 mx-auto mb-6 shadow-gold" decorative />
           <h1 className="text-3xl sm:text-4xl font-extrabold text-cream">Entreprendre avec succès</h1>
           {isAdmin && (
             <p className="text-gray-400 mt-3">Valide ton idée. Pilote ton business. Simplement.</p>

@@ -17,6 +17,7 @@ import { dashboardAPI, projectsAPI, authAPI, exportAPI, downloadBlob } from '../
 import { isEmployeeRole } from '../utils/roles'
 import { Modal, ConfirmDialog, Stat, SkeletonCard, Spinner } from '../components/ui'
 import { SERIES, CATEGORICAL, CHART_TEXT, TOOLTIP_STYLE } from '../utils/chartTheme'
+import { EXPENSE_CATEGORIES, LEGACY_EXPENSE_CATEGORIES } from '../constants/expenseCategories'
 
 const toInputDate = (d) => d.toISOString().slice(0, 10)
 
@@ -178,10 +179,8 @@ export default function DashboardPage() {
 
   const pieData = stats?.expensesByCategory
     ? [
-        { name: 'Achats', value: stats.expensesByCategory.purchase || 0 },
-        { name: 'Variables', value: stats.expensesByCategory.variable || 0 },
-        { name: 'Fixes', value: stats.expensesByCategory.fixed || 0 },
-        { name: 'Salaires', value: stats.expensesByCategory.salaries || 0 },
+        ...[...EXPENSE_CATEGORIES, ...LEGACY_EXPENSE_CATEGORIES].map(({ value, label, chartLabel }) => ({ name: chartLabel || label, value: stats.expensesByCategory[value] || 0 })),
+        { name: 'Masse salariale', value: stats.expensesByCategory.payroll || 0 },
       ].filter(item => item.value > 0)
     : []
 

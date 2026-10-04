@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'
 import {
   UserPlus, Users, CheckCircle2, ShieldCheck, Star, UserRound, Camera,
   Lock, Unlock, Pencil, ArrowLeftRight, Clock, Banknote, Wallet,
-  ChevronLeft, ChevronRight, Info,
+  ChevronLeft, ChevronRight, Info, Trash2,
 } from 'lucide-react'
 import api, { usersAPI } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
@@ -53,6 +53,9 @@ export default function TeamPage() {
   const [salaryModalVisible, setSalaryModalVisible] = useState(false)
   const [editInfoModalVisible, setEditInfoModalVisible] = useState(false)
   const [statusTarget, setStatusTarget] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
+  const [deleteLoading, setDeleteLoading] = useState(false)
   const [commissionRate, setCommissionRate] = useState('0')
   const [hourlyRate, setHourlyRate] = useState('0')
   const [editInfoData, setEditInfoData] = useState({ fullName: '', email: '', newPassword: '', confirmPassword: '' })
@@ -137,6 +140,23 @@ export default function TeamPage() {
       toast.success(`Compte ${target.isActive ? 'désactivé' : 'activé'}`)
     } catch {
       toast.error('Impossible de modifier le statut')
+    }
+  }
+
+  const handleDeleteUser = async () => {
+    if (!deleteTarget || deleteConfirmation.trim() !== (deleteTarget.fullName || deleteTarget.username)) return
+    setDeleteLoading(true)
+    try {
+      await usersAPI.remove(deleteTarget._id, user?.projectId, deleteConfirmation.trim())
+      setDeleteTarget(null)
+      setDeleteConfirmation('')
+      loadUsers()
+      loadPayroll()
+      toast.success('Compte retiré de l’équipe')
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Impossible de supprimer ce compte')
+    } finally {
+      setDeleteLoading(false)
     }
   }
 
@@ -260,10 +280,12 @@ export default function TeamPage() {
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-[1300px] mx-auto">
       <PageHeader title="Gestion d'équipe" description={`${users.length} membre(s)`}>
-        <button onClick={() => { setFormData(EMPTY_FORM); setModalVisible(true) }} className="btn-primary">
-          <UserPlus className="w-4 h-4" />
-          Nouveau collaborateur
-        </button>
+        {isManagerRole && (
+          <button onClick={() => { setFormData(EMPTY_FORM); setModalVisible(true) }} className="btn-primary">
+            <UserPlus className="w-4 h-4" />
+            Nouveau collaborateur
+          </button>
+        )}
       </PageHeader>
 
       {/* Stats */}
@@ -314,7 +336,7 @@ export default function TeamPage() {
         </div>
       ) : users.length === 0 ? (
         <div className="card">
-          <EmptyState icon={Users} title="Aucun collaborateur" description="Ajoutez un membre à votre équipe" action={() => setModalVisible(true)} actionLabel="Nouveau collaborateur" />
+          <EmptyState icon={Users} title="Aucun collaborateur" description="Ajoutez un membre à votre équipe" action={isManagerRole ? () => setModalVisible(true) : undefined} actionLabel="Nouveau collaborateur" />
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -414,6 +436,13 @@ export default function TeamPage() {
                         Commission
                       </button>
                     </>
+                  )}
+                  {item._id !== user.id && item.role !== 'admin' &&
+                    (user.role === 'admin' || (user.role === 'responsable' && item.role !== 'responsable') || (user.role === 'manager' && item.role === 'cashier')) && (
+                    <button onClick={() => { setDeleteTarget(item); setDeleteConfirmation('') }} className="btn-ghost !py-1.5 !px-2.5 text-red-400">
+                      <Trash2 className="w-4 h-4" />
+                      Supprimer
+                    </button>
                   )}
                 </div>
                 <p className="text-[11px] text-gray-600 mt-2">Créé le {new Date(item.createdAt).toLocaleDateString('fr-FR')}</p>
@@ -620,6 +649,28 @@ export default function TeamPage() {
         confirmText="Confirmer"
         variant={statusTarget?.isActive ? 'danger' : 'success'}
       />
+      <Modal open={!!deleteTarget} onClose={() => { if (!deleteLoading) { setDeleteTarget(null); setDeleteConfirmation('') } }} title="Supprimer le compte ?" size="sm">
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-gray-300">
+            Le compte de <strong>{deleteTarget?.fullName || deleteTarget?.username}</strong> sera retiré de l’équipe et ne pourra plus se connecter. Ses ventes et son planning resteront enregistrés.
+          </p>
+          <label className="input-label" htmlFor="delete-team-member-confirmation">Saisissez son nom pour confirmer</label>
+          <input
+            id="delete-team-member-confirmation"
+            className="input-field"
+            value={deleteConfirmation}
+            onChange={(event) => setDeleteConfirmation(event.target.value)}
+            placeholder={deleteTarget?.fullName || deleteTarget?.username || ''}
+            autoComplete="off"
+          />
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn-secondary" disabled={deleteLoading} onClick={() => { setDeleteTarget(null); setDeleteConfirmation('') }}>Annuler</button>
+            <button type="button" className="btn-danger" disabled={deleteLoading || deleteConfirmation.trim() !== (deleteTarget?.fullName || deleteTarget?.username)} onClick={handleDeleteUser}>
+              {deleteLoading ? 'Suppression…' : 'Supprimer le compte'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
