@@ -1,0 +1,49 @@
+name: Android - Google Play
+
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: Piste Google Play pour le nouvel AAB
+        required: true
+        type: choice
+        options:
+          - internal
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-google-play
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/enhancefeature'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: ${{ inputs.track == 'production' && 'google-play-production' || 'google-play-internal' }}
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Configurer Expo EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Installer les dépendances
+        run: npm ci
+      - name: Construire l'AAB signé avec le profil du script Mac
+        run: |
+          eas build --platform android --profile production --non-interactive --wait --json > "$RUNNER_TEMP/eas-build.json"
+          node -e 'const fs=require("fs"); const data=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const build=Array.isArray(data)?data[0]:data; if(!build?.id || build.status!=="FINISHED") process.exit(1); fs.appendFileSync(process.env.GITHUB_ENV,`EAS_BUILD_ID=${build.id}\n`); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,`AAB EAS : ${build.buildDetailsPageUrl || build.id}\n`)' "$RUNNER_TEMP/eas-build.json"
+      - name: Envoyer l'AAB sur Google Play
+        run: eas submit --platform android --profile '${{ inputs.track }}' --id "$EAS_BUILD_ID" --non-interactive --wait
