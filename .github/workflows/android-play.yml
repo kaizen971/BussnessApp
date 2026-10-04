@@ -1,6 +1,10 @@
 name: Android - Google Play
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/android-play.yml'
   workflow_dispatch:
     inputs:
       track:
@@ -19,8 +23,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  register:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Le workflow Android est prêt pour un lancement manuel.'
+
   publish:
-    if: github.ref == 'refs/heads/enhancefeature'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/enhancefeature'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: ${{ inputs.track == 'production' && 'google-play-production' || 'google-play-internal' }}
