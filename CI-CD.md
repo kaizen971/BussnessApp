@@ -1,10 +1,10 @@
 # CI/CD BussnessApp
 
-Les workflows GitHub Actions se trouvent dans `.github/workflows/`. La publication Android démarre depuis `master`. Le serveur suit la branche configurée dans `LIGHTSAIL_BRANCH`.
+Les workflows GitHub Actions se trouvent dans `.github/workflows/`. La publication Android utilise `enhancefeature`. Le serveur suit la branche configurée dans `LIGHTSAIL_BRANCH`.
 
 ## Android vers Google Play
 
-Le workflow **Android - Google Play** se lance depuis l'onglet **Actions > Run workflow**. Choisir `internal` pour les testeurs ou `production` pour la piste publique. Chaque lancement construit un nouvel AAB signé avec le profil EAS `production` du script Mac, puis soumet **l'ID de ce build précis** à la piste choisie. La publication en production peut encore nécessiter une validation dans Play Console.
+Le workflow **Android - Google Play** se lance depuis l'onglet **Actions > Run workflow**, en sélectionnant la branche `enhancefeature`. Choisir `internal` pour les testeurs ou `production` pour la piste publique. Chaque lancement construit un nouvel AAB signé avec le profil EAS `production` du script Mac, puis soumet **l'ID de ce build précis** à la piste choisie. La publication en production peut encore nécessiter une validation dans Play Console. GitHub requiert qu'une copie du fichier de workflow soit présente sur la branche par défaut `master` pour afficher le bouton de lancement manuel.
 
 Configuration une seule fois :
 
