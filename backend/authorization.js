@@ -16,11 +16,11 @@ const createAuthenticateToken = ({ jwt, User, secret, accessGuard }) => (req, re
     }
 
     try {
-      const user = await User.findById(claims.id).select('role projectId isActive');
+      const user = await User.findById(claims.id).select('role projectId isActive deletedAt');
       if (!user) {
         return res.status(401).json({ error: 'Compte introuvable', code: 'ACCOUNT_DELETED' });
       }
-      if (user.isActive === false) {
+      if (user.isActive === false || user.deletedAt) {
         return res.status(403).json({ error: 'Compte désactivé', code: 'ACCOUNT_DISABLED' });
       }
 

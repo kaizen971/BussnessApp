@@ -15,6 +15,8 @@ const { createDeleteAccountHandler } = require('./accountDeletion');
 const { createAuthenticateToken, checkRole } = require('./authorization');
 const subscriptionAccess = require('./subscriptionAccess');
 const { createProjectAccess, PROJECT_DENIED, OWNER_ROLES, isEmployeeRole } = require('./projectAccess');
+const { createArchiveTeamMemberHandler } = require('./archiveTeamMember');
+const { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABELS } = require('./expenseCategories');
 
 const app = express();
 const PORT = 3003;
@@ -198,7 +200,7 @@ SaleSchema.index({ projectId: 1, employeeId: 1 });
 const ExpenseSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
   amount: { type: Number, required: true },
-  category: { type: String, enum: ['purchase', 'variable', 'fixed'], required: true },
+  category: { type: String, enum: Object.keys(EXPENSE_CATEGORY_LABELS), required: true },
   description: String,
   date: { type: Date, default: Date.now },
   isRecurring: { type: Boolean, default: false },
@@ -276,6 +278,7 @@ const UserSchema = new mongoose.Schema({
   fullName: String,
   photo: String, // URL ou URI de la photo de profil
   isActive: { type: Boolean, default: true },
+  deletedAt: { type: Date, default: null }, // Retiré de l'équipe, conservé pour l'historique
   commissionRate: { type: Number, default: 0 }, // Taux de commission en % (ex: 5 pour 5%)
   totalCommissions: { type: Number, default: 0 }, // Total des commissions gagnées
   hourlyRate: { type: Number, default: 0 }, // Salaire horaire en € (ex: 15 pour 15€/h)
@@ -2994,6 +2997,8 @@ const CSV_EXPENSE_CATEGORIES = {
   achat: 'purchase', achats: 'purchase', purchase: 'purchase',
   variable: 'variable', variables: 'variable',
   fixe: 'fixed', fixes: 'fixed', fixed: 'fixed',
+  ...Object.fromEntries(Object.keys(EXPENSE_CATEGORIES).map(category => [category, category])),
+  ...Object.fromEntries(Object.entries(EXPENSE_CATEGORIES).map(([category, label]) => [normalizeCsvHeader(label), category])),
 };
 
 const importExpensesCsv = async (records, { projectId }) => {
@@ -3005,7 +3010,7 @@ const importExpensesCsv = async (records, { projectId }) => {
     if (amount === null || amount <= 0) { errors.push({ line: record._line, message: 'montant invalide (nombre supérieur à 0 attendu)' }); continue; }
 
     const category = CSV_EXPENSE_CATEGORIES[normalizeCsvHeader(record.category || '')];
-    if (!category) { errors.push({ line: record._line, message: `categorie invalide "${record.category || ''}" (valeurs acceptées : achat, variable, fixe)` }); continue; }
+    if (!category) { errors.push({ line: record._line, message: `categorie invalide "${record.category || ''}" (voir les catégories de dépenses proposées dans l'application)` }); continue; }
 
     const date = parseCsvDate(record.date);
     if (date === undefined) { errors.push({ line: record._line, message: 'date invalide (formats acceptés : JJ/MM/AAAA ou AAAA-MM-JJ)' }); continue; }
@@ -3087,7 +3092,7 @@ app.get('/BussnessApp/users', authenticateToken, checkRole('admin', 'manager', '
   try {
     const scope = await projectScope(req, req.query.projectId);
     if (!scope) return res.status(403).json(PROJECT_DENIED);
-    const users = await User.find({ projectId: scope }).select('-password');
+    const users = await User.find({ projectId: scope, deletedAt: null }).select('-password');
     res.json(users);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -3148,6 +3153,9 @@ app.post('/BussnessApp/users', authenticateToken, checkRole('admin', 'responsabl
   }
 });
 
+app.delete('/BussnessApp/users/:id', authenticateToken, checkRole('admin', 'responsable', 'manager'),
+  createArchiveTeamMemberHandler({ User, Project, Schedule, canAccessProject }));
+
 // Update user role (admin only, cannot assign admin role)
 app.put('/BussnessApp/users/:id/role', authenticateToken, checkRole('admin'), async (req, res) => {
   try {
@@ -3190,7 +3198,7 @@ app.put('/BussnessApp/users/:id/status', authenticateToken, checkRole('admin'), 
     }
 
     const targetUser = await User.findById(req.params.id);
-    if (!targetUser) {
+    if (!targetUser || targetUser.deletedAt) {
       return res.status(404).json({ error: 'Utilisateur non trouvé' });
     }
 
@@ -3335,7 +3343,8 @@ app.post('/BussnessApp/schedules', authenticateToken, checkRole('admin', 'manage
     if (!(await canAccessProject(req, projectId || req.user.projectId))) {
       return res.status(403).json(PROJECT_DENIED);
     }
-    if (!(await findUserInProjects(req, userId))) {
+    const scheduledUser = await findUserInProjects(req, userId);
+    if (!scheduledUser || scheduledUser.deletedAt || !scheduledUser.isActive) {
       return res.status(404).json({ error: 'Utilisateur non trouvé' });
     }
 
@@ -3907,8 +3916,7 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, requ
 
     // Tous les utilisateurs actifs du projet
     const employees = await User.find({
-      $or: [{ projectId }, { projectIds: projectId }],
-      isActive: true
+      $or: [{ projectId }, { projectIds: projectId }]
     }).select('-password').lean();
 
     const employeeIds = employees.map(e => e._id);
@@ -3942,7 +3950,10 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, requ
       commissionsByUser[uid].push(c);
     }
 
-    const results = employees.map(emp => {
+    const results = employees.filter(emp => {
+      const id = String(emp._id);
+      return (emp.isActive && !emp.deletedAt) || schedulesByUser[id]?.length || commissionsByUser[id]?.length;
+    }).map(emp => {
       const schedules = schedulesByUser[emp._id.toString()] || [];
       const commissions = commissionsByUser[emp._id.toString()] || [];
 
@@ -4108,8 +4119,7 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, requireProject((
       Schedule.find({ projectId, status: 'completed' }).lean(),
       Commission.find({ projectId }).lean(),
       User.find({
-        $or: [{ projectId }, { projectIds: projectId }],
-        isActive: true
+        $or: [{ projectId }, { projectIds: projectId }]
       }).select('hourlyRate').lean()
     ]);
 
@@ -4188,12 +4198,11 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, requireProject((
     }
 
     // Données par catégorie de dépenses
-    const expensesByCategory = {
-      purchase: expenses.filter(e => e.category === 'purchase').reduce((sum, e) => sum + e.amount, 0),
-      variable: expenses.filter(e => e.category === 'variable').reduce((sum, e) => sum + e.amount, 0),
-      fixed: expenses.filter(e => e.category === 'fixed').reduce((sum, e) => sum + e.amount, 0),
-      salaries: totalSalaries
-    };
+    const expensesByCategory = Object.fromEntries(Object.keys(EXPENSE_CATEGORY_LABELS).map(category => [category, 0]));
+    for (const expense of expenses) {
+      expensesByCategory[expense.category] = (expensesByCategory[expense.category] || 0) + expense.amount;
+    }
+    expensesByCategory.payroll = totalSalaries;
 
     // Top produits vendus
     const productSales = {};
@@ -4299,8 +4308,7 @@ app.post('/BussnessApp/export-excel/:projectId', authenticateToken, checkRole('a
     // ===== FEUILLE DÉPENSES =====
     const expensesData = expenses.map(expense => ({
       'Date': new Date(expense.date).toLocaleDateString('fr-FR'),
-      'Catégorie': expense.category === 'purchase' ? 'Achat' :
-        expense.category === 'variable' ? 'Variable' : 'Fixe',
+      'Catégorie': EXPENSE_CATEGORY_LABELS[expense.category] || expense.category,
       'Montant': expense.amount.toFixed(2) + ' ' + currencySymbol,
       'Description': expense.description || '',
       'Récurrent': expense.isRecurring ? 'Oui' : 'Non'
@@ -4517,14 +4525,13 @@ app.post('/BussnessApp/export-pdf/:projectId', authenticateToken, checkRole('adm
       doc.y = y + 22;
     };
 
-    const drawTableRow = (values, colWidths, startX, isAlternate) => {
-      if (doc.y > 740) {
+    const drawTableRow = (values, colWidths, startX, isAlternate, rowHeight = 18) => {
+      if (doc.y + rowHeight > 758) {
         doc.addPage();
-        return false;
       }
       const y = doc.y;
       if (isAlternate) {
-        doc.rect(startX, y, colWidths.reduce((a, b) => a + b, 0), 18).fill(lightGray);
+        doc.rect(startX, y, colWidths.reduce((a, b) => a + b, 0), rowHeight).fill(lightGray);
       }
       doc.fillColor(darkText).fontSize(7).font('Helvetica');
       let x = startX;
@@ -4532,7 +4539,7 @@ app.post('/BussnessApp/export-pdf/:projectId', authenticateToken, checkRole('adm
         doc.text(String(v), x + 4, y + 5, { width: colWidths[i] - 8, align: 'left' });
         x += colWidths[i];
       });
-      doc.y = y + 18;
+      doc.y = y + rowHeight;
       return true;
     };
 
@@ -4656,18 +4663,17 @@ app.post('/BussnessApp/export-pdf/:projectId', authenticateToken, checkRole('adm
     drawSectionTitle('DÉPENSES', '📉');
 
     if (expenses.length > 0) {
-      const eColW = [80, 100, 120, 120, 80];
+      const eColW = [70, 170, 80, 120, 60];
       drawTableHeader(['Date', 'Catégorie', 'Montant', 'Description', 'Récurrent'], eColW, 40);
       expenses.forEach((expense, i) => {
-        const cat = expense.category === 'purchase' ? 'Achat' :
-          expense.category === 'variable' ? 'Variable' : 'Fixe';
+        const cat = EXPENSE_CATEGORY_LABELS[expense.category] || expense.category;
         drawTableRow([
           new Date(expense.date).toLocaleDateString('fr-FR'),
           cat,
           expense.amount.toFixed(2) + ' ' + currencySymbol,
           (expense.description || '').substring(0, 25),
           expense.isRecurring ? 'Oui' : 'Non'
-        ], eColW, 40, i % 2 === 1);
+        ], eColW, 40, i % 2 === 1, 32);
       });
       doc.moveDown(0.5);
       doc.fillColor(dangerColor).fontSize(10).font('Helvetica-Bold')

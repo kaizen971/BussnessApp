@@ -101,6 +101,23 @@ test('a deleted account cannot keep using its existing token', async () => {
   assert.equal(passed, false);
 });
 
+test('an archived team account cannot use an existing token', async () => {
+  const res = response();
+  let passed = false;
+  const authenticate = createAuthenticateToken({
+    jwt: { verify: (_token, _secret, callback) => callback(null, { id: userId, role: 'cashier' }) },
+    User: { findById: () => ({ select: async () => ({ role: 'cashier', isActive: true, deletedAt: new Date() }) }) },
+    secret: 'test-secret'
+  });
+
+  authenticate({ headers: { authorization: 'Bearer old-token' } }, res, () => { passed = true; });
+  await new Promise(setImmediate);
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.body.code, 'ACCOUNT_DISABLED');
+  assert.equal(passed, false);
+});
+
 test('role checks use the current database role, not an old token claim', async () => {
   const res = response();
   const req = { headers: { authorization: 'Bearer old-token' } };
