@@ -426,7 +426,8 @@ export default function SalesPage() {
         salesAPI.getAll(user?.projectId, 1, 50),
         productsAPI.getAll(user?.projectId),
         isAdmin ? customersAPI.getAll(user?.projectId) : Promise.resolve({ data: { data: [] } }),
-        usersAPI.getAll(user?.projectId),
+        // /users est réservé aux responsables : le salarié vend en son nom
+        isAdmin ? usersAPI.getAll(user?.projectId) : Promise.resolve({ data: [] }),
       ])
       setSales(salesRes.data?.data || [])
       setSalesPage(1)
