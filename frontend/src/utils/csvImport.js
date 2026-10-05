@@ -80,15 +80,15 @@ export const CSV_IMPORT_TYPES = {
     description: 'Ajouter les achats et charges passées de l’activité.',
     columns: [
       { key: 'montant', label: 'montant', required: true, detail: 'Montant strictement positif', aliases: ['montant', 'amount'] },
-      { key: 'categorie', label: 'categorie', required: true, detail: 'achat, variable ou fixe', aliases: ['categorie', 'category', 'type'] },
+      { key: 'categorie', label: 'categorie', required: true, detail: 'Nom de catégorie de dépenses', aliases: ['categorie', 'category', 'type'] },
       { key: 'description', label: 'description', detail: 'Motif de la dépense', aliases: ['description'] },
       { key: 'date', label: 'date', detail: 'JJ/MM/AAAA ou AAAA-MM-JJ', aliases: ['date'] },
     ],
     rows: [
-      ['120,50', 'achat', 'Matières premières', '10/08/2026'],
-      ['49,90', 'fixe', 'Abonnement internet', '01/08/2026'],
+      ['120,50', 'Achats / Marchandises / Matières premières', 'Matières premières', '10/08/2026'],
+      ['49,90', 'Télécom & numérique', 'Abonnement internet', '01/08/2026'],
     ],
-    notes: ['Les seules catégories acceptées sont achat, variable et fixe.'],
+    notes: ['Utilisez le nom exact d’une catégorie proposée dans le formulaire de dépense. Les anciennes valeurs achat, variable et fixe restent acceptées.'],
   },
 }
 

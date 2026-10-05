@@ -26,6 +26,7 @@ import { expensesAPI, teamPayrollAPI } from '../services/api';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { getMonthBounds, MONTH_HISTORY_LIMIT, shiftMonth, startOfMonth } from '../utils/monthPeriod';
 import { t, useLanguage, getLocale } from '../i18n';
+import { EXPENSE_CATEGORIES, LEGACY_EXPENSE_CATEGORIES, getExpenseCategoryLabel } from '../constants/expenseCategories';
 
 export const ExpensesScreen = () => {
   useLanguage();
@@ -46,7 +47,7 @@ export const ExpensesScreen = () => {
   const [editingExpense, setEditingExpense] = useState(null);
   const [formData, setFormData] = useState({
     amount: '',
-    category: 'variable',
+    category: 'purchase',
     description: '',
     isRecurring: false,
     recurringDay: '1',
@@ -129,7 +130,7 @@ export const ExpensesScreen = () => {
 
       await expensesAPI.create(expenseData);
 
-      setFormData({ amount: '', category: 'variable', description: '', isRecurring: false, recurringDay: '1' });
+      setFormData({ amount: '', category: 'purchase', description: '', isRecurring: false, recurringDay: '1' });
       setModalVisible(false);
       loadExpenses();
       loadRecurringExpenses();
@@ -166,7 +167,7 @@ export const ExpensesScreen = () => {
 
       await expensesAPI.update(editingExpense._id, expenseData);
 
-      setFormData({ amount: '', category: 'variable', description: '', isRecurring: false, recurringDay: '1' });
+      setFormData({ amount: '', category: 'purchase', description: '', isRecurring: false, recurringDay: '1' });
       setEditingExpense(null);
       setModalVisible(false);
       loadExpenses();
@@ -202,7 +203,7 @@ export const ExpensesScreen = () => {
   const handleCloseModal = () => {
     setModalVisible(false);
     setEditingExpense(null);
-    setFormData({ amount: '', category: 'variable', description: '', isRecurring: false, recurringDay: '1' });
+    setFormData({ amount: '', category: 'purchase', description: '', isRecurring: false, recurringDay: '1' });
   };
 
   const handleDeleteRecurring = async (id) => {
@@ -229,15 +230,16 @@ export const ExpensesScreen = () => {
   };
 
   const getCategoryInfo = (category) => {
+    const label = t(getExpenseCategoryLabel(category));
     switch (category) {
       case 'purchase':
-        return { label: t('Achat'), color: colors.error, icon: 'cart-outline' };
+        return { label, color: colors.error, icon: 'cart-outline' };
       case 'variable':
-        return { label: t('Variable'), color: colors.accent, icon: 'trending-up-outline' };
+        return { label, color: colors.accent, icon: 'trending-up-outline' };
       case 'fixed':
-        return { label: t('Fixe'), color: colors.info, icon: 'lock-closed-outline' };
+        return { label, color: colors.info, icon: 'lock-closed-outline' };
       default:
-        return { label: t('Autre'), color: colors.textSecondary, icon: 'wallet-outline' };
+        return { label, color: colors.info, icon: 'wallet-outline' };
     }
   };
 
@@ -537,9 +539,12 @@ export const ExpensesScreen = () => {
                     onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
                     style={styles.picker}
                   >
-                    <Picker.Item label={t('Achat')} value="purchase" />
-                    <Picker.Item label={t('Variable')} value="variable" />
-                    <Picker.Item label={t('Fixe')} value="fixed" />
+                    {EXPENSE_CATEGORIES.map(({ value, label }) => (
+                      <Picker.Item key={value} label={t(label)} value={value} />
+                    ))}
+                    {LEGACY_EXPENSE_CATEGORIES.filter(({ value }) => value === formData.category).map(({ value, label }) => (
+                      <Picker.Item key={value} label={t(label)} value={value} />
+                    ))}
                   </Picker>
                 </View>
               </View>
@@ -669,9 +674,7 @@ const createStyles = (colors) => ({
     flex: 1,
   },
   headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 4,
   },
   expenseAmount: {
@@ -683,10 +686,12 @@ const createStyles = (colors) => ({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
+    maxWidth: '100%',
   },
   categoryText: {
     fontSize: 12,
     fontWeight: '600',
+    flexShrink: 1,
   },
   expenseDescription: {
     fontSize: 14,
@@ -799,6 +804,8 @@ const createStyles = (colors) => ({
   badgesRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 5,
+    maxWidth: '100%',
   },
   deleteButton: {
     padding: 8,

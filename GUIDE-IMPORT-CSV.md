@@ -120,18 +120,18 @@ Moussa Ndiaye;;+221 76 987 65 43;;
 | Colonne | Obligatoire | Description | Exemple |
 |---|---|---|---|
 | `montant` | ✅ | Montant de la dépense (> 0) | `150.00` |
-| `categorie` | ✅ | `achat`, `variable` ou `fixe` | `fixe` |
+| `categorie` | ✅ | Nom d'une catégorie du formulaire de dépense | `Loyer & locaux` |
 | `description` | — | Description libre | `Loyer boutique juin` |
 | `date` | — | Date de la dépense (défaut : aujourd'hui) | `01/06/2026` |
 
 ```csv
 montant;categorie;description;date
-150.00;fixe;Loyer boutique juin;01/06/2026
-80.00;achat;Réassort tissus;05/06/2026
-25.50;variable;Essence livraisons;12/06/2026
+150.00;Loyer & locaux;Loyer boutique juin;01/06/2026
+80.00;Achats / Marchandises / Matières premières;Réassort tissus;05/06/2026
+25.50;Transport & déplacements;Essence livraisons;12/06/2026
 ```
 
-Catégories : **achat** = marchandises/matières premières · **variable** = charges qui varient avec l'activité · **fixe** = loyer, abonnements, assurances…
+Utilisez le nom exact d'une des 13 catégories proposées dans le formulaire de dépense. Les anciennes valeurs `achat`, `variable` et `fixe` restent acceptées pour les fichiers existants.
 
 > ℹ️ L'import ne crée pas de dépenses **récurrentes** — pour cela, utilisez le bouton « Nouvelle dépense » avec l'option récurrence.
 

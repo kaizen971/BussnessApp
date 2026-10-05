@@ -122,7 +122,7 @@ const MainTabs = () => {
       {isEmployeeRole(user?.role)
         ? <Tab.Screen name="Catalogue" component={CatalogueScreen} options={{ title: t('Catalogue') }} />
         : <Tab.Screen name="Products" component={ProductsScreen} options={{ title: t('Produits') }} />}
-      <Tab.Screen
+      {!isEmployeeRole(user?.role) && <Tab.Screen
         name="Customers"
         component={PremiumGate(CustomersScreen, 'Customers', 'CRM Clients')}
         options={{
@@ -133,7 +133,7 @@ const MainTabs = () => {
           headerTitleStyle: { fontSize: 20, fontWeight: '700' },
           headerShadowVisible: false,
         }}
-      />
+      />}
       <Tab.Screen name="More" component={MoreScreen} options={{ title: t('Plus') }} />
     </Tab.Navigator>
   );

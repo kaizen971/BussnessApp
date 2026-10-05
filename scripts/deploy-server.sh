@@ -17,9 +17,8 @@ trap 'rm -f "$archive"' EXIT
 cd "$repo"
 test "$(git branch --show-current)" = "$branch"
 if test -n "$(git status --porcelain --untracked-files=no)"; then
-  echo 'Modifications locales suivies avant le déploiement :'
-  git status --short --untracked-files=no
-  git stash push -m "predeploy-${commit}" -- .
+  echo 'Le dépôt serveur contient des modifications suivies. Déploiement arrêté.' >&2
+  exit 1
 fi
 
 git fetch origin "$branch"

@@ -14,7 +14,7 @@ import BrandLogo from './BrandLogo'
 const mainNav = [
   { to: '/', icon: LayoutDashboard, label: 'Tableau de bord', end: true },
   { to: '/ventes', icon: ShoppingCart, label: 'Ventes' },
-  { to: '/depenses', icon: TrendingDown, label: 'Dépenses' },
+  { to: '/depenses', icon: TrendingDown, label: 'Dépenses', ownerOnly: true },
   { to: '/produits', icon: Package, label: 'Produits', ownerOnly: true },
   { to: '/catalogue', icon: BookOpen, label: 'Catalogue' },
   { to: '/stock', icon: Boxes, label: 'Stock', ownerOnly: true },
@@ -27,7 +27,7 @@ const mainNav = [
 // screenKey = clé de gating (PREMIUM_SCREENS du SubscriptionContext)
 const premiumNav = [
   { to: '/simulation', icon: Calculator, label: 'Simulation', screenKey: 'Simulation' },
-  { to: '/clients', icon: Users, label: 'Clients CRM', screenKey: 'Customers' },
+  { to: '/clients', icon: Users, label: 'Clients CRM', screenKey: 'Customers', ownerOnly: true },
   { to: '/equipe', icon: UserCog, label: 'Équipe', screenKey: 'Team' },
   { to: '/commissions', icon: Percent, label: 'Commissions', screenKey: 'Commissions' },
 ]
@@ -152,14 +152,8 @@ export default function Layout() {
             <NavItem key={item.to} {...item} collapsed={collapsed} />
           ))}
 
-          {!collapsed && (
-            <p className="px-3 pt-5 pb-2 text-[10px] font-semibold text-gray-600 uppercase tracking-widest flex items-center gap-1.5">
-              Premium
-              {!isPremium && isAdmin && <Crown className="w-3 h-3 text-gold-500" />}
-            </p>
-          )}
           {collapsed && <div className="pt-3" />}
-          {premiumNav.map((item) => (
+          {premiumNav.filter((item) => !item.ownerOnly || !isEmployeeRole(user?.role)).map((item) => (
             <NavItem
               key={item.to}
               {...item}

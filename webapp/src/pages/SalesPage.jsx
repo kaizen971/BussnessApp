@@ -425,7 +425,7 @@ export default function SalesPage() {
       const [salesRes, productsRes, customersRes, usersRes] = await Promise.all([
         salesAPI.getAll(user?.projectId, 1, 50),
         productsAPI.getAll(user?.projectId),
-        customersAPI.getAll(user?.projectId),
+        isAdmin ? customersAPI.getAll(user?.projectId) : Promise.resolve({ data: { data: [] } }),
         usersAPI.getAll(user?.projectId),
       ])
       setSales(salesRes.data?.data || [])
@@ -508,7 +508,7 @@ export default function SalesPage() {
     setSavingEdit(true)
     try {
       await salesAPI.update(editingSale._id, {
-        customerId: editCustomerId,
+        ...(isAdmin ? { customerId: editCustomerId } : {}),
         employeeId: editSellerId,
       })
       setEditingSale(null)
@@ -663,7 +663,7 @@ export default function SalesPage() {
       {/* Modal édition vente */}
       <Modal open={!!editingSale} onClose={() => setEditingSale(null)} title="Modifier la vente" size="sm">
         <form onSubmit={handleUpdateSale} className="p-5 space-y-4">
-          <SearchSelect
+          {isAdmin && <SearchSelect
             label="Client"
             icon={User}
             items={customers}
@@ -672,7 +672,7 @@ export default function SalesPage() {
             getLabel={(c) => c.name}
             getSub={(c) => c.phone || c.email}
             placeholder="Sélectionner un client"
-          />
+          />}
           <SearchSelect
             label="Vendeur"
             icon={Store}

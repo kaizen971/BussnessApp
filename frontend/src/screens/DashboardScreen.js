@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import { Ionicons } from '@expo/vector-icons';
+import { EXPENSE_CATEGORIES, LEGACY_EXPENSE_CATEGORIES } from '../constants/expenseCategories';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1168,34 +1169,20 @@ export const DashboardScreen = ({ navigation }) => {
                       <Text style={styles.chartTitle}>{t('Répartition des charges')}</Text>
                       <PieChart
                         data={[
-                          {
-                            name: t('Achats'),
-                            population: stats.expensesByCategory.purchase || 0,
-                            color: colors.primary,
+                          ...[...EXPENSE_CATEGORIES, ...LEGACY_EXPENSE_CATEGORIES].map(({ value, label, chartLabel }, index) => ({
+                            name: t(chartLabel || label),
+                            population: stats.expensesByCategory[value] || 0,
+                            color: [colors.primary, colors.accent, colors.error, colors.info, colors.warning][index % 5],
                             legendFontColor: colors.textSecondary,
-                            legendFontSize: 13
-                          },
+                            legendFontSize: 13,
+                          })),
                           {
-                            name: t('Variables'),
-                            population: stats.expensesByCategory.variable || 0,
-                            color: colors.accent,
-                            legendFontColor: colors.textSecondary,
-                            legendFontSize: 13
-                          },
-                          {
-                            name: t('Fixes'),
-                            population: stats.expensesByCategory.fixed || 0,
-                            color: colors.error,
-                            legendFontColor: colors.textSecondary,
-                            legendFontSize: 13
-                          },
-                          {
-                            name: t('Salaires'),
-                            population: stats.expensesByCategory.salaries || 0,
+                            name: t('Masse salariale'),
+                            population: stats.expensesByCategory.payroll || 0,
                             color: colors.warning,
                             legendFontColor: colors.textSecondary,
-                            legendFontSize: 13
-                          }
+                            legendFontSize: 13,
+                          },
                         ].filter(item => item.population > 0)}
                         width={screenWidth - 64}
                         height={200}

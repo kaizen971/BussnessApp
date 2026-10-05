@@ -38,7 +38,7 @@ function PublicOnly({ children }) {
   return children
 }
 
-// Pages réservées aux responsables : Produits (prix de revient, marge) et Stock
+// Pages réservées aux responsables, y compris dépenses et clients CRM.
 function OwnerOnly({ children }) {
   const { user } = useAuth()
   if (isEmployeeRole(user?.role)) return <Navigate to="/catalogue" replace />
@@ -56,7 +56,7 @@ function AppRoutes() {
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<DashboardPage />} />
         <Route path="ventes" element={<SalesPage />} />
-        <Route path="depenses" element={<ExpensesPage />} />
+        <Route path="depenses" element={<OwnerOnly><ExpensesPage /></OwnerOnly>} />
         <Route path="produits" element={<OwnerOnly><ProductsPage /></OwnerOnly>} />
         <Route path="catalogue" element={<CataloguePage />} />
         <Route path="projets" element={<ProjectsPage />} />
@@ -68,7 +68,7 @@ function AppRoutes() {
         } />
         <Route path="stock" element={<OwnerOnly><StockPage /></OwnerOnly>} />
         <Route path="clients" element={
-          <PremiumRoute screenKey="Customers" featureName="CRM Clients"><CustomersPage /></PremiumRoute>
+          <OwnerOnly><PremiumRoute screenKey="Customers" featureName="CRM Clients"><CustomersPage /></PremiumRoute></OwnerOnly>
         } />
         <Route path="equipe" element={
           <PremiumRoute screenKey="Team" featureName="Gestion d'équipe"><TeamPage /></PremiumRoute>

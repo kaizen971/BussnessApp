@@ -1,3 +1,4 @@
+import { isAnnualPlan, getMonthlyFcfa, getPricePeriod } from '../utils/subscriptionPricing'
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -28,6 +29,7 @@ export function getTier(plan) {
 }
 
 export function getDurationLabel(plan) {
+  if (isAnnualPlan(plan)) return '1 an'
   if (plan.durationType === 'lifetime') return 'À vie'
   return `${plan.duration} ${DURATION_LABELS[plan.durationType] || plan.durationType}`
 }
@@ -56,9 +58,11 @@ export function PlanCard({ plan, selected, onSelect }) {
           </span>
           <span className="flex items-start">
             <span className="text-3xl font-extrabold text-white">{plan.price}</span>
-            <span className="text-base font-semibold text-white/70 mt-1 ml-0.5">€</span>
+            <span className="text-base font-semibold text-white/70 mt-1 ml-0.5">{plan.currency === 'EUR' || !plan.currency ? '€' : plan.currency} / {getPricePeriod(plan)}</span>
           </span>
         </div>
+        {getMonthlyFcfa(plan) && <p className="text-sm font-semibold text-white mt-1">soit environ {getMonthlyFcfa(plan)} FCFA/mois</p>}
+        {isAnnualPlan(plan) && <p className="text-xs text-white mt-1 mb-2">Paiement annuel — équivalent mensuel indicatif.</p>}
         <p className="text-lg font-bold text-white mb-2">{plan.name}</p>
         <div className="flex items-center gap-3 flex-wrap text-[13px] text-white/70">
           <span className="inline-flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />{getDurationLabel(plan)}</span>

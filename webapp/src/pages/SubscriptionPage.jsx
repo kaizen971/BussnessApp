@@ -1,3 +1,4 @@
+import { isAnnualPlan, getMonthlyFcfa, getPricePeriod } from '../utils/subscriptionPricing'
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -17,6 +18,7 @@ const TIER_CONFIG = {
 }
 
 function getDurationLabel(plan) {
+  if (isAnnualPlan(plan)) return '1 an'
   if (plan.durationType === 'lifetime') return 'À vie'
   return `${plan.duration} ${DURATION_LABELS[plan.durationType] || plan.durationType}`
 }
@@ -186,17 +188,19 @@ export default function SubscriptionPage() {
                   }`}
                 >
                   <div className={`p-5 bg-gradient-to-r ${cfg.gradient}`}>
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-col gap-3">
                       <div className="min-w-0">
-                        <p className="text-lg font-bold text-white truncate">{plan.name}</p>
+                        <p className="text-lg font-bold text-white">{plan.name}</p>
                         {plan.description && <p className="text-[12px] text-white/70 mt-0.5">{plan.description}</p>}
                       </div>
                       <p className="flex items-baseline flex-shrink-0">
                         <span className="text-[26px] font-extrabold text-white">{plan.price}</span>
-                        <span className="text-base font-semibold text-white/80 ml-0.5">€</span>
-                        <span className="text-[11px] text-white/60 ml-1">/{getDurationLabel(plan)}</span>
+                        <span className="text-base font-semibold text-white/80 ml-0.5">{plan.currency === 'EUR' || !plan.currency ? '€' : plan.currency}</span>
+                        <span className="text-base font-semibold text-white ml-1">/ {getPricePeriod(plan)}</span>
                       </p>
                     </div>
+        {getMonthlyFcfa(plan) && <p className="text-sm font-semibold text-white mt-1">soit environ {getMonthlyFcfa(plan)} FCFA/mois</p>}
+        {isAnnualPlan(plan) && <p className="text-xs text-white mt-1 mb-2">Paiement annuel — équivalent mensuel indicatif.</p>}
                     {isCurrent && (
                       <span className="inline-flex items-center gap-1.5 mt-3 px-2.5 py-1 rounded-full bg-white/15 text-[11px] font-bold text-white">
                         <CheckCircle2 className="w-3.5 h-3.5" />

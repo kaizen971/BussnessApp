@@ -89,7 +89,7 @@ export const SalesScreen = () => {
       const [salesRes, productsRes, customersRes, usersRes] = await Promise.all([
         salesAPI.getAll(user?.projectId, getPeriodFilters()),
         productsAPI.getAll(user?.projectId),
-        customersAPI.getAll(user?.projectId),
+        isAdmin ? customersAPI.getAll(user?.projectId) : Promise.resolve({ data: { data: [] } }),
         isAdmin ? usersAPI.getAll(user?.projectId) : Promise.resolve({ data: [] }),
       ]);
       const receivedSales = salesRes.data?.data || [];
@@ -322,7 +322,7 @@ export const SalesScreen = () => {
     try {
       setLoading(true);
       await salesAPI.update(editingSale._id, {
-        customerId: editCustomerId,
+        ...(isAdmin ? { customerId: editCustomerId } : {}),
         employeeId: editSellerId,
       });
       setEditSaleModalVisible(false);
@@ -884,7 +884,7 @@ export const SalesScreen = () => {
                 </LinearGradient>
               )}
 
-              <View style={styles.assignmentCard}>
+              {isAdmin && <View style={styles.assignmentCard}>
                 <View style={styles.assignmentHeader}>
                   <View style={styles.assignmentHeaderIcon}>
                     <Ionicons name="people-outline" size={20} color={colors.primary} />
@@ -1142,7 +1142,7 @@ export const SalesScreen = () => {
                     )}
                   </View>
                 )}
-              </View>
+              </View>}
 
               {/* Sélection des produits */}
               <View style={styles.sectionHeader}>
@@ -1417,6 +1417,7 @@ export const SalesScreen = () => {
                   </View>
 
                   {/* Sélection client */}
+                  {isAdmin && <>
                   <Text style={styles.editSectionLabel}>{t('Client')}</Text>
                   {editCustomerId ? (
                     <View style={styles.editSelectedBadge}>
@@ -1459,6 +1460,8 @@ export const SalesScreen = () => {
                       )}
                     </View>
                   )}
+
+                  </>}
 
                   {/* Sélection vendeur */}
                   <Text style={styles.editSectionLabel}>{t('Vendeur')}</Text>

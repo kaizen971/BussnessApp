@@ -41,6 +41,9 @@ export const TeamScreen = ({ navigation }) => {
   const [commissionModalVisible, setCommissionModalVisible] = useState(false);
   const [salaryModalVisible, setSalaryModalVisible] = useState(false);
   const [editInfoModalVisible, setEditInfoModalVisible] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [commissionRate, setCommissionRate] = useState('0');
   const [hourlyRate, setHourlyRate] = useState('0');
@@ -125,7 +128,6 @@ export const TeamScreen = ({ navigation }) => {
       Alert.alert(t('Erreur'), t('Veuillez remplir tous les champs obligatoires'));
       return;
     }
-    console.log(formData);
     try {
       setLoading(true);
       await api.post('/users', { ...formData, projectId: user?.projectId });
@@ -147,6 +149,23 @@ export const TeamScreen = ({ navigation }) => {
       Alert.alert(t('Succès'), t('Compte {value}', { value: user.isActive ? t('désactivé') : t('activé') }));
     } catch (error) {
       Alert.alert(t('Erreur'), t('Impossible de modifier le statut'));
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteTarget || deleteConfirmation.trim() !== (deleteTarget.fullName || deleteTarget.username)) return;
+    try {
+      setDeleteLoading(true);
+      await usersAPI.remove(deleteTarget._id, user?.projectId, deleteConfirmation.trim());
+      setDeleteTarget(null);
+      setDeleteConfirmation('');
+      loadUsers();
+      loadPayroll();
+      Alert.alert(t('Succès'), t('Compte retiré de l’équipe'));
+    } catch (error) {
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Impossible de supprimer ce compte'));
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -561,6 +580,16 @@ export const TeamScreen = ({ navigation }) => {
               </TouchableOpacity>
             </>
           )}
+          {item._id !== user?.id && item.role !== 'admin' &&
+            (user?.role === 'admin' || (user?.role === 'responsable' && item.role !== 'responsable') || (user?.role === 'manager' && item.role === 'cashier')) && (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => { setDeleteTarget(item); setDeleteConfirmation(''); }}
+            >
+              <Ionicons name="trash-outline" size={20} color={colors.error} />
+              <Text style={[styles.actionButtonText, { color: colors.error }]}>{t('Supprimer')}</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.userFooter}>
@@ -578,12 +607,12 @@ export const TeamScreen = ({ navigation }) => {
         title={t('Équipe')}
         subtitle={t('{value} membre(s)', { value: users?.length || 0 })}
         onBack={() => navigation.goBack()}
-        rightIcon="person-add-outline"
-        rightLabel={t('Ajouter un membre')}
-        onRightPress={() => {
+        rightIcon={['admin', 'responsable', 'manager'].includes(user?.role) ? 'person-add-outline' : undefined}
+        rightLabel={['admin', 'responsable', 'manager'].includes(user?.role) ? t('Ajouter un membre') : undefined}
+        onRightPress={['admin', 'responsable', 'manager'].includes(user?.role) ? () => {
           resetForm();
           setModalVisible(true);
-        }}
+        } : undefined}
       />
 
       <LinearGradient
@@ -882,6 +911,33 @@ export const TeamScreen = ({ navigation }) => {
             >
               <Text style={styles.roleCancelButtonText}>{t('Annuler')}</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={!!deleteTarget}
+        animationType="fade"
+        transparent
+        onRequestClose={() => { if (!deleteLoading) setDeleteTarget(null); }}
+      >
+        <View style={styles.deleteOverlay}>
+          <View style={styles.deleteDialog}>
+            <Text style={styles.deleteTitle}>{t('Supprimer le compte ?')}</Text>
+            <Text style={styles.deleteDescription}>
+              {t('Le compte de {name} sera retiré de l’équipe et ne pourra plus se connecter. Ses ventes et son planning resteront enregistrés.', { name: deleteTarget?.fullName || deleteTarget?.username || '' })}
+            </Text>
+            <Input
+              label={t('Saisissez son nom pour confirmer')}
+              value={deleteConfirmation}
+              onChangeText={setDeleteConfirmation}
+              placeholder={deleteTarget?.fullName || deleteTarget?.username || ''}
+              autoCapitalize="none"
+            />
+            <View style={styles.deleteActions}>
+              <Button title={t('Annuler')} variant="outline" onPress={() => { setDeleteTarget(null); setDeleteConfirmation(''); }} disabled={deleteLoading} style={styles.deleteAction} />
+              <Button title={t('Supprimer')} variant="danger" onPress={handleDeleteUser} disabled={deleteLoading || deleteConfirmation.trim() !== (deleteTarget?.fullName || deleteTarget?.username)} loading={deleteLoading} style={styles.deleteAction} />
+            </View>
           </View>
         </View>
       </Modal>
@@ -1662,6 +1718,39 @@ export const TeamScreen = ({ navigation }) => {
 };
 
 const createStyles = (colors) => ({
+  deleteOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  deleteDialog: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.error + '60',
+  },
+  deleteTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  deleteDescription: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 21,
+    marginBottom: 20,
+  },
+  deleteActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  deleteAction: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,

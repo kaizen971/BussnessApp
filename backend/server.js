@@ -1986,7 +1986,7 @@ app.post('/BussnessApp/sales/:id/refund', authenticateToken, checkRole('admin', 
 });
 
 // Expenses Routes
-app.get('/BussnessApp/expenses', authenticateToken, async (req, res) => {
+app.get('/BussnessApp/expenses', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const { projectId, startDate, endDate } = req.query;
     const scope = await projectScope(req, projectId);
@@ -2005,7 +2005,7 @@ app.get('/BussnessApp/expenses', authenticateToken, async (req, res) => {
 });
 
 // Obtenir les dépenses récurrentes
-app.get('/BussnessApp/recurring-expenses', authenticateToken, async (req, res) => {
+app.get('/BussnessApp/recurring-expenses', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const scope = await projectScope(req, req.query.projectId);
     if (!scope) return res.status(403).json(PROJECT_DENIED);
@@ -2017,7 +2017,7 @@ app.get('/BussnessApp/recurring-expenses', authenticateToken, async (req, res) =
   }
 });
 
-app.post('/BussnessApp/expenses', authenticateToken, requireProject((req) => req.body.projectId), async (req, res) => {
+app.post('/BussnessApp/expenses', authenticateToken, checkRole('admin', 'manager', 'responsable'), requireProject((req) => req.body.projectId), async (req, res) => {
   try {
     const expenseData = { ...req.body };
 
@@ -2035,7 +2035,7 @@ app.post('/BussnessApp/expenses', authenticateToken, requireProject((req) => req
 });
 
 // Modifier une dépense
-app.put('/BussnessApp/expenses/:id', authenticateToken, async (req, res) => {
+app.put('/BussnessApp/expenses/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     if (!(await findInProject(req, Expense, req.params.id))) {
       return res.status(404).json({ error: 'Dépense non trouvée' });
@@ -2050,7 +2050,7 @@ app.put('/BussnessApp/expenses/:id', authenticateToken, async (req, res) => {
 });
 
 // Supprimer une dépense
-app.delete('/BussnessApp/expenses/:id', authenticateToken, async (req, res) => {
+app.delete('/BussnessApp/expenses/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const expense = await findInProject(req, Expense, req.params.id);
     if (!expense) {
@@ -2064,7 +2064,7 @@ app.delete('/BussnessApp/expenses/:id', authenticateToken, async (req, res) => {
 });
 
 // Supprimer une dépense récurrente
-app.delete('/BussnessApp/recurring-expenses/:id', authenticateToken, async (req, res) => {
+app.delete('/BussnessApp/recurring-expenses/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const expense = await findInProject(req, Expense, req.params.id);
     if (!expense) {
@@ -2081,7 +2081,7 @@ app.delete('/BussnessApp/recurring-expenses/:id', authenticateToken, async (req,
 });
 
 // Modifier une dépense récurrente
-app.put('/BussnessApp/recurring-expenses/:id', authenticateToken, async (req, res) => {
+app.put('/BussnessApp/recurring-expenses/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const { amount, description, category, recurringDay } = req.body;
     if (!(await findInProject(req, Expense, req.params.id))) {
@@ -2463,22 +2463,18 @@ app.post('/BussnessApp/stock/:stockId/link-product', authenticateToken, checkRol
 });
 
 // Customers Routes
-app.get('/BussnessApp/customers', authenticateToken, async (req, res) => {
+app.get('/BussnessApp/customers', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const scope = await projectScope(req, req.query.projectId);
     if (!scope) return res.status(403).json(PROJECT_DENIED);
     const customers = await Customer.find({ projectId: scope }).sort({ name: 1 }).lean();
-    // Les vendeurs ne voient pas le chiffre d'affaires réalisé par client
-    if (req.user.role === 'cashier') {
-      return res.json({ data: customers.map((customer) => ({ ...customer, totalPurchases: 0 })) });
-    }
     res.json({ data: customers });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/BussnessApp/customers', authenticateToken, requireProject((req) => req.body.projectId), async (req, res) => {
+app.post('/BussnessApp/customers', authenticateToken, checkRole('admin', 'manager', 'responsable'), requireProject((req) => req.body.projectId), async (req, res) => {
   try {
     const { name, email, phone, projectId } = req.body;
 
@@ -2506,7 +2502,7 @@ app.post('/BussnessApp/customers', authenticateToken, requireProject((req) => re
   }
 });
 
-app.put('/BussnessApp/customers/:id', authenticateToken, async (req, res) => {
+app.put('/BussnessApp/customers/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const { name, email, phone } = req.body;
 
@@ -4227,16 +4223,16 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, requireProject((
 
     res.json({
       totalSales,
-      totalExpenses,
-      totalSalaries,
-      totalCommissions,
+      totalExpenses: isEmployeeRole(req.user.role) ? 0 : totalExpenses,
+      totalSalaries: isEmployeeRole(req.user.role) ? 0 : totalSalaries,
+      totalCommissions: isEmployeeRole(req.user.role) ? 0 : totalCommissions,
       totalStock: isEmployeeRole(req.user.role) ? 0 : totalStock,
-      netProfit,
+      netProfit: isEmployeeRole(req.user.role) ? 0 : netProfit,
       salesCount: sales.length,
-      expensesCount: expenses.length,
+      expensesCount: isEmployeeRole(req.user.role) ? 0 : expenses.length,
       stockItems: isEmployeeRole(req.user.role) ? 0 : stock.length,
-      monthlyData,
-      expensesByCategory,
+      monthlyData: isEmployeeRole(req.user.role) ? [] : monthlyData,
+      expensesByCategory: isEmployeeRole(req.user.role) ? {} : expensesByCategory,
       topProducts
     });
   } catch (error) {

@@ -1,3 +1,4 @@
+import { isAnnualPlan, getMonthlyFcfa, getPricePeriod } from '../utils/subscriptionPricing';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -23,6 +24,7 @@ const TIER_CONFIG = {
 
 function getDurationLabel(plan, translate = true) {
   const tr = translate ? t : (text) => text;
+  if (isAnnualPlan(plan)) return tr('1 an');
   if (plan.durationType === 'lifetime') return tr('À vie');
   return `${plan.duration} ${tr(DURATION_LABELS[plan.durationType] || plan.durationType)}`;
 }
@@ -182,10 +184,15 @@ export const SubscriptionScreen = ({ navigation }) => {
                         <Text style={styles.planCardName}>{plan.name}</Text>
                         {plan.description && <Text style={styles.planCardDesc}>{plan.description}</Text>}
                       </View>
-                      <View style={styles.planCardPrice}>
-                        <Text style={styles.priceAmount}>{plan.price}</Text>
-                        <Text style={styles.priceCurrency}>€</Text>
-                        <Text style={styles.pricePeriod}>/{getDurationLabel(plan)}</Text>
+                      <View>
+                        <View style={styles.planCardPrice}>
+                          <Text style={styles.priceAmount}>{plan.price}</Text>
+                          <Text style={styles.priceCurrency}> {plan.currency === 'EUR' || !plan.currency ? '€' : plan.currency} / {getPricePeriod(plan, t)}</Text>
+                        </View>
+                        {getMonthlyFcfa(plan) && (
+                          <Text style={styles.monthlyEquivalent}>{t('soit environ {amount} FCFA/mois', { amount: getMonthlyFcfa(plan) })}</Text>
+                        )}
+                        {isAnnualPlan(plan) && <Text style={styles.billingNote}>{t('Paiement annuel — équivalent mensuel indicatif.')}</Text>}
                       </View>
                     </View>
                     {isCurrent && (
@@ -206,6 +213,7 @@ export const SubscriptionScreen = ({ navigation }) => {
                       <Text style={styles.planStatText}>{getDurationLabel(plan)} {plan.isRecurring ? t('(renouvelable)') : ''}</Text>
                     </View>
 
+                    {plan.webappAccess && <Text style={styles.planStatText}>{t('Accès Web App inclus')}</Text>}
                     {plan.features?.length > 0 && (
                       <View style={styles.planFeatures}>
                         {plan.features.map((f, i) => (
@@ -296,12 +304,14 @@ const createStyles = (colors) => ({
   planCard: { backgroundColor: colors.surface, borderRadius: 16, marginBottom: 16, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
   planCardActive: { borderColor: colors.primary, borderWidth: 2 },
   planCardHeader: { padding: 16 },
-  planCardHeaderContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  planCardHeaderContent: { gap: 12 },
   planCardName: { fontSize: 18, fontWeight: '700', color: '#fff' },
   planCardDesc: { fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
   planCardPrice: { flexDirection: 'row', alignItems: 'baseline' },
   priceAmount: { fontSize: 28, fontWeight: '800', color: '#fff' },
   priceCurrency: { fontSize: 16, fontWeight: '600', color: 'rgba(255,255,255,0.8)', marginLeft: 2 },
+  monthlyEquivalent: { fontSize: 14, color: '#fff', marginTop: 4, fontWeight: '600' },
+  billingNote: { fontSize: 11, color: '#fff', marginTop: 4 },
   pricePeriod: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginLeft: 4 },
   currentBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.15)', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginTop: 10 },
   currentBadgeText: { fontSize: 11, fontWeight: '700', color: '#fff' },

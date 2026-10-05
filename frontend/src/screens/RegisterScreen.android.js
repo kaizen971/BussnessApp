@@ -1,3 +1,4 @@
+import { isAnnualPlan, getMonthlyFcfa, getPricePeriod } from '../utils/subscriptionPricing';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -69,6 +70,7 @@ function getTier(plan) {
 }
 
 function getDurationLabel(plan) {
+  if (isAnnualPlan(plan)) return t('1 an');
   if (plan.durationType === 'lifetime') return t('À vie');
   return `${plan.duration} ${t(DURATION_LABELS[plan.durationType] || plan.durationType)}`;
 }
@@ -335,10 +337,12 @@ export const RegisterScreen = ({ navigation }) => {
             </View>
             <View style={styles.planPriceWrap}>
               <Text style={styles.planPrice}>{plan.price}</Text>
-              <Text style={styles.planCurrency}>€</Text>
+              <Text style={styles.planCurrency}> {plan.currency === 'EUR' || !plan.currency ? '€' : plan.currency} / {getPricePeriod(plan, t)}</Text>
             </View>
           </View>
 
+          {getMonthlyFcfa(plan) && <Text style={styles.planMetaText}>{t('soit environ {amount} FCFA/mois', { amount: getMonthlyFcfa(plan) })}</Text>}
+          {isAnnualPlan(plan) && <Text style={styles.planMetaText}>{t('Paiement annuel — équivalent mensuel indicatif.')}</Text>}
           <Text style={styles.planName}>{plan.name}</Text>
 
           <View style={styles.planMeta}>
