@@ -510,6 +510,19 @@ export default function SalesPage() {
     [sales]
   )
 
+  // Salarié : nombre de ses ventes du jour et du mois (comme l'accueil de l'appli)
+  const mySalesCount = useMemo(() => {
+    if (isAdmin) return null
+    const myId = String(user?._id || user?.id)
+    const now = new Date()
+    const own = sales.filter(s => String(s.employeeId?._id || s.employeeId) === myId)
+    const month = own.filter(s => {
+      const d = new Date(s.date)
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+    })
+    return { today: month.filter(s => new Date(s.date).toDateString() === now.toDateString()).length, month: month.length }
+  }, [sales, isAdmin, user])
+
   const buildSaleReceipt = (sale) => {
     const qty = sale.quantity || 1
     return (
@@ -591,6 +604,20 @@ export default function SalesPage() {
               </div>
             </div>
           </>
+        )}
+        {mySalesCount && (
+          <div className="card !rounded-xl px-4 py-2.5 flex items-center gap-4">
+            <ShoppingCart className="w-5 h-5 text-gold-500" />
+            <div>
+              <p className="text-[11px] text-gray-500">Aujourd'hui</p>
+              <p className="text-[15px] font-extrabold text-cream leading-tight">{mySalesCount.today} vente{mySalesCount.today > 1 ? 's' : ''}</p>
+            </div>
+            <div className="w-px h-8 bg-night-600" />
+            <div>
+              <p className="text-[11px] text-gray-500">Ce mois</p>
+              <p className="text-[15px] font-extrabold text-cream leading-tight">{mySalesCount.month} vente{mySalesCount.month > 1 ? 's' : ''}</p>
+            </div>
+          </div>
         )}
       </PageHeader>
 
