@@ -3,7 +3,7 @@ import {
   LayoutDashboard, ShoppingCart, TrendingDown, Package, FolderKanban, Tags,
   MessageSquare, Calculator, Boxes, Users, UserCog, CalendarDays, Percent,
   Crown, LogOut, Menu, X, ChevronRight, PanelLeftClose, PanelLeft, Lock,
-  GraduationCap, Briefcase, ChevronDown, BookOpen,
+  GraduationCap, Briefcase, ChevronDown, BookOpen, UserRound,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
@@ -24,6 +24,13 @@ const mainNav = [
   { to: '/feedback', icon: MessageSquare, label: 'Feedback' },
 ]
 
+// Salarié : la caisse est la page d'accueil, le tableau de bord devient « Mon profil »
+const employeeNav = [
+  { to: '/ventes', icon: ShoppingCart, label: 'Caisse' },
+  ...mainNav.filter((item) => !item.ownerOnly && !['/', '/ventes'].includes(item.to)),
+  { to: '/profil', icon: UserRound, label: 'Mon profil' },
+]
+
 // screenKey = clé de gating (PREMIUM_SCREENS du SubscriptionContext)
 const premiumNav = [
   { to: '/simulation', icon: Calculator, label: 'Simulation', screenKey: 'Simulation' },
@@ -34,6 +41,7 @@ const premiumNav = [
 
 const PAGE_TITLES = {
   '/': 'Tableau de bord',
+  '/profil': 'Mon profil',
   '/ventes': 'Ventes',
   '/depenses': 'Dépenses',
   '/produits': 'Produits',
@@ -108,7 +116,9 @@ export default function Layout() {
 
   const handleLogout = () => { logout(); navigate('/login') }
 
-  const currentTitle = PAGE_TITLES[location.pathname] || ''
+  const currentTitle = (isEmployeeRole(user?.role) && location.pathname === '/ventes')
+    ? 'Caisse'
+    : PAGE_TITLES[location.pathname] || ''
   const currentProject = availableProjects.find(p => p._id === selectedProjectId)
 
   return (
@@ -148,7 +158,7 @@ export default function Layout() {
           {!collapsed && (
             <p className="px-3 pb-2 text-[10px] font-semibold text-gray-600 uppercase tracking-widest">Gestion</p>
           )}
-          {mainNav.filter((item) => !item.ownerOnly || !isEmployeeRole(user?.role)).map((item) => (
+          {(isEmployeeRole(user?.role) ? employeeNav : mainNav).map((item) => (
             <NavItem key={item.to} {...item} collapsed={collapsed} />
           ))}
 

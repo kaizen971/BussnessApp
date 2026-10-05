@@ -137,12 +137,23 @@ function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice,
   const [submitting, setSubmitting] = useState(false)
   const [clearConfirm, setClearConfirm] = useState(false)
   const [receipt, setReceipt] = useState(null)
+  const [category, setCategory] = useState('')
+  // Salarié : vue caisse plein écran (grandes tuiles, panier fixe, filtres par catégorie)
+  const checkout = !isAdmin
+
+  const categories = useMemo(
+    () => [...new Set(products.map(p => p.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr')),
+    [products]
+  )
 
   const filteredProducts = useMemo(() => {
-    if (!productSearch) return products
+    let list = category ? products.filter(p => p.category === category) : products
+    if (!productSearch) return list
     const q = productSearch.toLowerCase()
-    return products.filter(p => p.name?.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q))
-  }, [products, productSearch])
+    return list.filter(p => p.name?.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q))
+  }, [products, productSearch, category])
+
+  const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart])
 
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice - (item.discount || 0)), 0),
@@ -256,9 +267,11 @@ function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice,
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_360px] items-start">
+    <div className={checkout
+      ? 'grid gap-4 grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_380px] lg:h-[calc(100vh-11rem)] pb-24 lg:pb-0'
+      : 'grid gap-4 lg:grid-cols-[1fr_360px] items-start'}>
       {/* Catalogue produits */}
-      <div className="card p-4">
+      <div className={checkout ? 'card p-4 flex flex-col min-h-0' : 'card p-4'}>
         <div className="relative mb-4">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
           <input
@@ -266,13 +279,30 @@ function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice,
             value={productSearch}
             onChange={(e) => setProductSearch(e.target.value)}
             placeholder="Rechercher un produit..."
-            className="input-field pl-10"
+            className={`input-field pl-10 ${checkout ? '!py-3 text-[15px]' : ''}`}
           />
         </div>
+        {checkout && categories.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto scrollbar-thin pb-3 mb-1 -mx-1 px-1">
+            {['', ...categories].map(c => (
+              <button
+                key={c || 'all'}
+                onClick={() => setCategory(c)}
+                className={`px-3.5 py-1.5 rounded-full text-[13px] font-semibold whitespace-nowrap transition-colors ${
+                  category === c ? 'bg-gold-500 text-night-950' : 'bg-night-700 text-gray-300 hover:bg-night-600'
+                }`}
+              >
+                {c || 'Tout'}
+              </button>
+            ))}
+          </div>
+        )}
         {filteredProducts.length === 0 ? (
           <EmptyState icon={Package} title="Aucun produit" description="Ajoutez des produits depuis la page Produits" />
         ) : (
-          <div className="grid gap-2.5 grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 max-h-[520px] overflow-y-auto scrollbar-thin pr-1">
+          <div className={checkout
+            ? 'grid gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 content-start lg:flex-1 lg:min-h-0 overflow-y-auto scrollbar-thin pr-1'
+            : 'grid gap-2.5 grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 max-h-[520px] overflow-y-auto scrollbar-thin pr-1'}>
             {filteredProducts.map(product => {
               const inCart = cart.find(i => i.productId === product._id)
               return (
@@ -289,14 +319,14 @@ function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice,
                     </span>
                   )}
                   {product.image ? (
-                    <img src={product.image} alt="" className="w-full h-20 object-cover rounded-lg mb-2" />
+                    <img src={product.image} alt="" className={`w-full object-cover rounded-lg mb-2 ${checkout ? 'h-28' : 'h-20'}`} />
                   ) : (
-                    <span className="w-full h-20 rounded-lg bg-night-700 flex items-center justify-center mb-2">
+                    <span className={`w-full rounded-lg bg-night-700 flex items-center justify-center mb-2 ${checkout ? 'h-28' : 'h-20'}`}>
                       <Package className="w-7 h-7 text-gray-600" />
                     </span>
                   )}
-                  <p className="text-[13px] font-semibold text-cream truncate">{product.name}</p>
-                  <p className="text-[12.5px] text-gold-400 font-bold mt-0.5">{formatPrice(product.unitPrice)}</p>
+                  <p className={`font-semibold text-cream truncate ${checkout ? 'text-[14px]' : 'text-[13px]'}`}>{product.name}</p>
+                  <p className={`text-gold-400 font-bold mt-0.5 ${checkout ? 'text-[15px]' : 'text-[12.5px]'}`}>{formatPrice(product.unitPrice)}</p>
                 </button>
               )
             })}
@@ -305,7 +335,7 @@ function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice,
       </div>
 
       {/* Panier */}
-      <div className="card p-4 lg:sticky lg:top-4">
+      <div id="panier" className={checkout ? 'card p-4 flex flex-col min-h-0' : 'card p-4 lg:sticky lg:top-4'}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-bold text-cream flex items-center gap-2">
             <ShoppingCart className="w-4 h-4 text-gold-500" />
@@ -319,9 +349,9 @@ function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice,
         </div>
 
         {cart.length === 0 ? (
-          <p className="text-[13px] text-gray-500 text-center py-8">Cliquez sur un produit pour l'ajouter</p>
+          <p className={`text-[13px] text-gray-500 text-center py-8 ${checkout ? 'lg:flex-1' : ''}`}>Cliquez sur un produit pour l'ajouter</p>
         ) : (
-          <div className="space-y-2.5 max-h-64 overflow-y-auto scrollbar-thin pr-1">
+          <div className={`space-y-2.5 overflow-y-auto scrollbar-thin pr-1 ${checkout ? 'lg:flex-1 lg:min-h-0' : 'max-h-64'}`}>
             {cart.map(item => (
               <div key={item.productId} className="flex items-center gap-2 p-2.5 rounded-xl bg-night-900 border border-night-700">
                 <div className="flex-1 min-w-0">
@@ -370,15 +400,29 @@ function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice,
 
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-400">Total</span>
-            <span className="text-xl font-extrabold text-gold-400">{formatPrice(cartTotal)}</span>
+            <span className={`font-extrabold text-gold-400 ${checkout ? 'text-3xl' : 'text-xl'}`}>{formatPrice(cartTotal)}</span>
           </div>
 
-          <button onClick={handleValidate} disabled={submitting || cart.length === 0} className="btn-primary w-full !py-3">
+          <button onClick={handleValidate} disabled={submitting || cart.length === 0} className={`btn-primary w-full ${checkout ? '!py-4 !text-base' : '!py-3'}`}>
             {submitting ? <Spinner className="w-4 h-4" /> : <CheckCircle2 className="w-5 h-5" />}
             Valider la vente
           </button>
         </div>
       </div>
+
+      {/* Caisse sur mobile : total et validation toujours visibles */}
+      {checkout && cart.length > 0 && (
+        <div className="lg:hidden fixed bottom-0 inset-x-0 z-30 p-3 bg-night-950/95 backdrop-blur border-t border-night-700 flex items-center gap-3">
+          <a href="#panier" className="flex-1 min-w-0">
+            <p className="text-[11px] text-gray-500">{cartCount} article(s) · voir le panier</p>
+            <p className="text-xl font-extrabold text-gold-400 leading-tight">{formatPrice(cartTotal)}</p>
+          </a>
+          <button onClick={handleValidate} disabled={submitting} className="btn-primary !py-3 !px-5">
+            {submitting ? <Spinner className="w-4 h-4" /> : <CheckCircle2 className="w-5 h-5" />}
+            Valider
+          </button>
+        </div>
+      )}
 
       <ConfirmDialog
         open={clearConfirm}
@@ -530,8 +574,8 @@ export default function SalesPage() {
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-[1400px] mx-auto">
       <PageHeader
-        title={isAdmin ? 'Ventes' : 'Point de Vente'}
-        description={isAdmin ? `${sales.length} vente(s) chargée(s)` : 'Effectuez vos ventes rapidement'}
+        title={isAdmin ? 'Ventes' : 'Caisse'}
+        description={isAdmin ? `${sales.length} vente(s) chargée(s)` : `Bonjour ${user?.fullName || user?.username || ''} 👋 Touchez un produit pour l'ajouter`}
       >
         {isAdmin && (
           <>

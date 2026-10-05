@@ -41,8 +41,15 @@ function PublicOnly({ children }) {
 // Pages réservées aux responsables, y compris dépenses, clients CRM et équipe.
 function OwnerOnly({ children }) {
   const { user } = useAuth()
-  if (isEmployeeRole(user?.role)) return <Navigate to="/catalogue" replace />
+  if (isEmployeeRole(user?.role)) return <Navigate to="/ventes" replace />
   return children
+}
+
+// Le salarié arrive directement sur la caisse
+function Home() {
+  const { user } = useAuth()
+  if (isEmployeeRole(user?.role)) return <Navigate to="/ventes" replace />
+  return <DashboardPage />
 }
 
 function AppRoutes() {
@@ -54,7 +61,8 @@ function AppRoutes() {
       <Route path="/onboarding" element={<ProtectedRoute><OnboardingPage /></ProtectedRoute>} />
 
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-        <Route index element={<DashboardPage />} />
+        <Route index element={<Home />} />
+        <Route path="profil" element={<DashboardPage />} />
         <Route path="ventes" element={<SalesPage />} />
         <Route path="depenses" element={<OwnerOnly><ExpensesPage /></OwnerOnly>} />
         <Route path="produits" element={<OwnerOnly><ProductsPage /></OwnerOnly>} />
