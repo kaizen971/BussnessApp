@@ -28,7 +28,7 @@ const mainNav = [
 const premiumNav = [
   { to: '/simulation', icon: Calculator, label: 'Simulation', screenKey: 'Simulation' },
   { to: '/clients', icon: Users, label: 'Clients CRM', screenKey: 'Customers', ownerOnly: true },
-  { to: '/equipe', icon: UserCog, label: 'Équipe', screenKey: 'Team' },
+  { to: '/equipe', icon: UserCog, label: 'Équipe', screenKey: 'Team', ownerOnly: true },
   { to: '/commissions', icon: Percent, label: 'Commissions', screenKey: 'Commissions' },
 ]
 

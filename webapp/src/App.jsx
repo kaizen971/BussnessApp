@@ -38,7 +38,7 @@ function PublicOnly({ children }) {
   return children
 }
 
-// Pages réservées aux responsables, y compris dépenses et clients CRM.
+// Pages réservées aux responsables, y compris dépenses, clients CRM et équipe.
 function OwnerOnly({ children }) {
   const { user } = useAuth()
   if (isEmployeeRole(user?.role)) return <Navigate to="/catalogue" replace />
@@ -71,7 +71,7 @@ function AppRoutes() {
           <OwnerOnly><PremiumRoute screenKey="Customers" featureName="CRM Clients"><CustomersPage /></PremiumRoute></OwnerOnly>
         } />
         <Route path="equipe" element={
-          <PremiumRoute screenKey="Team" featureName="Gestion d'équipe"><TeamPage /></PremiumRoute>
+          <OwnerOnly><PremiumRoute screenKey="Team" featureName="Gestion d'équipe"><TeamPage /></PremiumRoute></OwnerOnly>
         } />
         <Route path="planning" element={
           <PlanningPage />
