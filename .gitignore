@@ -22,3 +22,5 @@ Thumbs.db
 
 frontend/app-release.apk
 *.apk
+# Le backend utilise npm (package-lock.json) ; npm ci réécrit un yarn.lock présent
+backend/yarn.lock
