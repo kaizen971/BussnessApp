@@ -170,6 +170,7 @@ export const stockAPI = {
 // Customers API
 export const customersAPI = {
   getAll: (projectId) => api.get('/customers', { params: { projectId } }),
+  search: (projectId, q) => api.get('/customers/search', { params: { projectId, q } }),
   create: (data) => api.post('/customers', data),
   update: (id, data) => api.put(`/customers/${id}`, data),
 };

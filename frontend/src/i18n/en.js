@@ -751,6 +751,8 @@ export default {
   "Reçu - {length} produit(s)": "Receipt - {length} product(s)",
   "Produit x": "Product x",
   "Point de Vente": "Point of Sale",
+  "Affiliez un client à la vente (facultatif).": "Link a customer to the sale (optional).",
+  "Nom du client": "Customer name",
   "Effectuez vos ventes rapidement": "Make your sales quickly",
   "Ventes du mois": "This month's sales",
   "Ventes depuis le début": "Sales since the beginning",

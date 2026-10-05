@@ -668,6 +668,29 @@ export const SalesScreen = () => {
     [cart]
   );
 
+  // Salarié : pas d'accès au CRM, le client est retrouvé côté serveur par son nom
+  // (2 lettres minimum, nom uniquement). Le client choisi reste dans la liste.
+  useEffect(() => {
+    if (isAdmin) return;
+    const q = customerSearch.trim();
+    if (q.length < 2) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await customersAPI.search(user?.projectId, q);
+        if (cancelled) return;
+        const found = res.data?.data || [];
+        setCustomers((prev) => {
+          const picked = prev.find((c) => c._id === formData.customerId);
+          return picked && !found.some((c) => c._id === picked._id) ? [picked, ...found] : found;
+        });
+      } catch (error) {
+        console.error('Error searching customers:', error);
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [customerSearch, isAdmin, user?.projectId]);
+
   const filteredCustomers = useMemo(() => {
     if (!customerSearch) return customers;
     const searchLower = customerSearch.toLowerCase();
@@ -884,14 +907,14 @@ export const SalesScreen = () => {
                 </LinearGradient>
               )}
 
-              {isAdmin && <View style={styles.assignmentCard}>
+              <View style={styles.assignmentCard}>
                 <View style={styles.assignmentHeader}>
                   <View style={styles.assignmentHeaderIcon}>
                     <Ionicons name="people-outline" size={20} color={colors.primary} />
                   </View>
                   <View style={styles.assignmentHeaderText}>
                     <Text style={styles.assignmentTitle}>{t('Attribution de la vente')}</Text>
-                    <Text style={styles.assignmentSubtitle}>{t('Choisissez le client et la personne ayant réalisé la vente.')}</Text>
+                    <Text style={styles.assignmentSubtitle}>{isAdmin ? t('Choisissez le client et la personne ayant réalisé la vente.') : t('Affiliez un client à la vente (facultatif).')}</Text>
                   </View>
                 </View>
 
@@ -918,7 +941,7 @@ export const SalesScreen = () => {
                       <View style={styles.selectedPartyInfo}>
                         <Text style={styles.selectedPartyName} numberOfLines={1}>{selectedCustomer.name}</Text>
                         <Text style={styles.selectedPartyDetail} numberOfLines={1}>
-                          {selectedCustomer.phone || selectedCustomer.email || t('Aucune coordonnée')}
+                          {isAdmin ? (selectedCustomer.phone || selectedCustomer.email || t('Aucune coordonnée')) : t('Client')}
                         </Text>
                       </View>
                       <TouchableOpacity
@@ -938,7 +961,7 @@ export const SalesScreen = () => {
                       <SearchField
                         value={customerSearch}
                         onChangeText={setCustomerSearch}
-                        placeholder={t('Nom, téléphone ou email')}
+                        placeholder={isAdmin ? t('Nom, téléphone ou email') : t('Nom du client')}
                         style={styles.selectorSearch}
                       />
                       {customerSearch.trim() ? (
@@ -959,7 +982,7 @@ export const SalesScreen = () => {
                                   </View>
                                   <View style={styles.autocompleteItemContent}>
                                     <Text style={styles.autocompleteItemName} numberOfLines={1}>{customer.name}</Text>
-                                    <Text style={styles.autocompleteItemSub} numberOfLines={1}>{customer.phone || customer.email || t('Aucune coordonnée')}</Text>
+                                    <Text style={styles.autocompleteItemSub} numberOfLines={1}>{isAdmin ? (customer.phone || customer.email || t('Aucune coordonnée')) : t('Client')}</Text>
                                   </View>
                                   <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
                                 </TouchableOpacity>
@@ -977,7 +1000,7 @@ export const SalesScreen = () => {
                             </View>
                           )}
                         </View>
-                      ) : customers.length > 0 ? (
+                      ) : !isAdmin ? null : customers.length > 0 ? (
                         <View style={styles.quickChoices}>
                           <Text style={styles.quickChoicesLabel}>{t('Suggestions · {length} client(s)', { length: customers.length })}</Text>
                           <ScrollView
@@ -1142,7 +1165,7 @@ export const SalesScreen = () => {
                     )}
                   </View>
                 )}
-              </View>}
+              </View>
 
               {/* Sélection des produits */}
               <View style={styles.sectionHeader}>

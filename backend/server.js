@@ -2463,6 +2463,26 @@ app.post('/BussnessApp/stock/:stockId/link-product', authenticateToken, checkRol
 });
 
 // Customers Routes
+// Affilier un client à une vente sans accès au CRM : le salarié doit taper au moins
+// 2 lettres et ne reçoit que le nom (ni coordonnées, ni historique d'achats).
+app.get('/BussnessApp/customers/search', authenticateToken, async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) return res.json({ data: [] });
+    const scope = await projectScope(req, req.query.projectId);
+    if (!scope) return res.status(403).json(PROJECT_DENIED);
+    const pattern = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const customers = await Customer.find({ projectId: scope, name: pattern })
+      .select('_id name')
+      .sort({ name: 1 })
+      .limit(10)
+      .lean();
+    res.json({ data: customers });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/BussnessApp/customers', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const scope = await projectScope(req, req.query.projectId);

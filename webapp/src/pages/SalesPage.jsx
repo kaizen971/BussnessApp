@@ -127,12 +127,91 @@ function SearchSelect({ label, icon: Icon, items, value, onChange, getLabel, get
   )
 }
 
+// ============= Client d'une vente, côté salarié =============
+// Le salarié n'a pas accès au CRM : il retrouve le client en tapant son nom
+// (2 lettres minimum, 10 résultats, nom uniquement).
+
+function CustomerLookup({ projectId, value, onChange }) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [searching, setSearching] = useState(false)
+
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2) { setResults([]); return }
+    let cancelled = false
+    setSearching(true)
+    const timer = setTimeout(async () => {
+      try {
+        const res = await customersAPI.search(projectId, q)
+        if (!cancelled) setResults(res.data?.data || [])
+      } catch {
+        if (!cancelled) setResults([])
+      } finally {
+        if (!cancelled) setSearching(false)
+      }
+    }, 250)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [query, projectId])
+
+  if (value) {
+    return (
+      <div>
+        <label className="input-label">Client (facultatif)</label>
+        <div className="input-field flex items-center gap-2">
+          <User className="w-4 h-4 text-gold-500 flex-shrink-0" />
+          <span className="flex-1 truncate text-cream">{value.name}</span>
+          <button type="button" onClick={() => onChange(null)} className="p-0.5 rounded hover:bg-night-600 text-gray-500" title="Retirer le client">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const q = query.trim()
+  return (
+    <div>
+      <label className="input-label">Client (facultatif)</label>
+      <div className="relative">
+        <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gold-500" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Tapez le nom du client..."
+          className="input-field pl-10"
+        />
+        {q.length >= 2 && (
+          <div className="absolute left-0 right-0 bottom-full mb-1.5 bg-night-800 border border-night-600 rounded-xl shadow-2xl z-40 overflow-hidden max-h-56 overflow-y-auto scrollbar-thin py-1">
+            {searching && results.length === 0 ? (
+              <p className="px-4 py-3 text-[13px] text-gray-500">Recherche...</p>
+            ) : results.length === 0 ? (
+              <p className="px-4 py-3 text-[13px] text-gray-500">Aucun client trouvé</p>
+            ) : results.map(c => (
+              <button
+                key={c._id}
+                type="button"
+                onClick={() => { onChange(c); setQuery('') }}
+                className="block w-full px-3.5 py-2.5 text-left text-[13px] text-gray-300 hover:bg-white/[0.04] truncate"
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ============= Point de vente (produits + panier) =============
 
 function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice, onValidated, initialProductId, onInitialProductAdded }) {
   const [cart, setCart] = useState([])
   const [productSearch, setProductSearch] = useState('')
   const [customerId, setCustomerId] = useState('')
+  const [lookupCustomer, setLookupCustomer] = useState(null) // salarié : client trouvé par recherche
   const [sellerId, setSellerId] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [clearConfirm, setClearConfirm] = useState(false)
@@ -234,7 +313,8 @@ function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice,
     setSubmitting(true)
     try {
       const cartSnapshot = [...cart]
-      const customer = customers.find(c => c._id === customerId) || null
+      const customer = isAdmin ? customers.find(c => c._id === customerId) || null : lookupCustomer
+      const saleCustomerId = isAdmin ? customerId : lookupCustomer?._id
       const seller = isAdmin ? sellers.find(s => s._id === sellerId) : user
 
       await Promise.all(
@@ -242,7 +322,7 @@ function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice,
           salesAPI.create({
             projectId: user?.projectId,
             productId: item.productId,
-            customerId: customerId || undefined,
+            customerId: saleCustomerId || undefined,
             sellerId: isAdmin ? sellerId : user?._id,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
@@ -254,6 +334,7 @@ function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice,
 
       setCart([])
       setCustomerId('')
+      setLookupCustomer(null)
       setSellerId('')
       toast.success(`${cartSnapshot.length} vente(s) enregistrée(s) avec succès`)
       setReceipt(buildReceipt(cartSnapshot, customer, seller))
@@ -373,6 +454,9 @@ function PointOfSale({ products, customers, sellers, isAdmin, user, formatPrice,
         )}
 
         <div className="mt-4 pt-4 border-t border-night-700 space-y-4">
+          {!isAdmin && (
+            <CustomerLookup projectId={user?.projectId} value={lookupCustomer} onChange={setLookupCustomer} />
+          )}
           {isAdmin && (
             <>
               <SearchSelect
