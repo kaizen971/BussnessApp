@@ -2483,10 +2483,22 @@ app.get('/BussnessApp/customers/search', authenticateToken, async (req, res) => 
   }
 });
 
-app.get('/BussnessApp/customers', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+app.get('/BussnessApp/customers', authenticateToken, async (req, res) => {
   try {
     const scope = await projectScope(req, req.query.projectId);
     if (!scope) return res.status(403).json(PROJECT_DENIED);
+
+    // Les anciennes versions de l'app mobile chargent cette liste avec les produits
+    // et les ventes. Une réponse 403 bloque alors tout l'écran de caisse.
+    // Les salariés peuvent choisir un client, sans recevoir ses coordonnées ni son historique.
+    if (isEmployeeRole(req.user.role)) {
+      const customers = await Customer.find({ projectId: scope }).select('_id name').sort({ name: 1 }).lean();
+      return res.json({ data: customers });
+    }
+    if (!OWNER_ROLES.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
     const customers = await Customer.find({ projectId: scope }).sort({ name: 1 }).lean();
     res.json({ data: customers });
   } catch (error) {
