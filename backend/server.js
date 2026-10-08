@@ -17,6 +17,7 @@ const subscriptionAccess = require('./subscriptionAccess');
 const { createProjectAccess, PROJECT_DENIED, OWNER_ROLES, isEmployeeRole } = require('./projectAccess');
 const { createArchiveTeamMemberHandler } = require('./archiveTeamMember');
 const { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABELS } = require('./expenseCategories');
+const { attachCustomerSalesTotals } = require('./customerSalesTotals');
 
 const app = express();
 const PORT = 3003;
@@ -196,6 +197,7 @@ const SaleSchema = new mongoose.Schema({
 });
 SaleSchema.index({ projectId: 1, date: -1 });
 SaleSchema.index({ projectId: 1, employeeId: 1 });
+SaleSchema.index({ projectId: 1, customerId: 1 });
 
 const ExpenseSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
@@ -1675,35 +1677,44 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
 
     // Mettre à jour le client si présent
     if (customerId) {
-      const customer = await Customer.findById(customerId);
-      if (customer) {
-        customer.totalPurchases += amount;
-        customer.loyaltyPoints += Math.floor(amount / 10); // 1 point par 10 unités monétaires
-        customer.lastPurchaseDate = new Date();
-
-        // Système de fidélité automatique
-        if (customer.loyaltyPoints >= 1000) {
-          customer.loyaltyLevel = 'platinum';
-          customer.discount = 15;
-        } else if (customer.loyaltyPoints >= 500) {
-          customer.loyaltyLevel = 'gold';
-          customer.discount = 10;
-        } else if (customer.loyaltyPoints >= 200) {
-          customer.loyaltyLevel = 'silver';
-          customer.discount = 5;
-        } else if (customer.loyaltyPoints >= 50) {
-          customer.loyaltyLevel = 'bronze';
-          customer.discount = 2;
+      const customer = await Customer.findByIdAndUpdate(customerId, {
+        $inc: {
+          totalPurchases: amount,
+          loyaltyPoints: Math.floor(amount / 10)
+        },
+        $max: { lastPurchaseDate: sale.date },
+        $push: {
+          history: {
+            date: sale.date,
+            amount,
+            description: req.body.description || 'Vente',
+            saleId: sale._id
+          }
         }
-
-        customer.history.push({
-          date: new Date(),
-          amount,
-          description: req.body.description || 'Vente',
-          saleId: sale._id
-        });
-
-        await customer.save();
+      }, { new: true });
+      if (customer) {
+        // Système de fidélité automatique
+        let loyaltyLevel;
+        let customerDiscount;
+        if (customer.loyaltyPoints >= 1000) {
+          loyaltyLevel = 'platinum';
+          customerDiscount = 15;
+        } else if (customer.loyaltyPoints >= 500) {
+          loyaltyLevel = 'gold';
+          customerDiscount = 10;
+        } else if (customer.loyaltyPoints >= 200) {
+          loyaltyLevel = 'silver';
+          customerDiscount = 5;
+        } else if (customer.loyaltyPoints >= 50) {
+          loyaltyLevel = 'bronze';
+          customerDiscount = 2;
+        }
+        if (loyaltyLevel) {
+          await Customer.updateOne(
+            { _id: customerId, loyaltyPoints: customer.loyaltyPoints },
+            { $set: { loyaltyLevel, discount: customerDiscount } }
+          );
+        }
       }
     }
 
@@ -2500,6 +2511,7 @@ app.get('/BussnessApp/customers', authenticateToken, async (req, res) => {
     }
 
     const customers = await Customer.find({ projectId: scope }).sort({ name: 1 }).lean();
+    await attachCustomerSalesTotals(customers, scope, Sale);
     res.json({ data: customers });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -4314,6 +4326,7 @@ app.post('/BussnessApp/export-excel/:projectId', authenticateToken, checkRole('a
         date: { $gte: start, $lte: end }
       }).populate('userId')
     ]);
+    await attachCustomerSalesTotals(customers, projectId, Sale);
 
     // Création du workbook
     const workbook = XLSX.utils.book_new();
@@ -4506,6 +4519,7 @@ app.post('/BussnessApp/export-pdf/:projectId', authenticateToken, checkRole('adm
       Schedule.find({ projectId, date: { $gte: start, $lte: end } })
         .populate('userId')
     ]);
+    await attachCustomerSalesTotals(customers, projectId, Sale);
 
     const totalSales = sales.reduce((sum, s) => sum + s.amount, 0);
     const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -46,11 +47,7 @@ export const CustomersScreen = () => {
     );
   });
 
-  useEffect(() => {
-    loadCustomers();
-  }, []);
-
-  const loadCustomers = async () => {
+  const loadCustomers = useCallback(async () => {
     try {
       const response = await customersAPI.getAll(user?.projectId);
       setCustomers(response.data.data || response.data || []);
@@ -60,7 +57,9 @@ export const CustomersScreen = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.projectId]);
+
+  useFocusEffect(useCallback(() => { loadCustomers(); }, [loadCustomers]));
 
   const handleSaveCustomer = async () => {
     if (!formData.name || !formData.name.trim()) {
