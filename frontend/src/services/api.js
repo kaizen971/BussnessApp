@@ -217,6 +217,7 @@ export const stockAPI = {
   getAll: (projectId) => api.get('/stock', { params: { projectId } }),
   create: (data) => api.post('/stock', data),
   update: (id, data) => api.put(`/stock/${id}`, data),
+  delete: (id) => api.delete(`/stock/${id}`),
   getMovements: (stockId) => api.get(`/stock/${stockId}/movements`),
   getAllMovements: (projectId, filters = {}) => api.get('/stock-movements', { params: { projectId, ...filters } }),
   addMovement: (data) => api.post('/stock-movements', data),

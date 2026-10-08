@@ -184,6 +184,29 @@ export const StockScreen = () => {
     }
   };
 
+  const handleDeleteStock = (item) => {
+    Alert.alert(
+      t('Supprimer le stock'),
+      t('Supprimer le stock « {name} » et ses mouvements manuels ? Le produit restera dans le catalogue.', { name: item.name }),
+      [
+        { text: t('Annuler'), style: 'cancel' },
+        {
+          text: t('Supprimer'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await stockAPI.delete(item._id);
+              await loadStock();
+              Alert.alert(t('Succès'), t('Article de stock supprimé'));
+            } catch (error) {
+              Alert.alert(t('Erreur'), error.response?.data?.error || t('Impossible de supprimer cet article de stock'));
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const renderStockItem = ({ item }) => {
     const totalValue = item.quantity * item.unitPrice;
     const isLowStock = item.minQuantity > 0 && item.quantity <= item.minQuantity;
@@ -243,6 +266,14 @@ export const StockScreen = () => {
               </Text>
             )}
           </View>
+          <TouchableOpacity
+            onPress={() => handleDeleteStock(item)}
+            accessibilityRole="button"
+            accessibilityLabel={t('Supprimer le stock')}
+            style={{ padding: 8 }}
+          >
+            <Ionicons name="trash-outline" size={20} color={colors.error} />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.stockActions}>

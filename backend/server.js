@@ -2260,6 +2260,29 @@ app.put('/BussnessApp/stock/:id', authenticateToken, checkRole(...OWNER_ROLES), 
   }
 });
 
+// Supprimer une fiche de stock créée par erreur, sans effacer l'historique des ventes.
+app.delete('/BussnessApp/stock/:id', authenticateToken, checkRole(...OWNER_ROLES), async (req, res) => {
+  try {
+    const stock = await findInProject(req, Stock, req.params.id);
+    if (!stock) return res.status(404).json({ error: 'Article de stock non trouvé' });
+
+    const saleMovement = await StockMovement.exists({
+      projectId: stock.projectId,
+      stockId: stock._id,
+      $or: [{ saleId: { $exists: true, $ne: null } }, { type: { $in: ['sale', 'return'] } }]
+    });
+    if (saleMovement) {
+      return res.status(409).json({ error: 'Ce stock est lié à une vente et ne peut pas être supprimé.' });
+    }
+
+    await StockMovement.deleteMany({ projectId: stock.projectId, stockId: stock._id });
+    await stock.deleteOne();
+    res.json({ message: 'Article de stock supprimé' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // NOUVEAUX ENDPOINTS POUR LA GESTION DU STOCK
 
 // Obtenir l'historique des mouvements de stock

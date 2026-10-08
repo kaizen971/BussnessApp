@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import {
   Plus, Boxes, AlertTriangle, History, ArrowDownCircle, ArrowUpCircle,
-  ShoppingCart, Undo2, MapPin, Tag, ChevronDown, X, Upload,
+  ShoppingCart, Undo2, MapPin, Tag, ChevronDown, X, Upload, Trash2,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useCurrency } from '../contexts/CurrencyContext'
@@ -36,6 +36,8 @@ export default function StockPage() {
   const [movementQuantity, setMovementQuantity] = useState('')
   const [movementReason, setMovementReason] = useState('')
   const [importOpen, setImportOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'responsable'
 
@@ -157,6 +159,21 @@ export default function StockPage() {
     }
   }
 
+  const handleDeleteStock = async () => {
+    if (!deleteTarget || deleting) return
+    setDeleting(true)
+    try {
+      await stockAPI.delete(deleteTarget._id)
+      setDeleteTarget(null)
+      toast.success('Article de stock supprimé')
+      await loadStock()
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Impossible de supprimer cet article de stock')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const totalStockValue = stock.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0)
   const lowStockItems = stock.filter(item => item.minQuantity > 0 && item.quantity <= item.minQuantity)
 
@@ -238,6 +255,9 @@ export default function StockPage() {
                       {item.minQuantity > 0 && <span>Seuil min : {item.minQuantity}</span>}
                     </div>
                   </div>
+                  <button type="button" onClick={() => setDeleteTarget(item)} className="p-2 text-gray-500 hover:text-red-400 transition-colors" aria-label={`Supprimer le stock ${item.name}`} title="Supprimer le stock">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-night-700/60">
                   <button onClick={() => loadStockMovements(item)} className="btn-ghost !py-1.5 text-sky-400 hover:!text-sky-300 flex-1">
@@ -260,6 +280,18 @@ export default function StockPage() {
       )}
 
       {/* Modal article */}
+      <Modal open={!!deleteTarget} onClose={() => !deleting && setDeleteTarget(null)} title="Supprimer le stock" size="sm">
+        <div className="p-6 space-y-5">
+          <p className="text-sm text-gray-300">Supprimer le stock « {deleteTarget?.name} » et ses mouvements manuels ? Le produit restera dans le catalogue.</p>
+          <div className="flex gap-3">
+            <button type="button" onClick={() => setDeleteTarget(null)} disabled={deleting} className="btn-secondary flex-1">Annuler</button>
+            <button type="button" onClick={handleDeleteStock} disabled={deleting} className="btn-danger flex-1">
+              {deleting ? <Spinner className="w-4 h-4" /> : 'Supprimer'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={modalVisible} onClose={() => setModalVisible(false)} title={selectedItem ? "Modifier l'article" : 'Nouvel article'} size="sm">
         <form onSubmit={handleSaveStock} className="p-6 space-y-4">
           <div>
