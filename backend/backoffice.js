@@ -4,6 +4,8 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+const subscriptionAccess = require('./subscriptionAccess');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'bussnessapp_secret_key_2025';
 const SUPERADMIN_JWT_SECRET = JWT_SECRET + '_superadmin';
@@ -41,20 +43,57 @@ function clearAttempts(ip) {
   loginAttempts.delete(ip);
 }
 
+// Limite les demandes de réinitialisation (anti-spam email)
+const resetRequests = new Map();
+const RESET_LIMIT_WINDOW = 60 * 60 * 1000; // 1h
+const MAX_RESET_REQUESTS = 5;
+
+function checkResetLimit(ip) {
+  const now = Date.now();
+  const entry = resetRequests.get(ip);
+  if (!entry) return true;
+  if (now - entry.firstAttempt > RESET_LIMIT_WINDOW) {
+    resetRequests.delete(ip);
+    return true;
+  }
+  return entry.count < MAX_RESET_REQUESTS;
+}
+
+function recordResetRequest(ip) {
+  const now = Date.now();
+  const entry = resetRequests.get(ip);
+  if (!entry || now - entry.firstAttempt > RESET_LIMIT_WINDOW) {
+    resetRequests.set(ip, { count: 1, firstAttempt: now });
+  } else {
+    entry.count++;
+  }
+}
+
 setInterval(() => {
   const now = Date.now();
   for (const [ip, entry] of loginAttempts) {
     if (now - entry.firstAttempt > RATE_LIMIT_WINDOW) loginAttempts.delete(ip);
+  }
+  for (const [ip, entry] of resetRequests) {
+    if (now - entry.firstAttempt > RESET_LIMIT_WINDOW) resetRequests.delete(ip);
   }
 }, 5 * 60 * 1000);
 
 // ============= ACCESS KEY MIDDLEWARE =============
 
 // Routes exemptées de la vérification de clé d'accès :
-// - /auth/verify-access : vérification publique de la clé
-// - /stripe/webhook    : Stripe n'envoie pas de x-access-key (signature Stripe utilisée à la place)
-// - /plans/active      : accessible depuis l'app mobile sans clé backoffice
-const ACCESS_KEY_EXEMPT = ['/auth/verify-access', '/stripe/webhook', '/plans/active'];
+// - /auth/verify-access      : vérification publique de la clé
+// - /stripe/webhook          : Stripe n'envoie pas de x-access-key (signature Stripe utilisée à la place)
+// - /plans/active            : accessible depuis l'app mobile sans clé backoffice
+// - /auth/verify-reset-token : lien email ouvert dans un navigateur sans clé en session
+// - /auth/reset-password     : idem — le token de réinitialisation fait office de secret
+const ACCESS_KEY_EXEMPT = [
+  '/auth/verify-access',
+  '/stripe/webhook',
+  '/plans/active',
+  '/auth/verify-reset-token',
+  '/auth/reset-password'
+];
 
 const verifyAccessKey = (req, res, next) => {
   if (!ACCESS_KEY) return next();
@@ -92,6 +131,8 @@ const SuperAdminSchema = new mongoose.Schema({
   fullName: { type: String, required: true },
   isActive: { type: Boolean, default: true },
   lastLogin: { type: Date },
+  resetPasswordToken: { type: String },   // hash SHA-256 du token envoyé par email
+  resetPasswordExpires: { type: Date },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -106,6 +147,7 @@ const SubscriptionPlanSchema = new mongoose.Schema({
   features: [String],
   isRecurring: { type: Boolean, default: true },
   isActive: { type: Boolean, default: true },
+  webappAccess: { type: Boolean, default: false },
   sortOrder: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
@@ -124,11 +166,15 @@ const SubscriptionSchema = new mongoose.Schema({
   duration: { type: Number },
   durationType: { type: String, enum: ['days', 'months', 'years', 'lifetime'] },
   maxProjects: { type: Number, default: 1 },
-  paymentMethod: { type: String, enum: ['card', 'cash', 'donation'], required: true },
+  paymentMethod: { type: String, enum: ['card', 'cash', 'donation', 'apple_iap', 'google_play'], required: true },
+  iapProductId: String,
+  iapReceipt: String,
+  iapOriginalTransactionId: String, // Identifiant Apple stable (suivi des renouvellements IAP)
   stripePaymentLinkUrl: String,
   stripeSessionId: String,
   stripeCustomerId: String,
   stripeSubscriptionId: String,
+  expiryNotifiedAt: Date, // fin d'essai / d'abonnement notifiée à l'admin (email d'offre)
   notes: String,
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'SuperAdmin' },
   createdAt: { type: Date, default: Date.now },
@@ -140,7 +186,7 @@ const PaymentSchema = new mongoose.Schema({
   adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   amount: { type: Number, required: true },
   currency: { type: String, default: 'EUR' },
-  paymentMethod: { type: String, enum: ['card', 'cash', 'donation'], required: true },
+  paymentMethod: { type: String, enum: ['card', 'cash', 'donation', 'apple_iap', 'google_play'], required: true },
   status: { type: String, enum: ['pending', 'completed', 'failed', 'refunded'], default: 'pending' },
   stripePaymentIntentId: String,
   reference: String,
@@ -265,6 +311,19 @@ function generatePassword() {
 
 const DURATION_LABELS = { days: 'jour(s)', months: 'mois', years: 'an(s)', lifetime: 'À vie' };
 
+// ============= RESET PASSWORD HELPERS =============
+
+const RESET_TOKEN_TTL = 60 * 60 * 1000; // 1h
+const MIN_PASSWORD_LENGTH = 8;
+
+const hashResetToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
+// URL de la SPA backoffice (BrowserRouter monté sur /admin)
+function getBackofficeUrl() {
+  const base = (process.env.BACKOFFICE_URL || 'http://localhost:5173').replace(/\/+$/, '');
+  return base.endsWith('/admin') ? base : `${base}/admin`;
+}
+
 // ============= AUTH ROUTES =============
 
 router.get('/auth/check-init', async (req, res) => {
@@ -367,6 +426,143 @@ router.get('/auth/me', authenticateSuperAdmin, async (req, res) => {
   }
 });
 
+// ============= MOT DE PASSE OUBLIÉ =============
+
+// Réponse volontairement identique que le compte existe ou non (pas d'énumération d'emails)
+const FORGOT_GENERIC_MESSAGE = 'Si un compte existe avec cet email, un lien de réinitialisation vient d\'être envoyé.';
+
+router.post('/auth/forgot-password', async (req, res) => {
+  try {
+    const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+
+    if (!checkResetLimit(clientIp)) {
+      return res.status(429).json({ error: 'Trop de demandes. Réessayez dans 1 heure.' });
+    }
+    recordResetRequest(clientIp);
+
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email requis' });
+    }
+
+    // Les emails ne sont pas normalisés en base : recherche exacte insensible à la casse
+    const escaped = email.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const superAdmin = await SuperAdmin.findOne({ email: new RegExp(`^${escaped}$`, 'i') });
+
+    if (!superAdmin || !superAdmin.isActive) {
+      return res.json({ message: FORGOT_GENERIC_MESSAGE });
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    superAdmin.resetPasswordToken = hashResetToken(rawToken);
+    superAdmin.resetPasswordExpires = new Date(Date.now() + RESET_TOKEN_TTL);
+    await superAdmin.save();
+
+    const resetUrl = `${getBackofficeUrl()}/reset-password?token=${rawToken}`;
+
+    await sendEmail(superAdmin.email, 'Réinitialisation de votre mot de passe - BussnessApp', `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
+        <div style="background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+          <h2 style="color: #1a1a2e; margin-top: 0;">Réinitialisation du mot de passe</h2>
+          <p style="color: #555;">Bonjour <strong>${superAdmin.fullName}</strong>,</p>
+          <p style="color: #555;">Vous avez demandé la réinitialisation du mot de passe de votre compte super-administrateur. Cliquez sur le bouton ci-dessous pour définir un nouveau mot de passe :</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #6C63FF, #5a50e6); color: white; padding: 16px 40px; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600;">
+              Réinitialiser mon mot de passe
+            </a>
+          </div>
+          <p style="color: #999; font-size: 13px;">Ce lien est valable <strong>1 heure</strong> et ne peut être utilisé qu'une seule fois.</p>
+          <p style="color: #999; font-size: 13px;">Si vous n'êtes pas à l'origine de cette demande, ignorez cet email : votre mot de passe reste inchangé.</p>
+          <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 0; color: #999; font-size: 12px; word-break: break-all;">Si le bouton ne fonctionne pas : ${resetUrl}</p>
+          </div>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 25px 0;">
+          <p style="color: #bbb; font-size: 12px; text-align: center;">BussnessApp - Gestion d'entreprise simplifiée</p>
+        </div>
+      </div>
+    `);
+
+    await logActivity(superAdmin._id, 'superadmin', 'forgot_password',
+      `Demande de réinitialisation du mot de passe: ${superAdmin.email}`, 'SuperAdmin', superAdmin._id);
+
+    res.json({ message: FORGOT_GENERIC_MESSAGE });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/auth/verify-reset-token', async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ valid: false, error: 'Token requis' });
+
+    const superAdmin = await SuperAdmin.findOne({
+      resetPasswordToken: hashResetToken(token),
+      resetPasswordExpires: { $gt: new Date() }
+    });
+
+    if (!superAdmin || !superAdmin.isActive) {
+      return res.status(400).json({ valid: false, error: 'Lien invalide ou expiré' });
+    }
+
+    res.json({ valid: true, email: superAdmin.email });
+  } catch (error) {
+    res.status(500).json({ valid: false, error: error.message });
+  }
+});
+
+// Toutes les erreurs renvoient 400 : un 401/403 déconnecterait la SPA côté intercepteur
+router.post('/auth/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) {
+      return res.status(400).json({ error: 'Token et mot de passe requis' });
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      return res.status(400).json({ error: `Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères` });
+    }
+
+    const superAdmin = await SuperAdmin.findOne({
+      resetPasswordToken: hashResetToken(token),
+      resetPasswordExpires: { $gt: new Date() }
+    });
+
+    if (!superAdmin || !superAdmin.isActive) {
+      return res.status(400).json({ error: 'Lien invalide ou expiré. Refaites une demande.' });
+    }
+
+    superAdmin.password = await bcrypt.hash(password, 10);
+    superAdmin.resetPasswordToken = undefined;
+    superAdmin.resetPasswordExpires = undefined;
+    await superAdmin.save();
+
+    // Le compte vient d'être prouvé : on libère le verrou de tentatives de connexion
+    clearAttempts(req.ip || req.connection?.remoteAddress || 'unknown');
+
+    await sendEmail(superAdmin.email, 'Votre mot de passe a été modifié - BussnessApp', `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
+        <div style="background: white; border-radius: 12px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <div style="display: inline-block; background: #d4edda; color: #155724; padding: 10px 20px; border-radius: 50px; font-weight: 600;">Mot de passe modifié</div>
+          </div>
+          <p style="color: #555;">Bonjour <strong>${superAdmin.fullName}</strong>,</p>
+          <p style="color: #555;">Le mot de passe de votre compte super-administrateur vient d'être modifié. Vous pouvez dès à présent vous connecter au back office avec votre nouveau mot de passe.</p>
+          <p style="color: #e74c3c; font-size: 13px;">Si vous n'êtes pas à l'origine de ce changement, contactez immédiatement l'équipe technique.</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 25px 0;">
+          <p style="color: #bbb; font-size: 12px; text-align: center;">BussnessApp - Gestion d'entreprise simplifiée</p>
+        </div>
+      </div>
+    `);
+
+    await logActivity(superAdmin._id, 'superadmin', 'reset_password',
+      `Mot de passe réinitialisé: ${superAdmin.email}`, 'SuperAdmin', superAdmin._id);
+
+    res.json({ message: 'Mot de passe réinitialisé avec succès' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============= SUPER-ADMIN MANAGEMENT =============
 
 router.get('/super-admins', authenticateSuperAdmin, async (req, res) => {
@@ -429,16 +625,20 @@ router.put('/super-admins/:id/status', authenticateSuperAdmin, async (req, res) 
 
 router.get('/admins', authenticateSuperAdmin, async (req, res) => {
   try {
-    const { status, search } = req.query;
+    const { status, search, partnerCode } = req.query;
     let query = { role: 'admin' };
 
     if (status === 'active') query.isActive = true;
     if (status === 'inactive') query.isActive = false;
+    if (partnerCode === '__any__') query.partnerCode = { $exists: true, $nin: [null, ''] };
+    else if (partnerCode === '__none__') query.partnerCode = { $in: [null, ''] };
+    else if (typeof partnerCode === 'string' && partnerCode.trim()) query.partnerCode = partnerCode.trim().toUpperCase();
     if (search) {
       query.$or = [
         { fullName: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
-        { username: { $regex: search, $options: 'i' } }
+        { username: { $regex: search, $options: 'i' } },
+        { partnerCode: { $regex: search, $options: 'i' } }
       ];
     }
 
@@ -742,6 +942,37 @@ router.post('/admins/:id/send-credentials', authenticateSuperAdmin, async (req, 
   }
 });
 
+// Envoie à l'admin l'offre de passage à un plan payant (lien de paiement valable 30 jours).
+// Utile pour les essais déjà terminés ou pour relancer un client.
+router.post('/admins/:id/send-upgrade-offer', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const admin = await User.findById(req.params.id);
+    if (!admin) return res.status(404).json({ error: 'Admin non trouvé' });
+
+    const active = await Subscription.findOne({ adminId: admin._id, status: 'active' }).sort({ createdAt: -1 });
+    if (subscriptionAccess.isSubscriptionCurrent(active) && active.amount > 0) {
+      return res.status(400).json({ error: 'Cet admin a déjà un abonnement payant en cours' });
+    }
+
+    const sendUpgradeOffer = req.app.locals.sendUpgradeOffer;
+    if (typeof sendUpgradeOffer !== 'function') {
+      return res.status(503).json({ error: 'Envoi d\'offre indisponible' });
+    }
+
+    const previousSub = await Subscription.findOne({ adminId: admin._id, startDate: { $ne: null } }).sort({ startDate: -1 });
+    const reason = !previousSub || subscriptionAccess.isTrialSubscription(previousSub) ? 'trial_expired' : 'subscription_expired';
+    const sent = await sendUpgradeOffer({ user: admin, previousSub, reason });
+    if (!sent) return res.status(400).json({ error: 'Aucun plan payant actif à proposer' });
+
+    await logActivity(req.superAdmin.id, 'superadmin', 'send_upgrade_offer',
+      `Offre d'abonnement envoyée à: ${admin.fullName || admin.username}`, 'User', admin._id);
+
+    res.json({ message: `Offre envoyée à ${admin.email}` });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/admins/:id/resend-payment-link', authenticateSuperAdmin, async (req, res) => {
   try {
     const subscription = await Subscription.findOne({
@@ -971,7 +1202,7 @@ router.get('/plans/:id', authenticateSuperAdmin, async (req, res) => {
 
 router.post('/plans', authenticateSuperAdmin, async (req, res) => {
   try {
-    const { name, description, price, currency, duration, durationType, maxProjects, features, isRecurring, sortOrder } = req.body;
+    const { name, description, price, currency, duration, durationType, maxProjects, features, isRecurring, webappAccess, sortOrder } = req.body;
     if (!name || price == null || !duration || !durationType) {
       return res.status(400).json({ error: 'Champs obligatoires : name, price, duration, durationType' });
     }
@@ -981,6 +1212,7 @@ router.post('/plans', authenticateSuperAdmin, async (req, res) => {
       maxProjects: maxProjects || 1,
       features: features || [],
       isRecurring: durationType !== 'lifetime' ? (isRecurring !== false) : false,
+      webappAccess: webappAccess === true,
       sortOrder: sortOrder || 0
     });
     await plan.save();
@@ -997,7 +1229,7 @@ router.put('/plans/:id', authenticateSuperAdmin, async (req, res) => {
     const plan = await SubscriptionPlan.findById(req.params.id);
     if (!plan) return res.status(404).json({ error: 'Plan non trouvé' });
 
-    const fields = ['name', 'description', 'price', 'currency', 'duration', 'durationType', 'maxProjects', 'features', 'isRecurring', 'isActive', 'sortOrder'];
+    const fields = ['name', 'description', 'price', 'currency', 'duration', 'durationType', 'maxProjects', 'features', 'isRecurring', 'isActive', 'webappAccess', 'sortOrder'];
     fields.forEach(f => { if (req.body[f] !== undefined) plan[f] = req.body[f]; });
     plan.updatedAt = new Date();
     await plan.save();
@@ -1133,6 +1365,7 @@ router.post('/stripe/webhook', async (req, res) => {
             await subscription.save();
 
             await User.findByIdAndUpdate(adminId, { isActive: true });
+            subscriptionAccess.invalidateAccessCache(); // débloque tout de suite l'admin et son équipe
 
             const payment = new Payment({
               subscriptionId: subscription._id,
@@ -1147,9 +1380,10 @@ router.post('/stripe/webhook', async (req, res) => {
 
             const admin = await User.findById(adminId);
             if (admin) {
-              // Ne régénère le mot de passe que pour les nouveaux comptes (premier paiement)
-              // Pour les renouvellements, l'admin a déjà un mot de passe — ne pas l'écraser
-              const isFirstPayment = !admin.lastLogin;
+              // Ne régénère le mot de passe que pour un compte créé depuis le back-office et jamais
+              // connecté. Les paiements initiés par l'utilisateur (webapp, lien de fin d'essai) portent
+              // metadata.source : son mot de passe actuel ne doit surtout pas être écrasé.
+              const isFirstPayment = !session.metadata?.source && !admin.lastLogin;
               let tempPassword = null;
 
               if (isFirstPayment) {
@@ -1256,6 +1490,59 @@ router.get('/activity-logs', authenticateSuperAdmin, async (req, res) => {
 });
 
 // ============= DASHBOARD STATS =============
+
+// ============= PARTNER CODES (attribution des inscriptions) =============
+
+router.get('/partners/stats', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const match = { role: 'admin', partnerCode: { $exists: true, $nin: [null, ''] } };
+    const createdAt = {};
+    if (from && !isNaN(Date.parse(from))) createdAt.$gte = new Date(from);
+    if (to && !isNaN(Date.parse(to))) {
+      const end = new Date(to);
+      end.setHours(23, 59, 59, 999);
+      createdAt.$lte = end;
+    }
+    if (Object.keys(createdAt).length) match.createdAt = createdAt;
+
+    const partners = await User.aggregate([
+      { $match: match },
+      {
+        $lookup: {
+          from: Subscription.collection.name,
+          let: { uid: '$_id' },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$adminId', '$$uid'] }, status: 'active' } },
+            { $limit: 1 }
+          ],
+          as: 'activeSub'
+        }
+      },
+      {
+        $group: {
+          _id: '$partnerCode',
+          signups: { $sum: 1 },
+          activeAccounts: { $sum: { $cond: ['$isActive', 1, 0] } },
+          activeSubscriptions: { $sum: { $cond: [{ $gt: [{ $size: '$activeSub' }, 0] }, 1, 0] } },
+          firstSignup: { $min: '$createdAt' },
+          lastSignup: { $max: '$createdAt' }
+        }
+      },
+      { $sort: { signups: -1, _id: 1 } },
+      { $project: { _id: 0, code: '$_id', signups: 1, activeAccounts: 1, activeSubscriptions: 1, firstSignup: 1, lastSignup: 1 } }
+    ]);
+
+    const totalMatch = { role: 'admin' };
+    if (match.createdAt) totalMatch.createdAt = match.createdAt;
+    const totalSignups = await User.countDocuments(totalMatch);
+    const partnerSignups = partners.reduce((sum, p) => sum + p.signups, 0);
+
+    res.json({ partners, totalSignups, partnerSignups });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 router.get('/dashboard/stats', authenticateSuperAdmin, async (req, res) => {
   try {

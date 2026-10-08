@@ -1,7 +1,12 @@
 import axios from 'axios'
 
+const configuredBaseURL = import.meta.env.VITE_API_BASE_URL?.trim()
+const baseURL = (configuredBaseURL || '/BussnessApp').replace(/\/+$/, '')
+
 const api = axios.create({
-  baseURL: '/BussnessApp'
+  // En production, la valeur relative conserve le même domaine HTTPS et évite CORS.
+  // VITE_API_BASE_URL permet uniquement de cibler une API distincte si nécessaire.
+  baseURL
 })
 
 const savedKey = sessionStorage.getItem('bo_access_key')
@@ -29,8 +34,8 @@ api.interceptors.response.use(
     }
     if (error.response?.status === 401 || error.response?.status === 403) {
       localStorage.removeItem('bo_token')
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login'
+      if (!window.location.pathname.includes('/admin/login')) {
+        window.location.assign('/admin/login')
       }
     }
     return Promise.reject(error)

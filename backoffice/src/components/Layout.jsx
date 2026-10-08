@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Users, CreditCard, LogOut, Shield, Menu, X, Package, ChevronRight, Search, PanelLeftClose, PanelLeft, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Users, CreditCard, LogOut, Shield, Menu, X, Package, ChevronRight, Search, PanelLeftClose, PanelLeft, ShieldCheck, Tag } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import SearchPalette from './SearchPalette'
@@ -9,6 +9,7 @@ const navItems = [
   { to: '/admins', icon: Users, label: 'Administrateurs' },
   { to: '/plans', icon: Package, label: 'Plans' },
   { to: '/subscriptions', icon: CreditCard, label: 'Abonnements' },
+  { to: '/partners', icon: Tag, label: 'Partenaires' },
   { to: '/super-admins', icon: ShieldCheck, label: 'Super-Admins' },
 ]
 
@@ -18,6 +19,7 @@ const PAGE_TITLES = {
   '/admins/new': 'Nouvel admin',
   '/plans': 'Plans',
   '/subscriptions': 'Abonnements',
+  '/partners': 'Partenaires',
   '/super-admins': 'Super-Admins',
 }
 
