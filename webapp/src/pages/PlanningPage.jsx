@@ -497,21 +497,23 @@ export default function PlanningPage() {
             <div className="space-y-3">
               <div className="card !bg-night-900 p-4 text-center">
                 <p className="text-[11px] text-gray-500 uppercase tracking-wide">Total dû</p>
-                <p className="text-3xl font-extrabold text-gold-400 mt-1">{formatPrice(salaryStats.totalDue || salaryStats.totalSalary || 0)}</p>
+                <p className="text-3xl font-extrabold text-gold-400 mt-1">{formatPrice(salaryStats.salary?.total || 0)}</p>
+                <p className="text-xs text-gray-400 mt-2">Avances versées : {formatPrice(salaryStats.salary?.advances || 0)}</p>
+                <p className="text-sm text-cream font-semibold mt-1">Reste à verser : {formatPrice(salaryStats.salary?.remainingDue || 0)}</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="card !bg-night-900 p-3.5 text-center">
                   <p className="text-[10.5px] text-gray-500 uppercase">Heures</p>
-                  <p className="text-[15px] font-bold text-cream mt-0.5">{(salaryStats.totalHours || salaryStats.hours || 0).toFixed?.(1) ?? salaryStats.totalHours}h</p>
+                  <p className="text-[15px] font-bold text-cream mt-0.5">{Number(salaryStats.hours?.total || 0).toFixed(1)}h</p>
                 </div>
                 <div className="card !bg-night-900 p-3.5 text-center">
                   <p className="text-[10.5px] text-gray-500 uppercase">Jours travaillés</p>
-                  <p className="text-[15px] font-bold text-cream mt-0.5">{salaryStats.daysWorked || 0}</p>
+                  <p className="text-[15px] font-bold text-cream mt-0.5">{salaryStats.hours?.completed || 0}</p>
                 </div>
               </div>
-              {salaryStats.commissions > 0 && (
+              {salaryStats.salary?.commissions > 0 && (
                 <p className="text-[12.5px] text-gray-400 text-center">
-                  dont <span className="text-gold-400 font-semibold">{formatPrice(salaryStats.commissions)}</span> de commissions
+                  dont <span className="text-gold-400 font-semibold">{formatPrice(salaryStats.salary.commissions)}</span> de commissions
                 </p>
               )}
             </div>

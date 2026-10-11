@@ -959,9 +959,9 @@ export const PlanningScreen = ({ navigation }) => {
                         <Text style={styles.salaryStatValue}>
                           {formatPrice(salaryStats.salary.hourly)}
                         </Text>
-                        <Text style={styles.salaryStatLabel}>{t('Salaire horaire')}</Text>
+                        <Text style={styles.salaryStatLabel}>{salaryStats.user.salaryMode === 'monthly' ? t('Salaire mensuel fixe') : t('Salaire horaire')}</Text>
                         <Text style={styles.salaryStatDetail}>
-                          {salaryStats.hours.total}h × {formatPrice(salaryStats.user.hourlyRate)}/h
+                          {salaryStats.user.salaryMode === 'monthly' ? t('Sans planning requis') : `${salaryStats.hours.total}h × ${formatPrice(salaryStats.user.hourlyRate)}/h`}
                         </Text>
                       </LinearGradient>
 
@@ -994,6 +994,8 @@ export const PlanningScreen = ({ navigation }) => {
                           <Text style={styles.totalSalarySubtext}>
                             {t('Pour le mois de {label}', { label: salaryStats.period.label })}
                           </Text>
+                          <Text style={styles.totalSalarySubtext}>{t('Avances versées')} : {formatPrice(salaryStats.salary.advances || 0)}</Text>
+                          <Text style={styles.totalSalarySubtext}>{t('Reste à verser')} : {formatPrice(salaryStats.salary.remainingDue || 0)}</Text>
                         </View>
                       </View>
                     </LinearGradient>

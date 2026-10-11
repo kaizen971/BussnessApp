@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useCurrency } from '../contexts/CurrencyContext'
-import { expensesAPI, teamPayrollAPI } from '../services/api'
+import { expensesAPI, teamPayrollAPI, usersAPI } from '../services/api'
 import { Modal, ConfirmDialog, EmptyState, PageHeader, TabBar, SkeletonTable, Spinner } from '../components/ui'
 import CsvImportModal from '../components/CsvImportModal'
 import { EXPENSE_CATEGORIES, LEGACY_EXPENSE_CATEGORIES, getExpenseCategoryLabel } from '../constants/expenseCategories'
@@ -21,12 +21,13 @@ const getCategoryInfo = (category) => ({
   label: getExpenseCategoryLabel(category),
 })
 
-const EMPTY_FORM = { amount: '', category: 'purchase', description: '', isRecurring: false, recurringDay: '1' }
+const EMPTY_FORM = { amount: '', category: 'purchase', description: '', userId: '', isRecurring: false, recurringDay: '1' }
 
 export default function ExpensesPage() {
   const { user } = useAuth()
   const { format: formatPrice } = useCurrency()
   const [expenses, setExpenses] = useState([])
+  const [employees, setEmployees] = useState([])
   const [recurringExpenses, setRecurringExpenses] = useState([])
   const [payrollData, setPayrollData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -38,7 +39,7 @@ export default function ExpensesPage() {
   const [formData, setFormData] = useState(EMPTY_FORM)
   const [importOpen, setImportOpen] = useState(false)
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'manager'
+  const isAdmin = ['admin', 'manager', 'responsable'].includes(user?.role)
 
   const loadAll = useCallback(async () => {
     try {
@@ -48,6 +49,8 @@ export default function ExpensesPage() {
       ])
       setExpenses(expensesRes.data || [])
       setRecurringExpenses(recurringRes.data?.data || [])
+      const usersRes = await usersAPI.getAll(user?.projectId)
+      setEmployees(usersRes.data || [])
       if (isAdmin) {
         const now = new Date()
         try {
@@ -79,6 +82,7 @@ export default function ExpensesPage() {
       amount: expense.amount.toString(),
       category: expense.category,
       description: expense.description || '',
+      userId: expense.userId?._id || expense.userId || '',
       isRecurring: false,
       recurringDay: '1',
     })
@@ -89,6 +93,10 @@ export default function ExpensesPage() {
     e.preventDefault()
     if (!formData.amount) {
       toast.error('Veuillez saisir un montant')
+      return
+    }
+    if (formData.category === 'salary_advances' && !formData.userId) {
+      toast.error('Choisissez le salarié concerné par l’avance')
       return
     }
     if (!editingExpense && formData.isRecurring) {
@@ -105,6 +113,7 @@ export default function ExpensesPage() {
           amount: parseFloat(formData.amount),
           category: formData.category,
           description: formData.description,
+          userId: formData.userId,
         })
         toast.success('Dépense modifiée avec succès')
       } else {
@@ -112,6 +121,7 @@ export default function ExpensesPage() {
           amount: parseFloat(formData.amount),
           category: formData.category,
           description: formData.description,
+          userId: formData.userId,
           projectId: user?.projectId,
           isRecurring: formData.isRecurring,
         }
@@ -147,7 +157,13 @@ export default function ExpensesPage() {
     }
   }
 
-  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0)
+  const thisMonth = new Date()
+  const monthlyExpenses = expenses.filter(e => {
+    const date = new Date(e.date)
+    return date.getFullYear() === thisMonth.getFullYear() && date.getMonth() === thisMonth.getMonth()
+  })
+  const totalExpenses = monthlyExpenses.filter(e => !['salary_advances', 'salaries'].includes(e.category)).reduce((sum, e) => sum + e.amount, 0)
+  const totalAdvances = monthlyExpenses.filter(e => e.category === 'salary_advances').reduce((sum, e) => sum + e.amount, 0)
   const totalRecurring = recurringExpenses.reduce((sum, e) => sum + e.amount, 0)
   const totalPayroll = payrollData?.totals?.totalPayroll || 0
   const totalCharges = totalExpenses + totalPayroll
@@ -179,10 +195,11 @@ export default function ExpensesPage() {
 
       {/* Total des charges */}
       <div className="card p-5 border-l-4 !border-l-red-500/70">
-        <p className="text-[13px] text-gray-400 font-medium">Total des charges</p>
+        <p className="text-[13px] text-gray-400 font-medium">Total des charges du mois</p>
         <p className="text-3xl font-extrabold text-cream mt-1">{formatPrice(totalCharges)}</p>
         <div className="flex gap-5 mt-2 flex-wrap">
           <p className="text-[12.5px] text-gray-500">Dépenses : <span className="text-red-400 font-semibold">{formatPrice(totalExpenses)}</span></p>
+          <p className="text-[12.5px] text-gray-500">Avances versées : <span className="text-sky-400 font-semibold">{formatPrice(totalAdvances)}</span></p>
           {isAdmin && (
             <p className="text-[12.5px] text-gray-500">Masse salariale : <span className="text-amber-400 font-semibold">{formatPrice(totalPayroll)}</span></p>
           )}
@@ -216,6 +233,7 @@ export default function ExpensesPage() {
                         <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ring-1 ring-inset ${cat.className}`}>{cat.label}</span>
                       </div>
                       {item.description && <p className="text-[13px] text-gray-400 mt-0.5">{item.description}</p>}
+                      {item.category === 'salary_advances' && <p className="text-[12px] text-sky-400 mt-0.5">{item.userId?.fullName || 'Avance non attribuée'}</p>}
                       <p className="text-[11.5px] text-gray-600 mt-1">
                         {new Date(item.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </p>
@@ -292,7 +310,7 @@ export default function ExpensesPage() {
           )}
           <div className="card overflow-hidden">
             {!payrollData?.employees?.length ? (
-              <EmptyState icon={Users} title="Aucun salaire ce mois" description="Les salaires sont calculés à partir du planning complété" />
+              <EmptyState icon={Users} title="Aucun salaire ce mois" description="Configurez une rémunération dans l’équipe" />
             ) : (
               <div className="divide-y divide-night-700/60">
                 {payrollData.employees.map((item) => (
@@ -302,10 +320,11 @@ export default function ExpensesPage() {
                     </span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="text-[15px] font-bold text-red-400">-{formatPrice(item.totalDue)}</p>
+                        <p className="text-[15px] font-bold text-red-400">{formatPrice(item.remainingDue)} à verser</p>
                         <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-400 ring-1 ring-inset ring-amber-500/20">Salaire</span>
                       </div>
                       <p className="text-[13px] text-gray-300 mt-0.5">{item.user.fullName || item.user.username}</p>
+                      <p className="text-[11.5px] text-gray-500 mt-1">Rémunération {formatPrice(item.totalDue)} · avances {formatPrice(item.advances || 0)}</p>
                       <p className="text-[11.5px] text-gray-600 mt-1">
                         {item.daysWorked}j travaillés • {item.hours.toFixed(1)}h
                         {item.commissions > 0 && <span className="text-gold-500"> · +{formatPrice(item.commissions)} commissions</span>}
@@ -343,13 +362,22 @@ export default function ExpensesPage() {
             <label className="input-label">Catégorie</label>
             <select
               value={formData.category}
-              onChange={(e) => setFormData(p => ({ ...p, category: e.target.value }))}
+              onChange={(e) => setFormData(p => ({ ...p, category: e.target.value, isRecurring: e.target.value === 'salary_advances' ? false : p.isRecurring }))}
               className="input-field"
             >
               {EXPENSE_CATEGORIES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
               {LEGACY_EXPENSE_CATEGORIES.filter(({ value }) => value === formData.category).map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
             </select>
           </div>
+          {formData.category === 'salary_advances' && <div>
+            <label className="input-label">Salarié concerné *</label>
+            <select value={formData.userId} onChange={(e) => setFormData(p => ({ ...p, userId: e.target.value, isRecurring: false }))} className="input-field">
+              <option value="">Choisir un salarié</option>
+              {editingExpense?.userId?.deletedAt && <option value={editingExpense.userId._id}>{editingExpense.userId.fullName || editingExpense.userId.username} (archivé)</option>}
+              {employees.filter(emp => !emp.deletedAt || emp._id === formData.userId).map(emp => <option key={emp._id} value={emp._id}>{emp.fullName || emp.username}</option>)}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">Déduite automatiquement du reste à verser ce mois.</p>
+          </div>}
           <div>
             <label className="input-label">Description</label>
             <textarea
@@ -361,7 +389,7 @@ export default function ExpensesPage() {
             />
           </div>
 
-          {!editingExpense && (
+          {!editingExpense && formData.category !== 'salary_advances' && (
             <div className="rounded-xl bg-night-900 border border-night-700 p-4 space-y-3">
               <label className="flex items-center justify-between cursor-pointer">
                 <span className="flex items-center gap-2 text-sm text-gray-300">

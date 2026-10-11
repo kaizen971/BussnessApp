@@ -22,7 +22,7 @@ import { Input } from '../components/Input';
 import { Card } from '../components/Card';
 import { EmptyState, FloatingActionButton, SegmentedControl } from '../components/AppPrimitives';
 import { MonthNavigator } from '../components/MonthNavigator';
-import { expensesAPI, teamPayrollAPI } from '../services/api';
+import { expensesAPI, teamPayrollAPI, usersAPI } from '../services/api';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { getMonthBounds, MONTH_HISTORY_LIMIT, shiftMonth, startOfMonth } from '../utils/monthPeriod';
 import { t, useLanguage, getLocale } from '../i18n';
@@ -36,6 +36,7 @@ export const ExpensesScreen = () => {
   const { user } = useAuth();
   const { format: formatPrice } = useCurrency();
   const [expenses, setExpenses] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [recurringExpenses, setRecurringExpenses] = useState([]);
   const [payrollData, setPayrollData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -49,14 +50,16 @@ export const ExpensesScreen = () => {
     amount: '',
     category: 'purchase',
     description: '',
+    userId: '',
     isRecurring: false,
     recurringDay: '1',
   });
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'manager';
+  const isAdmin = ['admin', 'manager', 'responsable'].includes(user?.role);
 
   useEffect(() => {
     loadRecurringExpenses();
+    usersAPI.getAll(user?.projectId).then(response => setEmployees(response.data || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -109,6 +112,10 @@ export const ExpensesScreen = () => {
       Alert.alert(t('Erreur'), t('Veuillez saisir un montant'));
       return;
     }
+    if (formData.category === 'salary_advances' && !formData.userId) {
+      Alert.alert(t('Erreur'), t('Choisissez un salarié pour cette avance'));
+      return;
+    }
 
     if (formData.isRecurring && (!formData.recurringDay || formData.recurringDay < 1 || formData.recurringDay > 28)) {
       Alert.alert(t('Erreur'), t('Veuillez saisir un jour valide (1-28)'));
@@ -120,6 +127,7 @@ export const ExpensesScreen = () => {
         amount: parseFloat(formData.amount),
         category: formData.category,
         description: formData.description,
+        userId: formData.userId,
         projectId: user?.projectId,
         isRecurring: formData.isRecurring,
       };
@@ -130,10 +138,11 @@ export const ExpensesScreen = () => {
 
       await expensesAPI.create(expenseData);
 
-      setFormData({ amount: '', category: 'purchase', description: '', isRecurring: false, recurringDay: '1' });
+      setFormData({ amount: '', category: 'purchase', description: '', userId: '', isRecurring: false, recurringDay: '1' });
       setModalVisible(false);
       loadExpenses();
       loadRecurringExpenses();
+      if (isAdmin) loadPayroll();
       Alert.alert(t('Succès'), formData.isRecurring ? t('Dépense récurrente ajoutée avec succès') : t('Dépense ajoutée avec succès'));
     } catch (error) {
       Alert.alert(t('Erreur'), t("Impossible d'ajouter la dépense"));
@@ -146,6 +155,7 @@ export const ExpensesScreen = () => {
       amount: expense.amount.toString(),
       category: expense.category,
       description: expense.description || '',
+      userId: expense.userId?._id || expense.userId || '',
       isRecurring: false,
       recurringDay: '1',
     });
@@ -157,20 +167,26 @@ export const ExpensesScreen = () => {
       Alert.alert(t('Erreur'), t('Veuillez saisir un montant'));
       return;
     }
+    if (formData.category === 'salary_advances' && !formData.userId) {
+      Alert.alert(t('Erreur'), t('Choisissez un salarié pour cette avance'));
+      return;
+    }
 
     try {
       const expenseData = {
         amount: parseFloat(formData.amount),
         category: formData.category,
         description: formData.description,
+        userId: formData.userId,
       };
 
       await expensesAPI.update(editingExpense._id, expenseData);
 
-      setFormData({ amount: '', category: 'purchase', description: '', isRecurring: false, recurringDay: '1' });
+      setFormData({ amount: '', category: 'purchase', description: '', userId: '', isRecurring: false, recurringDay: '1' });
       setEditingExpense(null);
       setModalVisible(false);
       loadExpenses();
+      if (isAdmin) loadPayroll();
       Alert.alert(t('Succès'), t('Dépense modifiée avec succès'));
     } catch (error) {
       Alert.alert(t('Erreur'), t('Impossible de modifier la dépense'));
@@ -190,6 +206,7 @@ export const ExpensesScreen = () => {
             try {
               await expensesAPI.delete(id);
               loadExpenses();
+              if (isAdmin) loadPayroll();
               Alert.alert(t('Succès'), t('Dépense supprimée'));
             } catch (error) {
               Alert.alert(t('Erreur'), t('Impossible de supprimer la dépense'));
@@ -271,6 +288,7 @@ export const ExpensesScreen = () => {
             {item.description && (
               <Text style={styles.expenseDescription}>{item.description}</Text>
             )}
+            {item.category === 'salary_advances' && <Text style={styles.expenseDescription}>{item.userId?.fullName || t('Avance non attribuée')}</Text>}
             <Text style={styles.expenseDate}>
               {new Date(item.date).toLocaleDateString(getLocale(), {
                 day: '2-digit',
@@ -336,7 +354,7 @@ export const ExpensesScreen = () => {
     );
   };
 
-  const totalExpenses = (expenses && Array.isArray(expenses)) ? expenses.reduce((sum, expense) => sum + expense.amount, 0) : 0;
+  const totalExpenses = (expenses && Array.isArray(expenses)) ? expenses.filter(expense => !['salary_advances', 'salaries'].includes(expense.category)).reduce((sum, expense) => sum + expense.amount, 0) : 0;
   const totalRecurring = (recurringExpenses && Array.isArray(recurringExpenses)) ? recurringExpenses.reduce((sum, expense) => sum + expense.amount, 0) : 0;
   const totalPayroll = payrollData?.totals?.totalPayroll || 0;
   const totalCharges = totalExpenses + totalPayroll;
@@ -349,12 +367,13 @@ export const ExpensesScreen = () => {
         </View>
         <View style={styles.expenseInfo}>
           <View style={styles.headerRow}>
-            <Text style={styles.expenseAmount}>-{formatPrice(item.totalDue)}</Text>
+            <Text style={styles.expenseAmount}>{formatPrice(item.remainingDue)} {t('à verser')}</Text>
             <View style={[styles.categoryBadge, { backgroundColor: colors.warning + '20' }]}>
               <Text style={[styles.categoryText, { color: colors.warning }]}>{t('Salaire')}</Text>
             </View>
           </View>
           <Text style={styles.expenseDescription}>{item.user.fullName || item.user.username}</Text>
+          <Text style={styles.expenseDate}>{t('Rémunération due')} : {formatPrice(item.totalDue)} · {t('Avances versées')} : {formatPrice(item.advances || 0)}</Text>
           <View style={styles.payrollDetails}>
             <Text style={styles.expenseDate}>
               {t('{daysWorked}j travaillés • {hours}h', { daysWorked: item.daysWorked, hours: item.hours.toFixed(1) })}
@@ -472,6 +491,8 @@ export const ExpensesScreen = () => {
                   {formatPrice(payrollData.totals?.totalPayroll || 0)}
                 </Text>
                 <View style={styles.payrollSummary}>
+                  <Text style={styles.totalCount}>{t('Avances versées')} : {formatPrice(payrollData.totals?.totalAdvances || 0)}</Text>
+                  <Text style={styles.totalCount}>{t('Reste à verser')} : {formatPrice(payrollData.totals?.totalRemaining || 0)}</Text>
                   <Text style={styles.totalCount}>
                     {t('Salaires: {price}', { price: formatPrice(payrollData.totals?.totalSalary || 0) })}
                   </Text>
@@ -531,12 +552,21 @@ export const ExpensesScreen = () => {
                 </TouchableOpacity>
               </View>
 
+              {formData.category === 'salary_advances' && <View style={styles.pickerContainer}>
+                <Text style={styles.pickerLabel}>{t('Salarié concerné *')}</Text>
+                <View style={styles.pickerWrapper}><Picker selectedValue={formData.userId} onValueChange={(value) => setFormData(prev => ({ ...prev, userId: value, isRecurring: false }))} style={styles.picker}>
+                  <Picker.Item label={t('Choisir un salarié')} value="" />
+                  {editingExpense?.userId?.deletedAt && <Picker.Item label={`${editingExpense.userId.fullName || editingExpense.userId.username} (archivé)`} value={editingExpense.userId._id} />}
+                  {employees.filter(emp => !emp.deletedAt || emp._id === formData.userId).map(emp => <Picker.Item key={emp._id} label={emp.fullName || emp.username} value={emp._id} />)}
+                </Picker></View>
+              </View>}
+
               <View style={styles.pickerContainer}>
                 <Text style={styles.pickerLabel}>{t('Catégorie *')}</Text>
                 <View style={styles.pickerWrapper}>
                   <Picker
                     selectedValue={formData.category}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, category: value, isRecurring: value === 'salary_advances' ? false : prev.isRecurring }))}
                     style={styles.picker}
                   >
                     {EXPENSE_CATEGORIES.map(({ value, label }) => (
@@ -568,7 +598,7 @@ export const ExpensesScreen = () => {
               />
 
               {/* Option dépense récurrente - uniquement en mode création */}
-              {!editingExpense && (
+              {!editingExpense && formData.category !== 'salary_advances' && (
                 <View style={styles.recurringSection}>
                   <View style={styles.switchRow}>
                     <View style={styles.switchLabel}>

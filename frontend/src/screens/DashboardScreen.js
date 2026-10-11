@@ -527,7 +527,7 @@ export const DashboardScreen = ({ navigation }) => {
         (expense) => expense.date >= bounds.startDate && expense.date < bounds.endDate
       );
       const salesTotal = sales.reduce((sum, sale) => sum + (sale.amount || 0), 0);
-      const expensesTotal = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+      const expensesTotal = expenses.filter(expense => !['salary_advances', 'salaries'].includes(expense.category)).reduce((sum, expense) => sum + (expense.amount || 0), 0);
       const salaries = payrollResponse.data?.totals?.totalSalary || 0;
       const commissions = payrollResponse.data?.totals?.totalCommissions || 0;
       const charges = expensesTotal + salaries + commissions;

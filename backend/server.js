@@ -18,6 +18,7 @@ const { createProjectAccess, PROJECT_DENIED, OWNER_ROLES, isEmployeeRole } = req
 const { createArchiveTeamMemberHandler } = require('./archiveTeamMember');
 const { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABELS } = require('./expenseCategories');
 const { attachCustomerSalesTotals } = require('./customerSalesTotals');
+const { isChargeExpense, salaryConfigAt, applySalaryChange, salaryForPeriod } = require('./payrollMath');
 
 const app = express();
 const PORT = 3003;
@@ -201,6 +202,7 @@ SaleSchema.index({ projectId: 1, customerId: 1 });
 
 const ExpenseSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Salarié concerné par une avance
   amount: { type: Number, required: true },
   category: { type: String, enum: Object.keys(EXPENSE_CATEGORY_LABELS), required: true },
   description: String,
@@ -213,6 +215,7 @@ const ExpenseSchema = new mongoose.Schema({
 });
 ExpenseSchema.index({ projectId: 1, date: -1 });
 ExpenseSchema.index({ projectId: 1, isRecurring: 1 });
+ExpenseSchema.index({ projectId: 1, category: 1, userId: 1, date: 1 });
 
 const StockSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
@@ -284,6 +287,14 @@ const UserSchema = new mongoose.Schema({
   commissionRate: { type: Number, default: 0 }, // Taux de commission en % (ex: 5 pour 5%)
   totalCommissions: { type: Number, default: 0 }, // Total des commissions gagnées
   hourlyRate: { type: Number, default: 0 }, // Salaire horaire en € (ex: 15 pour 15€/h)
+  salaryMode: { type: String, enum: ['hourly', 'monthly'], default: 'hourly' },
+  monthlySalary: { type: Number, default: 0 },
+  salaryHistory: [{
+    effectiveFrom: { type: Date, required: true },
+    salaryMode: { type: String, enum: ['hourly', 'monthly'], required: true },
+    hourlyRate: { type: Number, default: 0 },
+    monthlySalary: { type: Number, default: 0 }
+  }],
   partnerCode: { type: String, trim: true, uppercase: true }, // Code promo / partenaire saisi à l'inscription (attribution)
   lastLogin: { type: Date },
   createdAt: { type: Date, default: Date.now }
@@ -1997,6 +2008,16 @@ app.post('/BussnessApp/sales/:id/refund', authenticateToken, checkRole('admin', 
 });
 
 // Expenses Routes
+async function validateSalaryAdvance(data, projectId, allowArchived = false) {
+  if (data.category !== 'salary_advances') return null;
+  if (data.isRecurring) return 'Une avance sur salaire ne peut pas être récurrente';
+  if (!data.userId || !mongoose.isValidObjectId(data.userId)) return 'Choisissez un salarié pour cette avance';
+  const employee = await User.findOne({ _id: data.userId, $or: [{ projectId }, { projectIds: projectId }] });
+  if (!employee || (employee.deletedAt && !allowArchived)) return 'Salarié introuvable dans ce projet';
+  if (!Number.isFinite(Number(data.amount)) || Number(data.amount) <= 0) return 'Le montant de l’avance doit être positif';
+  return null;
+}
+
 app.get('/BussnessApp/expenses', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
     const { projectId, startDate, endDate } = req.query;
@@ -2008,7 +2029,7 @@ app.get('/BussnessApp/expenses', authenticateToken, checkRole('admin', 'manager'
       if (startDate) filter.date.$gte = new Date(startDate);
       if (endDate) filter.date.$lt = new Date(endDate);
     }
-    const expenses = await Expense.find(filter).sort({ date: -1 });
+    const expenses = await Expense.find(filter).populate('userId', 'fullName username deletedAt').sort({ date: -1 });
     res.json(expenses);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2031,6 +2052,9 @@ app.get('/BussnessApp/recurring-expenses', authenticateToken, checkRole('admin',
 app.post('/BussnessApp/expenses', authenticateToken, checkRole('admin', 'manager', 'responsable'), requireProject((req) => req.body.projectId), async (req, res) => {
   try {
     const expenseData = { ...req.body };
+    const advanceError = await validateSalaryAdvance(expenseData, expenseData.projectId);
+    if (advanceError) return res.status(400).json({ error: advanceError });
+    if (expenseData.category !== 'salary_advances') delete expenseData.userId;
 
     // Si c'est une dépense récurrente, définir la date de dernière génération
     if (expenseData.isRecurring && expenseData.recurringDay) {
@@ -2048,12 +2072,18 @@ app.post('/BussnessApp/expenses', authenticateToken, checkRole('admin', 'manager
 // Modifier une dépense
 app.put('/BussnessApp/expenses/:id', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
   try {
-    if (!(await findInProject(req, Expense, req.params.id))) {
+    const existing = await findInProject(req, Expense, req.params.id);
+    if (!existing) {
       return res.status(404).json({ error: 'Dépense non trouvée' });
     }
     // Une dépense ne change jamais de projet
     const { projectId: _ignoredProjectId, ...updates } = req.body;
-    const expense = await Expense.findByIdAndUpdate(req.params.id, updates, { new: true });
+    const next = { ...existing.toObject(), ...updates };
+    const advanceError = await validateSalaryAdvance(next, existing.projectId,
+      String(existing.userId || '') === String(next.userId || ''));
+    if (advanceError) return res.status(400).json({ error: advanceError });
+    if (next.category !== 'salary_advances') updates.userId = null;
+    const expense = await Expense.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
     res.json(expense);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -3680,23 +3710,42 @@ app.put('/BussnessApp/users/:id/hourly-rate', authenticateToken, checkRole('admi
 
     const { hourlyRate } = req.body;
 
-    if (hourlyRate === undefined || hourlyRate < 0) {
+    if (hourlyRate === undefined || !Number.isFinite(Number(hourlyRate)) || Number(hourlyRate) < 0) {
       return res.status(400).json({ error: 'Salaire horaire invalide (minimum 0€)' });
     }
 
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { hourlyRate },
-      { new: true }
-    ).select('-password');
+    const user = await User.findById(req.params.id).select('-password');
 
     if (!user) {
       return res.status(404).json({ error: 'Utilisateur non trouvé' });
     }
 
+    applySalaryChange(user, 'hourly', Number(hourlyRate));
+    await user.save();
+
     res.json({ data: user });
   } catch (error) {
     console.error('Error updating hourly rate:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Choix du mode de rémunération pour un salarié du projet
+app.put('/BussnessApp/users/:id/salary', authenticateToken, checkRole('admin', 'manager', 'responsable'), async (req, res) => {
+  try {
+    if (!(await findUserInProjects(req, req.params.id))) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+    const { salaryMode } = req.body;
+    const amount = Number(salaryMode === 'monthly' ? req.body.monthlySalary : req.body.hourlyRate);
+    if (!['hourly', 'monthly'].includes(salaryMode) || !Number.isFinite(amount) || amount < 0) {
+      return res.status(400).json({ error: 'Mode ou montant de salaire invalide' });
+    }
+    const employee = await User.findById(req.params.id).select('-password');
+    applySalaryChange(employee, salaryMode, amount);
+    await employee.save();
+    res.json({ data: employee });
+  } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
@@ -3856,12 +3905,14 @@ app.get('/BussnessApp/users/:id/salary-stats', authenticateToken, async (req, re
     // Calculer les heures totales et le salaire
     const totalHours = schedules.reduce((sum, s) => sum + (s.duration || 0), 0);
     // Calcul du salaire : utilise dailySalary si défini, sinon hourlyRate * duration
-    const totalSalary = schedules.reduce((sum, s) => {
-      if (s.dailySalary !== null && s.dailySalary !== undefined) {
-        return sum + s.dailySalary;
-      }
-      return sum + ((s.duration || 0) * (user.hourlyRate || 0));
-    }, 0);
+    const totalSalary = salaryForPeriod([user], schedules, periodStart,
+      new Date(Math.min(periodEnd.getTime(), Date.now())));
+
+    const advances = await Expense.find({
+      projectId: user.projectId, userId, category: 'salary_advances',
+      date: { $gte: periodStart, $lte: periodEnd }
+    }).sort({ date: 1 }).lean();
+    const totalAdvances = advances.reduce((sum, advance) => sum + advance.amount, 0);
 
     // Récupérer les commissions de la période
     const commissions = await Commission.find({
@@ -3893,10 +3944,13 @@ app.get('/BussnessApp/users/:id/salary-stats', authenticateToken, async (req, re
       }
       weeklyStats[weekNumber].hours += schedule.duration || 0;
       // Utilise dailySalary si défini, sinon hourlyRate * duration
-      if (schedule.dailySalary !== null && schedule.dailySalary !== undefined) {
+      const config = salaryConfigAt(user, schedule.date);
+      if (config.salaryMode === 'monthly') {
+        weeklyStats[weekNumber].salary += 0;
+      } else if (schedule.dailySalary !== null && schedule.dailySalary !== undefined) {
         weeklyStats[weekNumber].salary += schedule.dailySalary;
       } else {
-        weeklyStats[weekNumber].salary += (schedule.duration || 0) * (user.hourlyRate || 0);
+        weeklyStats[weekNumber].salary += (schedule.duration || 0) * (config.hourlyRate || 0);
       }
       weeklyStats[weekNumber].days += 1;
     });
@@ -3905,7 +3959,9 @@ app.get('/BussnessApp/users/:id/salary-stats', authenticateToken, async (req, re
       user: {
         id: user._id,
         fullName: user.fullName,
-        hourlyRate: user.hourlyRate || 0,
+        hourlyRate: salaryConfigAt(user, periodStart).hourlyRate || 0,
+        salaryMode: salaryConfigAt(user, periodStart).salaryMode,
+        monthlySalary: salaryConfigAt(user, periodStart).monthlySalary || 0,
         commissionRate: user.commissionRate || 0
       },
       period: {
@@ -3921,8 +3977,11 @@ app.get('/BussnessApp/users/:id/salary-stats', authenticateToken, async (req, re
       salary: {
         hourly: totalSalary,
         commissions: totalCommissions,
-        total: totalEarnings
+        total: totalEarnings,
+        advances: totalAdvances,
+        remainingDue: totalEarnings - totalAdvances
       },
+      advances: advances.map(a => ({ _id: a._id, amount: a.amount, date: a.date, description: a.description })),
       commissions: {
         total: totalCommissions,
         pending: pendingCommissions,
@@ -3936,9 +3995,9 @@ app.get('/BussnessApp/users/:id/salary-stats', authenticateToken, async (req, re
         endTime: s.endTime,
         duration: s.duration,
         dailySalary: s.dailySalary,
-        salary: s.dailySalary !== null && s.dailySalary !== undefined
+        salary: salaryConfigAt(user, s.date).salaryMode === 'monthly' ? 0 : s.dailySalary !== null && s.dailySalary !== undefined
           ? s.dailySalary
-          : (s.duration || 0) * (user.hourlyRate || 0)
+          : (s.duration || 0) * (salaryConfigAt(user, s.date).hourlyRate || 0)
       }))
     });
   } catch (error) {
@@ -3985,7 +4044,7 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, requ
     const employeeIds = employees.map(e => e._id);
 
     // Batch : une seule requête pour tous les schedules + commissions du mois
-    const [allSchedules, allCommissions] = await Promise.all([
+    const [allSchedules, allCommissions, allAdvances] = await Promise.all([
       Schedule.find({
         userId: { $in: employeeIds },
         projectId,
@@ -3995,6 +4054,12 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, requ
       Commission.find({
         userId: { $in: employeeIds },
         projectId,
+        ...dateFilter
+      }).lean(),
+      Expense.find({
+        userId: { $in: employeeIds },
+        projectId,
+        category: 'salary_advances',
         ...dateFilter
       }).lean()
     ]);
@@ -4012,22 +4077,26 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, requ
       if (!commissionsByUser[uid]) commissionsByUser[uid] = [];
       commissionsByUser[uid].push(c);
     }
+    const advancesByUser = {};
+    for (const a of allAdvances) {
+      const uid = a.userId.toString();
+      if (!advancesByUser[uid]) advancesByUser[uid] = [];
+      advancesByUser[uid].push(a);
+    }
 
     const results = employees.filter(emp => {
       const id = String(emp._id);
-      return (emp.isActive && !emp.deletedAt) || schedulesByUser[id]?.length || commissionsByUser[id]?.length;
+      return (emp.isActive && !emp.deletedAt) || schedulesByUser[id]?.length || commissionsByUser[id]?.length || advancesByUser[id]?.length;
     }).map(emp => {
       const schedules = schedulesByUser[emp._id.toString()] || [];
       const commissions = commissionsByUser[emp._id.toString()] || [];
+      const advances = advancesByUser[emp._id.toString()] || [];
 
       const totalHours = schedules.reduce((sum, s) => sum + (s.duration || 0), 0);
-      const totalSalary = schedules.reduce((sum, s) => {
-        if (s.dailySalary !== null && s.dailySalary !== undefined) {
-          return sum + s.dailySalary;
-        }
-        return sum + ((s.duration || 0) * (emp.hourlyRate || 0));
-      }, 0);
+      const totalSalary = salaryForPeriod([emp], schedules, isAllTime ? new Date(0) : periodStart,
+        new Date(Math.min(isAllTime ? now.getTime() : periodEnd.getTime() - 1, now.getTime())));
       const totalCommissions = commissions.reduce((sum, c) => sum + c.amount, 0);
+      const totalAdvances = advances.reduce((sum, a) => sum + a.amount, 0);
 
       return {
         user: {
@@ -4036,13 +4105,18 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, requ
           username: emp.username,
           role: emp.role,
           photo: emp.photo,
-          hourlyRate: emp.hourlyRate || 0
+          hourlyRate: salaryConfigAt(emp, isAllTime ? now : periodStart).hourlyRate || 0,
+          salaryMode: salaryConfigAt(emp, isAllTime ? now : periodStart).salaryMode,
+          monthlySalary: salaryConfigAt(emp, isAllTime ? now : periodStart).monthlySalary || 0
         },
         hours: totalHours,
         daysWorked: schedules.length,
         salary: totalSalary,
         commissions: totalCommissions,
-        totalDue: totalSalary + totalCommissions
+        advances: totalAdvances,
+        advanceDetails: advances.map(a => ({ _id: a._id, amount: a.amount, date: a.date, description: a.description })),
+        totalDue: totalSalary + totalCommissions,
+        remainingDue: totalSalary + totalCommissions - totalAdvances
       };
     });
 
@@ -4053,6 +4127,8 @@ app.get('/BussnessApp/projects/:projectId/team-payroll', authenticateToken, requ
       totalSalary: results.reduce((sum, r) => sum + r.salary, 0),
       totalCommissions: results.reduce((sum, r) => sum + r.commissions, 0),
       totalPayroll: results.reduce((sum, r) => sum + r.totalDue, 0),
+      totalAdvances: results.reduce((sum, r) => sum + r.advances, 0),
+      totalRemaining: results.reduce((sum, r) => sum + r.remainingDue, 0),
       totalHours: results.reduce((sum, r) => sum + r.hours, 0)
     };
 
@@ -4183,25 +4259,14 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, requireProject((
       Commission.find({ projectId }).lean(),
       User.find({
         $or: [{ projectId }, { projectIds: projectId }]
-      }).select('hourlyRate').lean()
+      }).select('hourlyRate salaryMode monthlySalary salaryHistory createdAt deletedAt').lean()
     ]);
 
-    const employeeMap = {};
-    for (const emp of employees) {
-      employeeMap[emp._id.toString()] = emp;
-    }
-
     const totalSales = (sales && Array.isArray(sales)) ? sales.reduce((sum, sale) => sum + sale.amount, 0) : 0;
-    const totalExpenses = (expenses && Array.isArray(expenses)) ? expenses.reduce((sum, expense) => sum + expense.amount, 0) : 0;
+    const totalExpenses = expenses.filter(isChargeExpense).reduce((sum, expense) => sum + expense.amount, 0);
     const totalStock = (stock && Array.isArray(stock)) ? stock.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0) : 0;
 
-    const totalSalaries = schedules.reduce((sum, s) => {
-      if (s.dailySalary !== null && s.dailySalary !== undefined) {
-        return sum + s.dailySalary;
-      }
-      const emp = employeeMap[s.userId?.toString()];
-      return sum + ((s.duration || 0) * (emp?.hourlyRate || 0));
-    }, 0);
+    const totalSalaries = salaryForPeriod(employees, schedules, new Date(0), new Date());
 
     const totalCommissions = commissions.reduce((sum, c) => sum + c.amount, 0);
 
@@ -4236,15 +4301,9 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, requireProject((
       });
 
       const monthlySalesTotal = monthSales.reduce((sum, sale) => sum + sale.amount, 0);
-      const monthlyExpensesTotal = monthExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+      const monthlyExpensesTotal = monthExpenses.filter(isChargeExpense).reduce((sum, expense) => sum + expense.amount, 0);
 
-      const monthlySalariesTotal = monthSchedules.reduce((sum, s) => {
-        if (s.dailySalary !== null && s.dailySalary !== undefined) {
-          return sum + s.dailySalary;
-        }
-        const emp = employeeMap[s.userId?.toString()];
-        return sum + ((s.duration || 0) * (emp?.hourlyRate || 0));
-      }, 0);
+      const monthlySalariesTotal = salaryForPeriod(employees, monthSchedules, monthDate, new Date(Math.min(nextMonthDate.getTime() - 1, Date.now())));
 
       const monthlyCommissionsTotal = monthCommissions.reduce((sum, c) => sum + c.amount, 0);
 
@@ -4263,6 +4322,7 @@ app.get('/BussnessApp/dashboard/:projectId', authenticateToken, requireProject((
     // Données par catégorie de dépenses
     const expensesByCategory = Object.fromEntries(Object.keys(EXPENSE_CATEGORY_LABELS).map(category => [category, 0]));
     for (const expense of expenses) {
+      if (!isChargeExpense(expense)) continue;
       expensesByCategory[expense.category] = (expensesByCategory[expense.category] || 0) + expense.amount;
     }
     expensesByCategory.payroll = totalSalaries;
@@ -4424,12 +4484,12 @@ app.post('/BussnessApp/export-excel/:projectId', authenticateToken, checkRole('a
     const commissionsSheet = XLSX.utils.json_to_sheet(commissionsData);
     XLSX.utils.book_append_sheet(workbook, commissionsSheet, 'Commissions');
 
-    // ===== FEUILLE SALAIRES (basé sur le planning) =====
-    const salariesData = schedules.map(schedule => {
+    // ===== FEUILLE SALAIRES =====
+    const salariesData = schedules.filter(schedule => schedule.status === 'completed' && schedule.userId && salaryConfigAt(schedule.userId, schedule.date).salaryMode !== 'monthly').map(schedule => {
       const employee = schedule.userId;
       const duration = schedule.duration || 0;
-      const hourlyRate = employee?.hourlyRate || 0;
-      const salary = duration * hourlyRate;
+      const hourlyRate = salaryConfigAt(employee, schedule.date).hourlyRate || 0;
+      const salary = schedule.dailySalary != null ? schedule.dailySalary : duration * hourlyRate;
 
       return {
         'Date': new Date(schedule.date).toLocaleDateString('fr-FR'),
@@ -4445,8 +4505,24 @@ app.post('/BussnessApp/export-excel/:projectId', authenticateToken, checkRole('a
         'Notes': schedule.notes || ''
       };
     });
+    for (const employee of employees) {
+      const amount = salaryForPeriod([employee], [], start, end);
+      if (amount) salariesData.push({
+        'Date': 'Période exportée', 'Employé': employee.fullName || employee.username,
+        'Durée (heures)': 0, 'Taux horaire': 'Salaire mensuel fixe',
+        'Salaire': amount.toFixed(2) + ' ' + currencySymbol, 'Statut': 'Dû'
+      });
+    }
     const salariesSheet = XLSX.utils.json_to_sheet(salariesData);
     XLSX.utils.book_append_sheet(workbook, salariesSheet, 'Salaires');
+    const payrollSummary = employees.map(employee => {
+      const employeeId = String(employee._id);
+      const salary = salaryForPeriod([employee], schedules, start, end);
+      const commission = commissions.filter(c => String(c.userId?._id) === employeeId).reduce((sum, c) => sum + c.amount, 0);
+      const advances = expenses.filter(e => e.category === 'salary_advances' && String(e.userId) === employeeId).reduce((sum, e) => sum + e.amount, 0);
+      return { 'Employé': employee.fullName || employee.username, 'Mode': employee.salaryMode === 'monthly' ? 'Mensuel fixe' : 'Horaire', 'Salaire': salary, 'Commissions': commission, 'Avances versées': advances, 'Reste à verser': salary + commission - advances };
+    });
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(payrollSummary), 'Paie');
 
     // ===== FEUILLE CLIENTS =====
     const customersData = customers.map(customer => ({
@@ -4469,14 +4545,11 @@ app.post('/BussnessApp/export-excel/:projectId', authenticateToken, checkRole('a
 
     // ===== FEUILLE BILAN =====
     const totalSales = sales.reduce((sum, sale) => sum + sale.amount, 0);
-    const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+    const totalExpenses = expenses.filter(isChargeExpense).reduce((sum, expense) => sum + expense.amount, 0);
     const totalStock = stocks.reduce((sum, stock) => sum + (stock.quantity * stock.unitPrice), 0);
     const totalCommissions = commissions.reduce((sum, commission) => sum + commission.amount, 0);
-    const totalSalaries = schedules.reduce((sum, schedule) => {
-      const duration = schedule.duration || 0;
-      const hourlyRate = schedule.userId?.hourlyRate || 0;
-      return sum + (duration * hourlyRate);
-    }, 0);
+    const totalSalaries = salaryForPeriod(employees, schedules, start, end);
+    const totalAdvances = expenses.filter(expense => expense.category === 'salary_advances' && expense.userId).reduce((sum, expense) => sum + expense.amount, 0);
     const netProfit = totalSales - totalExpenses - totalCommissions - totalSalaries;
 
     const bilanData = [
@@ -4484,6 +4557,8 @@ app.post('/BussnessApp/export-excel/:projectId', authenticateToken, checkRole('a
       { 'Indicateur': 'Dépenses totales', 'Montant': totalExpenses.toFixed(2) + ' ' + currencySymbol },
       { 'Indicateur': 'Commissions totales', 'Montant': totalCommissions.toFixed(2) + ' ' + currencySymbol },
       { 'Indicateur': 'Salaires totaux', 'Montant': totalSalaries.toFixed(2) + ' ' + currencySymbol },
+      { 'Indicateur': 'Avances sur salaire versées', 'Montant': totalAdvances.toFixed(2) + ' ' + currencySymbol },
+      { 'Indicateur': 'Reste à verser (salaires + commissions - avances)', 'Montant': (totalSalaries + totalCommissions - totalAdvances).toFixed(2) + ' ' + currencySymbol },
       { 'Indicateur': 'Valeur du stock', 'Montant': totalStock.toFixed(2) + ' ' + currencySymbol },
       { 'Indicateur': 'Bénéfice net (Ventes - Dépenses - Commissions - Salaires)', 'Montant': netProfit.toFixed(2) + ' ' + currencySymbol },
       { 'Indicateur': '', 'Montant': '' },
@@ -4545,12 +4620,11 @@ app.post('/BussnessApp/export-pdf/:projectId', authenticateToken, checkRole('adm
     await attachCustomerSalesTotals(customers, projectId, Sale);
 
     const totalSales = sales.reduce((sum, s) => sum + s.amount, 0);
-    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalExpenses = expenses.filter(isChargeExpense).reduce((sum, e) => sum + e.amount, 0);
     const totalStock = stocks.reduce((sum, s) => sum + (s.quantity * s.unitPrice), 0);
     const totalCommissions = commissions.reduce((sum, c) => sum + c.amount, 0);
-    const totalSalaries = schedules.reduce((sum, s) => {
-      return sum + ((s.duration || 0) * (s.userId?.hourlyRate || 0));
-    }, 0);
+    const totalSalaries = salaryForPeriod(employees, schedules, start, end);
+    const totalAdvances = expenses.filter(expense => expense.category === 'salary_advances' && expense.userId).reduce((sum, expense) => sum + expense.amount, 0);
     const netProfit = totalSales - totalExpenses - totalCommissions - totalSalaries;
 
     const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true });
@@ -4820,16 +4894,16 @@ app.post('/BussnessApp/export-pdf/:projectId', authenticateToken, checkRole('adm
     }
 
     // ===== SALAIRES =====
-    if (schedules.length > 0) {
+    if (totalSalaries > 0 || totalAdvances > 0 || totalCommissions > 0 || schedules.length > 0) {
       doc.addPage();
       drawSectionTitle('SALAIRES', '💵');
 
       const salColW = [65, 90, 55, 55, 55, 65, 70, 60];
       drawTableHeader(['Date', 'Employé', 'Début', 'Fin', 'Durée(h)', 'Taux/h', 'Salaire', 'Statut'], salColW, 40);
-      schedules.forEach((sched, i) => {
+      schedules.filter(sched => sched.status === 'completed' && sched.userId && salaryConfigAt(sched.userId, sched.date).salaryMode !== 'monthly').forEach((sched, i) => {
         const emp = sched.userId;
         const dur = sched.duration || 0;
-        const rate = emp?.hourlyRate || 0;
+        const rate = salaryConfigAt(emp, sched.date).hourlyRate || 0;
         const statut = sched.status === 'completed' ? 'Complété' :
           sched.status === 'absent' ? 'Absent' :
             sched.status === 'cancelled' ? 'Annulé' : 'Planifié';
@@ -4840,13 +4914,19 @@ app.post('/BussnessApp/export-pdf/:projectId', authenticateToken, checkRole('adm
           sched.endTime || '',
           dur,
           rate.toFixed(0) + currencySymbol,
-          (dur * rate).toFixed(2) + ' ' + currencySymbol,
+          (sched.dailySalary != null ? sched.dailySalary : dur * rate).toFixed(2) + ' ' + currencySymbol,
           statut
         ], salColW, 40, i % 2 === 1);
+      });
+      employees.forEach(emp => {
+        const amount = salaryForPeriod([emp], [], start, end);
+        if (amount) drawTableRow(['Période', (emp.fullName || emp.username).substring(0, 16), '', '', '', 'Fixe', amount.toFixed(2) + ' ' + currencySymbol, 'Dû'], salColW, 40, false);
       });
       doc.moveDown(0.5);
       doc.fillColor('#E67E22').fontSize(10).font('Helvetica-Bold')
         .text(`Total salaires : ${totalSalaries.toFixed(2)} ${currencySymbol}`, 40, doc.y, { align: 'right', width: 515 });
+      doc.text(`Avances versées : ${totalAdvances.toFixed(2)} ${currencySymbol}`, 40, doc.y, { align: 'right', width: 515 });
+      doc.text(`Reste à verser (avec commissions) : ${(totalSalaries + totalCommissions - totalAdvances).toFixed(2)} ${currencySymbol}`, 40, doc.y, { align: 'right', width: 515 });
     }
 
     // ===== CLIENTS =====

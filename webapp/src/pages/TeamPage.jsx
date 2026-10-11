@@ -58,6 +58,7 @@ export default function TeamPage() {
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [commissionRate, setCommissionRate] = useState('0')
   const [hourlyRate, setHourlyRate] = useState('0')
+  const [salaryMode, setSalaryMode] = useState('hourly')
   const [editInfoData, setEditInfoData] = useState({ fullName: '', email: '', newPassword: '', confirmPassword: '' })
   const [payrollModalVisible, setPayrollModalVisible] = useState(false)
   const [payrollData, setPayrollData] = useState(null)
@@ -195,19 +196,23 @@ export default function TeamPage() {
   const handleUpdateHourlyRate = async (e) => {
     e.preventDefault()
     if (!selectedUser) return
-    const rate = parseFloat(hourlyRate)
-    if (isNaN(rate) || rate < 0) {
-      toast.error('Le salaire horaire doit être un nombre positif')
+    const rate = Number(hourlyRate)
+    if (!hourlyRate.trim() || !Number.isFinite(rate) || rate < 0) {
+      toast.error('Le montant doit être un nombre positif')
       return
     }
     try {
-      await api.put(`/users/${selectedUser._id}/hourly-rate`, { hourlyRate: rate })
+      await api.put(`/users/${selectedUser._id}/salary`, {
+        salaryMode,
+        [salaryMode === 'monthly' ? 'monthlySalary' : 'hourlyRate']: rate,
+      })
       setSalaryModalVisible(false)
       setSelectedUser(null)
       loadUsers()
-      toast.success('Salaire horaire modifié avec succès')
+      loadPayroll()
+      toast.success('Rémunération modifiée')
     } catch {
-      toast.error('Impossible de modifier le salaire horaire')
+      toast.error('Impossible de modifier la rémunération')
     }
   }
 
@@ -386,7 +391,7 @@ export default function TeamPage() {
                     <Clock className="w-4 h-4 text-sky-400 flex-shrink-0" />
                     <div className="min-w-0">
                       <p className="text-[10px] text-gray-500 uppercase">Salaire</p>
-                      <p className="text-[12.5px] font-bold text-cream truncate">{formatPrice(item.hourlyRate || 0)}/h</p>
+                      <p className="text-[12.5px] font-bold text-cream truncate">{item.salaryMode === 'monthly' ? `${formatPrice(item.monthlySalary || 0)}/mois` : `${formatPrice(item.hourlyRate || 0)}/h`}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -427,7 +432,7 @@ export default function TeamPage() {
                   )}
                   {isManagerRole && (
                     <>
-                      <button onClick={() => { setSelectedUser(item); setHourlyRate(item.hourlyRate?.toString() || '0'); setSalaryModalVisible(true) }} className="btn-ghost !py-1.5 !px-2.5 text-sky-400">
+                      <button onClick={() => { setSelectedUser(item); setSalaryMode(item.salaryMode || 'hourly'); setHourlyRate((item.salaryMode === 'monthly' ? item.monthlySalary : item.hourlyRate)?.toString() || '0'); setSalaryModalVisible(true) }} className="btn-ghost !py-1.5 !px-2.5 text-sky-400">
                         <Clock className="w-4 h-4" />
                         Salaire
                       </button>
@@ -541,21 +546,25 @@ export default function TeamPage() {
         </form>
       </Modal>
 
-      {/* Modal salaire horaire */}
-      <Modal open={salaryModalVisible} onClose={() => setSalaryModalVisible(false)} title="Salaire horaire" size="sm">
+      {/* Modal rémunération */}
+      <Modal open={salaryModalVisible} onClose={() => setSalaryModalVisible(false)} title="Rémunération" size="sm">
         <form onSubmit={handleUpdateHourlyRate} className="p-6 space-y-4">
-          {selectedUser && <p className="text-[13px] text-gray-400">Salaire horaire de <span className="font-bold text-cream">{selectedUser.fullName}</span> :</p>}
+          {selectedUser && <p className="text-[13px] text-gray-400">Rémunération de <span className="font-bold text-cream">{selectedUser.fullName}</span> :</p>}
+          <select value={salaryMode} onChange={(e) => { const mode = e.target.value; setSalaryMode(mode); setHourlyRate((mode === 'monthly' ? selectedUser?.monthlySalary : selectedUser?.hourlyRate)?.toString() || '0') }} className="input-field">
+            <option value="hourly">Taux horaire</option>
+            <option value="monthly">Salaire mensuel fixe</option>
+          </select>
           <div className="relative">
             <input type="number" step="0.01" min="0" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} className="input-field pr-14 text-lg font-bold" autoFocus />
-            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">{currency.symbol}/h</span>
+            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">{currency.symbol}/{salaryMode === 'monthly' ? 'mois' : 'h'}</span>
           </div>
-          <div className="flex flex-wrap gap-2">
+          {salaryMode === 'hourly' && <div className="flex flex-wrap gap-2">
             {quickHourly.map(v => (
               <button key={v} type="button" onClick={() => setHourlyRate(v.toString())} className="px-3 py-1.5 rounded-full bg-night-700 hover:bg-gold-500/15 hover:text-gold-400 text-[12.5px] text-gray-300 transition-colors">
                 {formatPrice(v)}
               </button>
             ))}
-          </div>
+          </div>}
           <button type="submit" className="btn-primary w-full !py-3">Enregistrer</button>
         </form>
       </Modal>
@@ -597,10 +606,10 @@ export default function TeamPage() {
           {payrollLoading ? (
             <div className="flex justify-center py-12"><Spinner /></div>
           ) : !payrollData?.employees?.length ? (
-            <EmptyState icon={Wallet} title="Aucun salaire ce mois" description="Les salaires sont calculés à partir du planning complété" />
+            <EmptyState icon={Wallet} title="Aucun salaire ce mois" description="Configurez une rémunération dans l’équipe" />
           ) : (
             <>
-              <div className="card !bg-night-900 p-4 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+              <div className="card !bg-night-900 p-4 mb-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-center">
                 <div>
                   <p className="text-[10.5px] text-gray-500 uppercase">Total</p>
                   <p className="text-[15px] font-extrabold text-gold-400">{formatPrice(payrollData.totals?.totalPayroll || 0)}</p>
@@ -617,6 +626,8 @@ export default function TeamPage() {
                   <p className="text-[10.5px] text-gray-500 uppercase">Heures</p>
                   <p className="text-[15px] font-bold text-cream">{payrollData.totals?.totalHours?.toFixed(1) || 0}h</p>
                 </div>
+                <div><p className="text-[10.5px] text-gray-500 uppercase">Avances versées</p><p className="text-[15px] font-bold text-cream">{formatPrice(payrollData.totals?.totalAdvances || 0)}</p></div>
+                <div><p className="text-[10.5px] text-gray-500 uppercase">Reste à verser</p><p className="text-[15px] font-bold text-gold-400">{formatPrice(payrollData.totals?.totalRemaining || 0)}</p></div>
               </div>
               <div className="space-y-2.5">
                 {payrollData.employees.map((emp) => (
@@ -627,11 +638,12 @@ export default function TeamPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-semibold text-cream truncate">{emp.user.fullName || emp.user.username}</p>
                       <p className="text-[11.5px] text-gray-500">
-                        {emp.daysWorked}j • {emp.hours.toFixed(1)}h
+                        {emp.user.salaryMode === 'monthly' ? 'Salaire mensuel fixe' : `${emp.daysWorked}j • ${emp.hours.toFixed(1)}h`}
                         {emp.commissions > 0 && ` · +${formatPrice(emp.commissions)} comm.`}
+                        {emp.advances > 0 && ` · ${formatPrice(emp.advances)} d’avances`}
                       </p>
                     </div>
-                    <p className="text-[14px] font-bold text-gold-400 flex-shrink-0">{formatPrice(emp.totalDue)}</p>
+                    <div className="text-right flex-shrink-0"><p className="text-[14px] font-bold text-gold-400">{formatPrice(emp.remainingDue)}</p><p className="text-[10px] text-gray-500">sur {formatPrice(emp.totalDue)} dus</p></div>
                   </div>
                 ))}
               </div>

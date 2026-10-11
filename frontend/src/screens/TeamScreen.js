@@ -47,6 +47,7 @@ export const TeamScreen = ({ navigation }) => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [commissionRate, setCommissionRate] = useState('0');
   const [hourlyRate, setHourlyRate] = useState('0');
+  const [salaryMode, setSalaryMode] = useState('hourly');
   const [editInfoData, setEditInfoData] = useState({
     fullName: '',
     email: '',
@@ -74,6 +75,15 @@ export const TeamScreen = ({ navigation }) => {
       loadPayroll();
     }
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (['admin', 'responsable', 'manager'].includes(user?.role)) {
+        loadPayroll(payrollMonth, payrollYear);
+      }
+    });
+    return unsubscribe;
+  }, [navigation, user?.projectId, payrollMonth, payrollYear]);
 
   const loadUsers = async () => {
     try {
@@ -216,7 +226,8 @@ export const TeamScreen = ({ navigation }) => {
 
   const openSalaryModal = (user) => {
     setSelectedUser(user);
-    setHourlyRate(user.hourlyRate?.toString() || '0');
+    setSalaryMode(user.salaryMode || 'hourly');
+    setHourlyRate((user.salaryMode === 'monthly' ? user.monthlySalary : user.hourlyRate)?.toString() || '0');
     setSalaryModalVisible(true);
   };
 
@@ -224,19 +235,20 @@ export const TeamScreen = ({ navigation }) => {
     if (!selectedUser) return;
     
     const rate = parseFloat(hourlyRate);
-    if (isNaN(rate) || rate < 0) {
-      Alert.alert(t('Erreur'), t('Le salaire horaire doit être un nombre positif'));
+    if (!hourlyRate.trim() || !Number.isFinite(rate) || rate < 0) {
+      Alert.alert(t('Erreur'), t('Le montant doit être un nombre positif'));
       return;
     }
 
     try {
-      await api.put(`/users/${selectedUser._id}/hourly-rate`, { hourlyRate: rate });
+      await api.put(`/users/${selectedUser._id}/salary`, { salaryMode, [salaryMode === 'monthly' ? 'monthlySalary' : 'hourlyRate']: rate });
       setSalaryModalVisible(false);
       setSelectedUser(null);
       loadUsers();
-      Alert.alert(t('Succès'), t('Salaire horaire modifié avec succès'));
+      loadPayroll();
+      Alert.alert(t('Succès'), t('Rémunération modifiée'));
     } catch (error) {
-      Alert.alert(t('Erreur'), t('Impossible de modifier le salaire horaire'));
+      Alert.alert(t('Erreur'), t('Impossible de modifier la rémunération'));
     }
   };
 
@@ -502,8 +514,8 @@ export const TeamScreen = ({ navigation }) => {
             <View style={styles.commissionInfo}>
               <Ionicons name="time-outline" size={20} color={colors.info} />
               <View style={styles.commissionTextContainer}>
-                <Text style={styles.commissionLabel}>{t('Salaire horaire')}</Text>
-                <Text style={styles.commissionValue}>{formatPrice(item.hourlyRate || 0)}/h</Text>
+                <Text style={styles.commissionLabel}>{item.salaryMode === 'monthly' ? t('Salaire mensuel fixe') : t('Salaire horaire')}</Text>
+                <Text style={styles.commissionValue}>{item.salaryMode === 'monthly' ? `${formatPrice(item.monthlySalary || 0)}/mois` : `${formatPrice(item.hourlyRate || 0)}/h`}</Text>
               </View>
             </View>
             <View style={styles.commissionInfo}>
@@ -1176,7 +1188,7 @@ export const TeamScreen = ({ navigation }) => {
                 </LinearGradient>
               </View>
               <View style={styles.commissionHeaderText}>
-                <Text style={styles.commissionModalTitle}>{t('💶 Modifier le salaire horaire')}</Text>
+                <Text style={styles.commissionModalTitle}>{t('Rémunération')}</Text>
                 {selectedUser && (
                   <Text style={styles.commissionModalSubtitle}>{selectedUser.fullName}</Text>
                 )}
@@ -1205,7 +1217,7 @@ export const TeamScreen = ({ navigation }) => {
                     <Ionicons name="time-outline" size={24} color={colors.primary} />
                     <View style={styles.currentStatContent}>
                       <Text style={styles.currentStatLabel}>{t('Actuel')}</Text>
-                      <Text style={styles.currentStatValue}>{formatPrice(selectedUser.hourlyRate || 0)}/h</Text>
+                      <Text style={styles.currentStatValue}>{selectedUser.salaryMode === 'monthly' ? `${formatPrice(selectedUser.monthlySalary || 0)}/mois` : `${formatPrice(selectedUser.hourlyRate || 0)}/h`}</Text>
                     </View>
                   </LinearGradient>
                   <LinearGradient
@@ -1216,14 +1228,22 @@ export const TeamScreen = ({ navigation }) => {
                     <View style={styles.currentStatContent}>
                       <Text style={styles.currentStatLabel}>{t('Mensuel estimé')}</Text>
                       <Text style={styles.currentStatValue}>
-                        {formatPrice((selectedUser.hourlyRate || 0) * 60 * 4.33)}
+                        {formatPrice(selectedUser.salaryMode === 'monthly' ? selectedUser.monthlySalary || 0 : (selectedUser.hourlyRate || 0) * 60 * 4.33)}
                       </Text>
                     </View>
                   </LinearGradient>
                 </View>
               )}
 
-              <View style={styles.quickSelectContainer}>
+              <View style={styles.pickerContainer}>
+                <Text style={styles.customInputTitle}>{t('Mode de rémunération')}</Text>
+                <Picker selectedValue={salaryMode} onValueChange={(mode) => { setSalaryMode(mode); setHourlyRate((mode === 'monthly' ? selectedUser?.monthlySalary : selectedUser?.hourlyRate)?.toString() || '0'); }}>
+                  <Picker.Item label={t('Taux horaire')} value="hourly" />
+                  <Picker.Item label={t('Salaire mensuel fixe')} value="monthly" />
+                </Picker>
+              </View>
+
+              {salaryMode === 'hourly' && <View style={styles.quickSelectContainer}>
                 <Text style={styles.quickSelectTitle}>{t('⚡ Sélection rapide')}</Text>
                 <View style={styles.quickSelectButtons}>
                   {getQuickSelectValues(currency.code).slice(0, 5).map((rate) => (
@@ -1263,7 +1283,7 @@ export const TeamScreen = ({ navigation }) => {
                     </TouchableOpacity>
                   ))}
                 </View>
-              </View>
+              </View>}
 
               <View style={styles.customInputSection}>
                 <Text style={styles.customInputTitle}>{t('🎯 Salaire personnalisé')}</Text>
@@ -1280,15 +1300,15 @@ export const TeamScreen = ({ navigation }) => {
                       keyboardType="decimal-pad"
                       style={styles.commissionInput}
                     />
-                    <Text style={styles.commissionPercentSymbol}>{currency.symbol}/h</Text>
+                    <Text style={styles.commissionPercentSymbol}>{currency.symbol}/{salaryMode === 'monthly' ? 'mois' : 'h'}</Text>
                   </View>
                   <Text style={styles.commissionHint}>
-                    {t('Salaire par heure de travail')}
+                    {salaryMode === 'monthly' ? t('Salaire mensuel sans planning') : t('Salaire par heure de travail')}
                   </Text>
                 </LinearGradient>
               </View>
 
-              {hourlyRate && parseFloat(hourlyRate) > 0 && (
+              {salaryMode === 'hourly' && hourlyRate && parseFloat(hourlyRate) > 0 && (
                 <View style={styles.exampleCalculation}>
                   <LinearGradient
                     colors={[colors.success + '15', colors.success + '05']}
@@ -1415,7 +1435,7 @@ export const TeamScreen = ({ navigation }) => {
                     style={styles.payrollTotalCard}
                   >
                     <Ionicons name="cash" size={22} color={colors.accent} />
-                    <Text style={styles.payrollTotalLabel}>{t('Total à payer')}</Text>
+                    <Text style={styles.payrollTotalLabel}>{t('Rémunération due')}</Text>
                     <Text style={[styles.payrollTotalValue, { color: colors.accent }]}>
                       {formatPrice(payrollData.totals.totalPayroll)}
                     </Text>
@@ -1441,6 +1461,10 @@ export const TeamScreen = ({ navigation }) => {
                         {formatPrice(payrollData.totals.totalCommissions)}
                       </Text>
                     </LinearGradient>
+                  </View>
+                  <View style={styles.payrollTotalsRow}>
+                    <Text style={styles.payrollTotalLabel}>{t('Avances versées')} : {formatPrice(payrollData.totals.totalAdvances || 0)}</Text>
+                    <Text style={styles.payrollTotalLabel}>{t('Reste à verser')} : {formatPrice(payrollData.totals.totalRemaining || 0)}</Text>
                   </View>
                   <LinearGradient
                     colors={[colors.primary + '15', colors.primary + '05']}
@@ -1469,10 +1493,10 @@ export const TeamScreen = ({ navigation }) => {
                         )}
                         <View style={{ flex: 1 }}>
                           <Text style={styles.payrollEmployeeName}>{emp.user.fullName}</Text>
-                          <Text style={styles.payrollEmployeeRole}>{getRoleLabel(emp.user.role)} - {formatPrice(emp.user.hourlyRate)}/h</Text>
+                          <Text style={styles.payrollEmployeeRole}>{getRoleLabel(emp.user.role)} - {emp.user.salaryMode === 'monthly' ? `${formatPrice(emp.user.monthlySalary)}/mois` : `${formatPrice(emp.user.hourlyRate)}/h`}</Text>
                         </View>
                       </View>
-                      <Text style={styles.payrollEmployeeTotal}>{formatPrice(emp.totalDue)}</Text>
+                      <Text style={styles.payrollEmployeeTotal}>{formatPrice(emp.remainingDue)}</Text>
                     </View>
                     <View style={styles.payrollEmployeeDetails}>
                       <View style={styles.payrollDetailItem}>
@@ -1489,6 +1513,7 @@ export const TeamScreen = ({ navigation }) => {
                           <Text style={styles.payrollDetailText}>{t('Comm: {price}', { price: formatPrice(emp.commissions) })}</Text>
                         </View>
                       )}
+                      <Text style={styles.payrollDetailText}>{t('Avances versées')} : {formatPrice(emp.advances || 0)} · {t('Reste à verser')} : {formatPrice(emp.remainingDue)}</Text>
                     </View>
                   </View>
                 ))}
