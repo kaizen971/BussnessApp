@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -12,6 +13,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToneSurface as LinearGradient } from '../components/ToneSurface';
@@ -74,6 +76,21 @@ export const TeamScreen = ({ navigation }) => {
   const [payrollLoading, setPayrollLoading] = useState(false);
   const [payrollMonth, setPayrollMonth] = useState(new Date().getMonth() + 1);
   const [payrollYear, setPayrollYear] = useState(new Date().getFullYear());
+
+  useFocusEffect(useCallback(() => {
+    if (Platform.OS !== 'android') return undefined;
+
+    const backSubscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation.navigate('Main', { screen: 'More' });
+      }
+      return true;
+    });
+
+    return () => backSubscription.remove();
+  }, [navigation]));
 
   useEffect(() => {
     loadUsers();
@@ -755,7 +772,7 @@ export const TeamScreen = ({ navigation }) => {
         }
       />
 
-      <Modal visible={modalVisible} animationType="slide" transparent>
+      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalContainer}>
           <LinearGradient
             colors={[colors.surface, colors.background]}

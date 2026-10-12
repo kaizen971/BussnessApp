@@ -90,7 +90,13 @@ const MainTabs = ({ navigation }) => {
     if (Platform.OS !== 'android') return undefined;
 
     const backSubscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      const mainRoute = navigation.getState().routes.find((route) => route.name === 'Main');
+      const stackState = navigation.getState();
+      if (stackState.index > 0) {
+        navigation.goBack();
+        return true;
+      }
+
+      const mainRoute = stackState.routes.find((route) => route.name === 'Main');
       const tabState = mainRoute?.state;
       const currentTab = tabState?.routes?.[tabState.index]?.name ?? 'Dashboard';
 
