@@ -91,8 +91,9 @@ export default function ExpensesPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!formData.amount) {
-      toast.error('Veuillez saisir un montant')
+    const amount = Number(formData.amount)
+    if (!formData.amount.trim() || !Number.isFinite(amount) || amount <= 0) {
+      toast.error('Saisissez un montant positif')
       return
     }
     if (formData.category === 'salary_advances' && !formData.userId) {
@@ -110,7 +111,7 @@ export default function ExpensesPage() {
     try {
       if (editingExpense) {
         await expensesAPI.update(editingExpense._id, {
-          amount: parseFloat(formData.amount),
+          amount,
           category: formData.category,
           description: formData.description,
           userId: formData.userId,
@@ -118,7 +119,7 @@ export default function ExpensesPage() {
         toast.success('Dépense modifiée avec succès')
       } else {
         const expenseData = {
-          amount: parseFloat(formData.amount),
+          amount,
           category: formData.category,
           description: formData.description,
           userId: formData.userId,
@@ -342,33 +343,28 @@ export default function ExpensesPage() {
       <Modal
         open={modalVisible}
         onClose={() => { setModalVisible(false); setEditingExpense(null); setFormData(EMPTY_FORM) }}
-        title={editingExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
+        title={formData.category === 'salary_advances' ? (editingExpense ? 'Modifier l’avance' : 'Avance sur salaire') : editingExpense ? 'Modifier la dépense' : 'Nouvelle dépense'}
         size="sm"
       >
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="input-label">Montant *</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={formData.amount}
-              onChange={(e) => setFormData(p => ({ ...p, amount: e.target.value }))}
-              placeholder="0.00"
-              className="input-field"
-            />
+            <label className="input-label">Type d’opération</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" aria-pressed={formData.category !== 'salary_advances'} onClick={() => setFormData(p => p.category === 'salary_advances' ? { ...p, category: 'purchase', userId: '' } : p)} className={`rounded-xl border px-3 py-3 text-sm font-semibold ${formData.category !== 'salary_advances' ? 'border-gold-500 bg-gold-500/10 text-gold-400' : 'border-night-600 text-gray-400'}`}>Dépense</button>
+              <button type="button" aria-pressed={formData.category === 'salary_advances'} onClick={() => setFormData(p => ({ ...p, category: 'salary_advances', isRecurring: false }))} className={`rounded-xl border px-3 py-3 text-sm font-semibold ${formData.category === 'salary_advances' ? 'border-sky-400 bg-sky-400/10 text-sky-300' : 'border-night-600 text-gray-400'}`}>Avance sur salaire</button>
+            </div>
           </div>
-          <div>
+          {formData.category !== 'salary_advances' && <div>
             <label className="input-label">Catégorie</label>
             <select
               value={formData.category}
-              onChange={(e) => setFormData(p => ({ ...p, category: e.target.value, isRecurring: e.target.value === 'salary_advances' ? false : p.isRecurring }))}
+              onChange={(e) => setFormData(p => ({ ...p, category: e.target.value }))}
               className="input-field"
             >
-              {EXPENSE_CATEGORIES.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+              {EXPENSE_CATEGORIES.filter(({ value }) => value !== 'salary_advances').map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
               {LEGACY_EXPENSE_CATEGORIES.filter(({ value }) => value === formData.category).map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
             </select>
-          </div>
+          </div>}
           {formData.category === 'salary_advances' && <div>
             <label className="input-label">Salarié concerné *</label>
             <select value={formData.userId} onChange={(e) => setFormData(p => ({ ...p, userId: e.target.value, isRecurring: false }))} className="input-field">
@@ -378,6 +374,10 @@ export default function ExpensesPage() {
             </select>
             <p className="text-xs text-gray-500 mt-1">Déduite automatiquement du reste à verser ce mois.</p>
           </div>}
+          <div>
+            <label className="input-label">Montant *</label>
+            <input type="number" step="0.01" min="0" value={formData.amount} onChange={(e) => setFormData(p => ({ ...p, amount: e.target.value }))} placeholder="0.00" className="input-field" />
+          </div>
           <div>
             <label className="input-label">Description</label>
             <textarea

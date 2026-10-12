@@ -1,10 +1,10 @@
-import 'react-native-gesture-handler';
 import React from 'react';
-import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer, useFocusEffect } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform } from 'react-native';
+import { Alert, BackHandler, Platform } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
@@ -79,12 +79,38 @@ const TAB_ICONS = {
   More: ['grid', 'grid-outline'],
 };
 
-const MainTabs = () => {
+const MainTabs = ({ navigation }) => {
   const { colors } = useTheme();
   const { t } = useI18n();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 8);
+
+  useFocusEffect(React.useCallback(() => {
+    if (Platform.OS !== 'android') return undefined;
+
+    const backSubscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      const mainRoute = navigation.getState().routes.find((route) => route.name === 'Main');
+      const tabState = mainRoute?.state;
+      const currentTab = tabState?.routes?.[tabState.index]?.name ?? 'Dashboard';
+
+      if (currentTab !== 'Dashboard') {
+        navigation.navigate('Main', { screen: 'Dashboard' });
+      } else {
+        Alert.alert(
+          t('Quitter l’application ?'),
+          t('Voulez-vous fermer l’application ?'),
+          [
+            { text: t('Annuler'), style: 'cancel' },
+            { text: t('Quitter'), onPress: () => BackHandler.exitApp() },
+          ],
+        );
+      }
+      return true;
+    });
+
+    return () => backSubscription.remove();
+  }, [navigation, t]));
 
   return (
     <Tab.Navigator
@@ -308,21 +334,23 @@ const ThemedStatusBar = () => {
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <ThemeProvider>
-        <LanguageProvider>
-        <AuthProvider>
-          <CurrencyProvider>
-            <SubscriptionProvider>
-              <IAPProvider>
-                <ThemedStatusBar />
-                <AppNavigator />
-              </IAPProvider>
-            </SubscriptionProvider>
-          </CurrencyProvider>
-        </AuthProvider>
-        </LanguageProvider>
-      </ThemeProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <LanguageProvider>
+            <AuthProvider>
+              <CurrencyProvider>
+                <SubscriptionProvider>
+                  <IAPProvider>
+                    <ThemedStatusBar />
+                    <AppNavigator />
+                  </IAPProvider>
+                </SubscriptionProvider>
+              </CurrencyProvider>
+            </AuthProvider>
+          </LanguageProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

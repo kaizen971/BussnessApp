@@ -10,6 +10,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToneSurface as LinearGradient } from '../components/ToneSurface';
@@ -40,6 +42,10 @@ export const TeamScreen = ({ navigation }) => {
   const [roleModalVisible, setRoleModalVisible] = useState(false);
   const [commissionModalVisible, setCommissionModalVisible] = useState(false);
   const [salaryModalVisible, setSalaryModalVisible] = useState(false);
+  const [advanceTarget, setAdvanceTarget] = useState(null);
+  const [advanceAmount, setAdvanceAmount] = useState('');
+  const [advanceDescription, setAdvanceDescription] = useState('');
+  const [advanceSaving, setAdvanceSaving] = useState(false);
   const [editInfoModalVisible, setEditInfoModalVisible] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
@@ -249,6 +255,42 @@ export const TeamScreen = ({ navigation }) => {
       Alert.alert(t('Succès'), t('Rémunération modifiée'));
     } catch (error) {
       Alert.alert(t('Erreur'), t('Impossible de modifier la rémunération'));
+    }
+  };
+
+  const openAdvance = (employee) => {
+    setAdvanceTarget(employee);
+    setAdvanceAmount('');
+    setAdvanceDescription('');
+  };
+
+  const handleAddAdvance = async () => {
+    const amount = Number(advanceAmount.replace(',', '.'));
+    if (!advanceTarget || !advanceAmount.trim() || !Number.isFinite(amount) || amount <= 0) {
+      Alert.alert(t('Erreur'), t('Saisissez un montant positif'));
+      return;
+    }
+    setAdvanceSaving(true);
+    try {
+      await api.post('/expenses', {
+        projectId: user?.projectId,
+        userId: advanceTarget._id,
+        category: 'salary_advances',
+        amount,
+        description: advanceDescription.trim(),
+      });
+      setAdvanceTarget(null);
+      const now = new Date();
+      const month = now.getMonth() + 1;
+      const year = now.getFullYear();
+      setPayrollMonth(month);
+      setPayrollYear(year);
+      loadPayroll(month, year);
+      Alert.alert(t('Succès'), t('Avance enregistrée et déduite de la paie du mois'));
+    } catch (error) {
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Impossible d’enregistrer l’avance'));
+    } finally {
+      setAdvanceSaving(false);
     }
   };
 
@@ -582,6 +624,10 @@ export const TeamScreen = ({ navigation }) => {
               >
                 <Ionicons name="time" size={20} color={colors.info} />
                 <Text style={[styles.actionButtonText, { color: colors.info }]}>{t('Salaire')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionButton} onPress={() => openAdvance(item)}>
+                <Ionicons name="wallet-outline" size={20} color={colors.info} />
+                <Text style={[styles.actionButtonText, { color: colors.info }]}>{t('Avance')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.actionButton}
@@ -1367,6 +1413,22 @@ export const TeamScreen = ({ navigation }) => {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Enregistrer une avance depuis l'équipe */}
+      <Modal visible={!!advanceTarget} animationType="slide" transparent onRequestClose={() => !advanceSaving && setAdvanceTarget(null)}>
+        <KeyboardAvoidingView style={styles.commissionModalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <TouchableOpacity style={styles.commissionModalBackdrop} activeOpacity={1} onPress={() => !advanceSaving && setAdvanceTarget(null)} />
+          <View style={[styles.commissionModalContainer, { padding: 20 }]}>
+            <Text style={styles.commissionModalTitle}>{t('Avance sur salaire')}</Text>
+            <Text style={[styles.commissionModalSubtitle, { marginBottom: 16 }]}>{advanceTarget?.fullName || advanceTarget?.username}</Text>
+            <Text style={[styles.commissionModalSubtitle, { marginBottom: 16 }]}>{t('Déduite de la paie du mois en cours.')}</Text>
+            <Input label={t('Montant *')} value={advanceAmount} onChangeText={setAdvanceAmount} keyboardType="decimal-pad" icon="cash-outline" />
+            <Input label={t('Note (facultatif)')} value={advanceDescription} onChangeText={setAdvanceDescription} multiline />
+            <Button title={t('Enregistrer l’avance')} onPress={handleAddAdvance} loading={advanceSaving} disabled={advanceSaving} />
+            <Button title={t('Annuler')} variant="outline" onPress={() => setAdvanceTarget(null)} disabled={advanceSaving} style={{ marginTop: 10 }} />
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Modal Masse salariale */}

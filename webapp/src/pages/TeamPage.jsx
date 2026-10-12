@@ -51,6 +51,10 @@ export default function TeamPage() {
   const [roleModalVisible, setRoleModalVisible] = useState(false)
   const [commissionModalVisible, setCommissionModalVisible] = useState(false)
   const [salaryModalVisible, setSalaryModalVisible] = useState(false)
+  const [advanceTarget, setAdvanceTarget] = useState(null)
+  const [advanceAmount, setAdvanceAmount] = useState('')
+  const [advanceDescription, setAdvanceDescription] = useState('')
+  const [advanceSaving, setAdvanceSaving] = useState(false)
   const [editInfoModalVisible, setEditInfoModalVisible] = useState(false)
   const [statusTarget, setStatusTarget] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
@@ -213,6 +217,43 @@ export default function TeamPage() {
       toast.success('Rémunération modifiée')
     } catch {
       toast.error('Impossible de modifier la rémunération')
+    }
+  }
+
+  const openAdvance = (employee) => {
+    setAdvanceTarget(employee)
+    setAdvanceAmount('')
+    setAdvanceDescription('')
+  }
+
+  const handleAddAdvance = async (e) => {
+    e.preventDefault()
+    const amount = Number(advanceAmount)
+    if (!advanceTarget || !advanceAmount.trim() || !Number.isFinite(amount) || amount <= 0) {
+      toast.error('Saisissez un montant positif')
+      return
+    }
+    setAdvanceSaving(true)
+    try {
+      await api.post('/expenses', {
+        projectId: user?.projectId,
+        userId: advanceTarget._id,
+        category: 'salary_advances',
+        amount,
+        description: advanceDescription.trim(),
+      })
+      setAdvanceTarget(null)
+      const now = new Date()
+      const month = now.getMonth() + 1
+      const year = now.getFullYear()
+      setPayrollMonth(month)
+      setPayrollYear(year)
+      loadPayroll(month, year)
+      toast.success('Avance enregistrée et déduite de la paie du mois')
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Impossible d’enregistrer l’avance')
+    } finally {
+      setAdvanceSaving(false)
     }
   }
 
@@ -436,6 +477,10 @@ export default function TeamPage() {
                         <Clock className="w-4 h-4" />
                         Salaire
                       </button>
+                      {!item.deletedAt && <button onClick={() => openAdvance(item)} className="btn-ghost !py-1.5 !px-2.5 text-sky-300">
+                        <Wallet className="w-4 h-4" />
+                        Avance
+                      </button>}
                       <button onClick={() => { setSelectedUser(item); setCommissionRate(item.commissionRate?.toString() || '0'); setCommissionModalVisible(true) }} className="btn-ghost !py-1.5 !px-2.5 text-emerald-400">
                         <Banknote className="w-4 h-4" />
                         Commission
@@ -566,6 +611,16 @@ export default function TeamPage() {
             ))}
           </div>}
           <button type="submit" className="btn-primary w-full !py-3">Enregistrer</button>
+        </form>
+      </Modal>
+
+      <Modal open={!!advanceTarget} onClose={() => !advanceSaving && setAdvanceTarget(null)} title="Avance sur salaire" size="sm">
+        <form onSubmit={handleAddAdvance} className="p-6 space-y-4">
+          <p className="text-sm text-gray-300">Salarié : <strong className="text-cream">{advanceTarget?.fullName || advanceTarget?.username}</strong></p>
+          <p className="text-xs text-gray-500">L’avance sera déduite de la paie du mois en cours.</p>
+          <div><label className="input-label">Montant *</label><input type="number" min="0.01" step="0.01" value={advanceAmount} onChange={e => setAdvanceAmount(e.target.value)} className="input-field" autoFocus required /></div>
+          <div><label className="input-label">Note (facultatif)</label><textarea value={advanceDescription} onChange={e => setAdvanceDescription(e.target.value)} className="input-field resize-none" rows={2} /></div>
+          <div className="flex gap-3"><button type="button" onClick={() => setAdvanceTarget(null)} disabled={advanceSaving} className="btn-secondary flex-1">Annuler</button><button type="submit" disabled={advanceSaving} className="btn-primary flex-1">{advanceSaving ? 'Enregistrement…' : 'Enregistrer l’avance'}</button></div>
         </form>
       </Modal>
 

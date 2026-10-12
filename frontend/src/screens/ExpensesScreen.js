@@ -46,6 +46,7 @@ export const ExpensesScreen = () => {
   const [periodMode, setPeriodMode] = useState('month');
   const [selectedMonth, setSelectedMonth] = useState(startOfMonth());
   const [editingExpense, setEditingExpense] = useState(null);
+  const [choicePanel, setChoicePanel] = useState(null);
   const [formData, setFormData] = useState({
     amount: '',
     category: 'purchase',
@@ -108,8 +109,11 @@ export const ExpensesScreen = () => {
   };
 
   const handleAddExpense = async () => {
-    if (!formData.amount) {
-      Alert.alert(t('Erreur'), t('Veuillez saisir un montant'));
+    const wasAdvance = formData.category === 'salary_advances';
+    const wasRecurring = formData.isRecurring;
+    const amount = Number(formData.amount.replace(',', '.'));
+    if (!formData.amount.trim() || !Number.isFinite(amount) || amount <= 0) {
+      Alert.alert(t('Erreur'), t('Saisissez un montant positif'));
       return;
     }
     if (formData.category === 'salary_advances' && !formData.userId) {
@@ -124,7 +128,7 @@ export const ExpensesScreen = () => {
 
     try {
       const expenseData = {
-        amount: parseFloat(formData.amount),
+        amount,
         category: formData.category,
         description: formData.description,
         userId: formData.userId,
@@ -143,7 +147,7 @@ export const ExpensesScreen = () => {
       loadExpenses();
       loadRecurringExpenses();
       if (isAdmin) loadPayroll();
-      Alert.alert(t('Succès'), formData.isRecurring ? t('Dépense récurrente ajoutée avec succès') : t('Dépense ajoutée avec succès'));
+      Alert.alert(t('Succès'), wasAdvance ? t('Avance enregistrée et déduite de la paie du mois') : wasRecurring ? t('Dépense récurrente ajoutée avec succès') : t('Dépense ajoutée avec succès'));
     } catch (error) {
       Alert.alert(t('Erreur'), t("Impossible d'ajouter la dépense"));
     }
@@ -163,8 +167,10 @@ export const ExpensesScreen = () => {
   };
 
   const handleUpdateExpense = async () => {
-    if (!formData.amount) {
-      Alert.alert(t('Erreur'), t('Veuillez saisir un montant'));
+    const wasAdvance = formData.category === 'salary_advances';
+    const amount = Number(formData.amount.replace(',', '.'));
+    if (!formData.amount.trim() || !Number.isFinite(amount) || amount <= 0) {
+      Alert.alert(t('Erreur'), t('Saisissez un montant positif'));
       return;
     }
     if (formData.category === 'salary_advances' && !formData.userId) {
@@ -174,7 +180,7 @@ export const ExpensesScreen = () => {
 
     try {
       const expenseData = {
-        amount: parseFloat(formData.amount),
+        amount,
         category: formData.category,
         description: formData.description,
         userId: formData.userId,
@@ -187,7 +193,7 @@ export const ExpensesScreen = () => {
       setModalVisible(false);
       loadExpenses();
       if (isAdmin) loadPayroll();
-      Alert.alert(t('Succès'), t('Dépense modifiée avec succès'));
+      Alert.alert(t('Succès'), wasAdvance ? t('Avance modifiée') : t('Dépense modifiée avec succès'));
     } catch (error) {
       Alert.alert(t('Erreur'), t('Impossible de modifier la dépense'));
     }
@@ -218,9 +224,10 @@ export const ExpensesScreen = () => {
   };
 
   const handleCloseModal = () => {
+    setChoicePanel(null);
     setModalVisible(false);
     setEditingExpense(null);
-    setFormData({ amount: '', category: 'purchase', description: '', isRecurring: false, recurringDay: '1' });
+    setFormData({ amount: '', category: 'purchase', description: '', userId: '', isRecurring: false, recurringDay: '1' });
   };
 
   const handleDeleteRecurring = async (id) => {
@@ -358,6 +365,15 @@ export const ExpensesScreen = () => {
   const totalRecurring = (recurringExpenses && Array.isArray(recurringExpenses)) ? recurringExpenses.reduce((sum, expense) => sum + expense.amount, 0) : 0;
   const totalPayroll = payrollData?.totals?.totalPayroll || 0;
   const totalCharges = totalExpenses + totalPayroll;
+  const categoryChoices = [
+    ...EXPENSE_CATEGORIES.filter(({ value }) => value !== 'salary_advances'),
+    ...LEGACY_EXPENSE_CATEGORIES.filter(({ value }) => value === formData.category),
+  ];
+  const employeeChoices = [
+    ...(editingExpense?.userId?.deletedAt ? [{ _id: editingExpense.userId._id, fullName: `${editingExpense.userId.fullName || editingExpense.userId.username} (archivé)` }] : []),
+    ...employees,
+  ];
+  const selectedEmployee = employeeChoices.find(emp => emp._id === formData.userId);
 
   const renderPayrollItem = ({ item }) => (
     <Card style={styles.expenseItem}>
@@ -527,7 +543,7 @@ export const ExpensesScreen = () => {
         transparent
         statusBarTranslucent
         navigationBarTranslucent
-        onRequestClose={handleCloseModal}
+        onRequestClose={() => choicePanel ? setChoicePanel(null) : handleCloseModal()}
       >
         <KeyboardAvoidingView
           style={styles.modalOverlay}
@@ -545,39 +561,47 @@ export const ExpensesScreen = () => {
             <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>
-                  {editingExpense ? t('Modifier la dépense') : t('Nouvelle dépense')}
+                  {choicePanel === 'category' ? t('Catégorie *') : choicePanel === 'employee' ? t('Salarié concerné *') : formData.category === 'salary_advances' ? t('Avance sur salaire') : editingExpense ? t('Modifier la dépense') : t('Nouvelle dépense')}
                 </Text>
-                <TouchableOpacity onPress={handleCloseModal}>
-                  <Ionicons name="close" size={24} color={colors.text} />
+                <TouchableOpacity onPress={() => choicePanel ? setChoicePanel(null) : handleCloseModal()}>
+                  <Ionicons name={choicePanel ? 'arrow-back' : 'close'} size={24} color={colors.text} />
                 </TouchableOpacity>
               </View>
 
-              {formData.category === 'salary_advances' && <View style={styles.pickerContainer}>
-                <Text style={styles.pickerLabel}>{t('Salarié concerné *')}</Text>
-                <View style={styles.pickerWrapper}><Picker selectedValue={formData.userId} onValueChange={(value) => setFormData(prev => ({ ...prev, userId: value, isRecurring: false }))} style={styles.picker}>
-                  <Picker.Item label={t('Choisir un salarié')} value="" />
-                  {editingExpense?.userId?.deletedAt && <Picker.Item label={`${editingExpense.userId.fullName || editingExpense.userId.username} (archivé)`} value={editingExpense.userId._id} />}
-                  {employees.filter(emp => !emp.deletedAt || emp._id === formData.userId).map(emp => <Picker.Item key={emp._id} label={emp.fullName || emp.username} value={emp._id} />)}
-                </Picker></View>
-              </View>}
-
+              {choicePanel ? (
+                <View style={styles.choiceList}>
+                  {(choicePanel === 'category' ? categoryChoices : employeeChoices.map(emp => ({ value: emp._id, label: emp.fullName || emp.username }))).map(({ value, label }) => (
+                    <TouchableOpacity key={value} style={styles.choiceRow} onPress={() => {
+                      setFormData(prev => ({ ...prev, [choicePanel === 'category' ? 'category' : 'userId']: value }));
+                      setChoicePanel(null);
+                    }}>
+                      <Text style={styles.choiceText}>{choicePanel === 'category' ? t(label) : label}</Text>
+                      {(choicePanel === 'category' ? formData.category : formData.userId) === value && <Ionicons name="checkmark-circle" size={22} color={colors.primary} />}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : <>
               <View style={styles.pickerContainer}>
-                <Text style={styles.pickerLabel}>{t('Catégorie *')}</Text>
-                <View style={styles.pickerWrapper}>
-                  <Picker
-                    selectedValue={formData.category}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, category: value, isRecurring: value === 'salary_advances' ? false : prev.isRecurring }))}
-                    style={styles.picker}
-                  >
-                    {EXPENSE_CATEGORIES.map(({ value, label }) => (
-                      <Picker.Item key={value} label={t(label)} value={value} />
-                    ))}
-                    {LEGACY_EXPENSE_CATEGORIES.filter(({ value }) => value === formData.category).map(({ value, label }) => (
-                      <Picker.Item key={value} label={t(label)} value={value} />
-                    ))}
-                  </Picker>
+                <Text style={styles.pickerLabel}>{t('Type d’opération')}</Text>
+                <View style={styles.operationRow}>
+                  <TouchableOpacity style={[styles.operationButton, formData.category !== 'salary_advances' && styles.operationSelected]} onPress={() => setFormData(prev => prev.category === 'salary_advances' ? { ...prev, category: 'purchase', userId: '' } : prev)}><Text style={styles.choiceText}>{t('Dépense')}</Text></TouchableOpacity>
+                  <TouchableOpacity style={[styles.operationButton, formData.category === 'salary_advances' && styles.operationSelected]} onPress={() => setFormData(prev => ({ ...prev, category: 'salary_advances', isRecurring: false }))}><Text style={styles.choiceText}>{t('Avance sur salaire')}</Text></TouchableOpacity>
                 </View>
               </View>
+
+              {formData.category === 'salary_advances' ? <View style={styles.pickerContainer}>
+                <Text style={styles.pickerLabel}>{t('Salarié concerné *')}</Text>
+                <TouchableOpacity style={styles.choiceField} onPress={() => setChoicePanel('employee')}>
+                  <Text style={styles.choiceText}>{selectedEmployee?.fullName || selectedEmployee?.username || t('Choisir un salarié')}</Text>
+                  <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View> : <View style={styles.pickerContainer}>
+                <Text style={styles.pickerLabel}>{t('Catégorie *')}</Text>
+                <TouchableOpacity style={styles.choiceField} onPress={() => setChoicePanel('category')}>
+                  <Text style={styles.choiceText}>{t(categoryChoices.find(({ value }) => value === formData.category)?.label || formData.category)}</Text>
+                  <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>}
 
               <Input
                 label={t('Montant *')}
@@ -637,11 +661,12 @@ export const ExpensesScreen = () => {
               )}
 
               <Button
-                title={editingExpense
+                title={formData.category === 'salary_advances' ? t('Enregistrer l’avance') : editingExpense
                   ? t('Modifier la dépense')
                   : (formData.isRecurring ? t('Ajouter la dépense récurrente') : t('Ajouter la dépense'))}
                 onPress={editingExpense ? handleUpdateExpense : handleAddExpense}
               />
+              </>}
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -801,6 +826,57 @@ const createStyles = (colors) => ({
   },
   picker: {
     height: 50,
+  },
+  operationRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  operationButton: {
+    flex: 1,
+    minHeight: 54,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  operationSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '18',
+  },
+  choiceField: {
+    minHeight: 54,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  choiceList: {
+    gap: 8,
+    paddingBottom: 12,
+  },
+  choiceRow: {
+    minHeight: 54,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  choiceText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+    flexShrink: 1,
   },
   tabsContainer: {
     flexDirection: 'row',
