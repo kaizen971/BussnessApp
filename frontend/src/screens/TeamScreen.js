@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,7 +12,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToneSurface as LinearGradient } from '../components/ToneSurface';
@@ -76,21 +74,6 @@ export const TeamScreen = ({ navigation }) => {
   const [payrollLoading, setPayrollLoading] = useState(false);
   const [payrollMonth, setPayrollMonth] = useState(new Date().getMonth() + 1);
   const [payrollYear, setPayrollYear] = useState(new Date().getFullYear());
-
-  useFocusEffect(useCallback(() => {
-    if (Platform.OS !== 'android') return undefined;
-
-    const backSubscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (navigation.canGoBack()) {
-        navigation.goBack();
-      } else {
-        navigation.navigate('Main', { screen: 'More' });
-      }
-      return true;
-    });
-
-    return () => backSubscription.remove();
-  }, [navigation]));
 
   useEffect(() => {
     loadUsers();
@@ -772,7 +755,7 @@ export const TeamScreen = ({ navigation }) => {
         }
       />
 
-      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
+      {modalVisible && <Modal visible animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalContainer}>
           <LinearGradient
             colors={[colors.surface, colors.background]}
@@ -917,11 +900,11 @@ export const TeamScreen = ({ navigation }) => {
             </View>
           </LinearGradient>
         </View>
-      </Modal>
+      </Modal>}
 
       {/* Modal de changement de rôle */}
-      <Modal 
-        visible={roleModalVisible} 
+      {roleModalVisible && <Modal
+        visible
         animationType="fade" 
         transparent
         onRequestClose={() => setRoleModalVisible(false)}
@@ -988,10 +971,10 @@ export const TeamScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      </Modal>}
 
-      <Modal
-        visible={!!deleteTarget}
+      {!!deleteTarget && <Modal
+        visible
         animationType="fade"
         transparent
         onRequestClose={() => { if (!deleteLoading) setDeleteTarget(null); }}
@@ -1015,11 +998,11 @@ export const TeamScreen = ({ navigation }) => {
             </View>
           </View>
         </View>
-      </Modal>
+      </Modal>}
 
       {/* Modal de modification de commission - Améliorée */}
-      <Modal 
-        visible={commissionModalVisible} 
+      {commissionModalVisible && <Modal
+        visible
         animationType="slide" 
         transparent
         onRequestClose={() => setCommissionModalVisible(false)}
@@ -1215,11 +1198,11 @@ export const TeamScreen = ({ navigation }) => {
             </View>
           </View>
         </View>
-      </Modal>
+      </Modal>}
 
       {/* Modal de modification du salaire horaire */}
-      <Modal 
-        visible={salaryModalVisible} 
+      {salaryModalVisible && <Modal
+        visible
         animationType="slide" 
         transparent
         onRequestClose={() => setSalaryModalVisible(false)}
@@ -1430,10 +1413,10 @@ export const TeamScreen = ({ navigation }) => {
             </View>
           </View>
         </View>
-      </Modal>
+      </Modal>}
 
       {/* Enregistrer une avance depuis l'équipe */}
-      <Modal visible={!!advanceTarget} animationType="slide" transparent onRequestClose={() => !advanceSaving && setAdvanceTarget(null)}>
+      {!!advanceTarget && <Modal visible animationType="slide" transparent onRequestClose={() => !advanceSaving && setAdvanceTarget(null)}>
         <KeyboardAvoidingView style={styles.commissionModalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <TouchableOpacity style={styles.commissionModalBackdrop} activeOpacity={1} onPress={() => !advanceSaving && setAdvanceTarget(null)} />
           <View style={[styles.commissionModalContainer, { padding: 20 }]}>
@@ -1446,11 +1429,11 @@ export const TeamScreen = ({ navigation }) => {
             <Button title={t('Annuler')} variant="outline" onPress={() => setAdvanceTarget(null)} disabled={advanceSaving} style={{ marginTop: 10 }} />
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </Modal>}
 
       {/* Modal Masse salariale */}
-      <Modal
-        visible={payrollModalVisible}
+      {payrollModalVisible && <Modal
+        visible
         animationType="slide"
         transparent
         onRequestClose={() => setPayrollModalVisible(false)}
@@ -1609,11 +1592,11 @@ export const TeamScreen = ({ navigation }) => {
             ) : null}
           </View>
         </View>
-      </Modal>
+      </Modal>}
 
       {/* Modal de modification des informations */}
-      <Modal
-        visible={editInfoModalVisible}
+      {editInfoModalVisible && <Modal
+        visible
         animationType="slide"
         transparent
         onRequestClose={() => setEditInfoModalVisible(false)}
@@ -1816,7 +1799,7 @@ export const TeamScreen = ({ navigation }) => {
             </View>
           </View>
         </View>
-      </Modal>
+      </Modal>}
     </View>
   );
 };

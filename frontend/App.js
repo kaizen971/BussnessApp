@@ -1,5 +1,5 @@
 import React from 'react';
-import { DarkTheme, DefaultTheme, NavigationContainer, useFocusEffect } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -79,44 +79,12 @@ const TAB_ICONS = {
   More: ['grid', 'grid-outline'],
 };
 
-const MainTabs = ({ navigation }) => {
+const MainTabs = () => {
   const { colors } = useTheme();
   const { t } = useI18n();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 8);
-
-  useFocusEffect(React.useCallback(() => {
-    if (Platform.OS !== 'android') return undefined;
-
-    const backSubscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      const stackState = navigation.getState();
-      if (stackState.index > 0) {
-        navigation.goBack();
-        return true;
-      }
-
-      const mainRoute = stackState.routes.find((route) => route.name === 'Main');
-      const tabState = mainRoute?.state;
-      const currentTab = tabState?.routes?.[tabState.index]?.name ?? 'Dashboard';
-
-      if (currentTab !== 'Dashboard') {
-        navigation.navigate('Main', { screen: 'Dashboard' });
-      } else {
-        Alert.alert(
-          t('Quitter l’application ?'),
-          t('Voulez-vous fermer l’application ?'),
-          [
-            { text: t('Annuler'), style: 'cancel' },
-            { text: t('Quitter'), onPress: () => BackHandler.exitApp() },
-          ],
-        );
-      }
-      return true;
-    });
-
-    return () => backSubscription.remove();
-  }, [navigation, t]));
 
   return (
     <Tab.Navigator
@@ -307,6 +275,41 @@ const AppNavigator = () => {
   const { isAuthenticated, loading } = useAuth();
   const { isLocked, accessChecked } = useSubscription();
   const { colors, isDark } = useTheme();
+  const { t } = useI18n();
+  const navigationRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+
+    const backSubscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      const navigation = navigationRef.current;
+      if (!navigation?.isReady() || !isAuthenticated || isLocked) return false;
+
+      const state = navigation.getRootState();
+      const activeRoute = state?.routes?.[state.index];
+      if (!activeRoute) return false;
+
+      if (activeRoute.name !== 'Main') {
+        if (navigation.canGoBack()) navigation.goBack();
+        else navigation.navigate('Main', { screen: 'More' });
+        return true;
+      }
+
+      const tabState = activeRoute.state;
+      const currentTab = tabState?.routes?.[tabState.index]?.name ?? 'Dashboard';
+      if (currentTab !== 'Dashboard') {
+        navigation.navigate('Main', { screen: 'Dashboard' });
+      } else {
+        Alert.alert(t('Quitter l’application ?'), t('Voulez-vous fermer l’application ?'), [
+          { text: t('Annuler'), style: 'cancel' },
+          { text: t('Quitter'), onPress: () => BackHandler.exitApp() },
+        ]);
+      }
+      return true;
+    });
+
+    return () => backSubscription.remove();
+  }, [isAuthenticated, isLocked, t]);
 
   // On attend le premier contrôle d'accès pour ne pas afficher l'accueil d'un compte bloqué
   if (loading || (isAuthenticated && !accessChecked)) {
@@ -327,7 +330,7 @@ const AppNavigator = () => {
   };
 
   return (
-    <NavigationContainer theme={navigationTheme}>
+    <NavigationContainer ref={navigationRef} theme={navigationTheme}>
       {!isAuthenticated ? <AuthStack /> : isLocked ? <LockedStack /> : <MainStack />}
     </NavigationContainer>
   );
