@@ -15,6 +15,9 @@ import {
   Share,
   Linking,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -30,6 +33,7 @@ import { salesAPI, productsAPI, customersAPI, usersAPI } from '../services/api';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { getMonthBounds, MONTH_HISTORY_LIMIT, shiftMonth, startOfMonth } from '../utils/monthPeriod';
 import { t, useLanguage, getLocale } from '../i18n';
+import { parseSaleQuantity, isValidSaleItem } from '../utils/saleQuantity';
 
 const { width } = Dimensions.get('window');
 
@@ -56,6 +60,13 @@ export const SalesScreen = () => {
   const [flashingProduct, setFlashingProduct] = useState(null);
   const flashAnim = useRef(new Animated.Value(1)).current;
   const [submitting, setSubmitting] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   const [editSaleModalVisible, setEditSaleModalVisible] = useState(false);
   const [editingSale, setEditingSale] = useState(null);
   const [editCustomerId, setEditCustomerId] = useState('');
@@ -149,28 +160,25 @@ export const SalesScreen = () => {
 
   // Ajouter un produit au panier avec animation
   const handleAddToCart = (productId) => {
+    if (submitting) return;
     const product = products.find(p => p._id === productId);
     if (!product) return;
 
-    const existingItem = cart.find(item => item.productId === productId);
-
-    if (existingItem) {
-      // Augmenter la quantité
-      setCart(cart.map(item =>
-        item.productId === productId
-          ? { ...item, quantity: item.quantity + 1 }
-          : item
-      ));
-    } else {
-      // Ajouter nouveau produit au panier
-      setCart([...cart, {
+    setCart(previous => {
+      const existingItem = previous.find(item => item.productId === productId);
+      if (existingItem) {
+        return previous.map(item => item.productId === productId
+          ? { ...item, quantity: (item.quantity || 0) + 1, quantityDraft: undefined }
+          : item);
+      }
+      return [...previous, {
         productId: product._id,
         productName: product.name,
         quantity: 1,
         unitPrice: product.unitPrice,
         discount: 0,
-      }]);
-    }
+      }];
+    });
 
     // Animation visuelle et son
     setFlashingProduct(productId);
@@ -201,23 +209,16 @@ export const SalesScreen = () => {
     navigation.setParams({ addProductId: undefined });
   }, [catalogueProductId, products]);
 
-  // Modifier la quantité d'un produit dans le panier
-  const updateCartItemQuantity = (productId, quantity) => {
-    if (quantity <= 0) {
-      removeFromCart(productId);
-      return;
-    }
-
-    setCart(cart.map(item =>
-      item.productId === productId
-        ? { ...item, quantity: parseInt(quantity) || 1 }
-        : item
-    ));
+  // A draft may be empty or invalid while the user replaces the quantity.
+  const updateCartItemQuantity = (productId, draft) => {
+    const quantityDraft = String(draft).replace(/\s/g, '');
+    setCart(previous => previous.map(item => item.productId === productId
+      ? { ...item, quantityDraft, quantity: parseSaleQuantity(quantityDraft) }
+      : item));
   };
 
-  // Retirer un produit du panier
   const removeFromCart = (productId) => {
-    setCart(cart.filter(item => item.productId !== productId));
+    setCart(previous => previous.filter(item => item.productId !== productId));
     playSound('error');
   };
 
@@ -242,10 +243,17 @@ export const SalesScreen = () => {
 
   // Valider toutes les ventes du panier
   const handleValidateCart = async () => {
+    if (submitting) return;
     if (cart.length === 0) {
       Alert.alert(t('Panier vide'), t('Ajoutez des produits avant de valider'));
       return;
     }
+
+    if (cart.some(item => !isValidSaleItem(item)) || !Number.isFinite(cartTotal) || cartTotal > Number.MAX_SAFE_INTEGER) {
+      Alert.alert(t('Quantité invalide'), t('Vérifiez les quantités et les montants du panier avant de valider.'));
+      return;
+    }
+    Keyboard.dismiss();
 
     // Validation obligatoire pour les managers : client + vendeur
     if (isAdmin) {
@@ -668,6 +676,9 @@ export const SalesScreen = () => {
     [cart]
   );
 
+  const cartIsValid = cart.every(isValidSaleItem) && Number.isFinite(cartTotal) && cartTotal <= Number.MAX_SAFE_INTEGER;
+  const cartUnits = cart.reduce((sum, item) => sum + (item.quantity || 0), 0);
+
   // Salarié : pas d'accès au CRM, le client est retrouvé côté serveur par son nom
   // (2 lettres minimum, nom uniquement). Le client choisi reste dans la liste.
   useEffect(() => {
@@ -857,12 +868,12 @@ export const SalesScreen = () => {
         transparent
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <LinearGradient
             colors={[colors.surface, colors.background]}
             style={styles.modalContent}
           >
-            <View style={styles.modalHeaderContainer}>
+            <View style={[styles.modalHeaderContainer, keyboardVisible && styles.compactModalHeader]}>
               <LinearGradient
                 colors={[colors.primary + '30', colors.primary + '10']}
                 style={styles.modalHeaderGradient}
@@ -879,7 +890,7 @@ export const SalesScreen = () => {
                 </View>
                 <View style={styles.modalTitleContainer}>
                   <Text style={styles.modalTitle}>{t('Nouvelle vente')}</Text>
-                  <Text style={styles.modalSubtitle}>{t('Ajoutez des produits au panier')}</Text>
+                  {!keyboardVisible && <Text style={styles.modalSubtitle}>{t('Ajoutez des produits au panier')}</Text>}
                 </View>
               </LinearGradient>
               <TouchableOpacity
@@ -892,7 +903,9 @@ export const SalesScreen = () => {
 
             <ScrollView
               style={styles.modalForm}
-              contentContainerStyle={cart.length > 0 ? styles.modalFormWithOverlay : styles.modalFormContent}
+              contentContainerStyle={styles.modalFormContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
               showsVerticalScrollIndicator={false}
             >
               {!isAdmin && (
@@ -1167,6 +1180,86 @@ export const SalesScreen = () => {
                 )}
               </View>
 
+              {/* Panier */}
+              {cart.length > 0 && (
+                <>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>{t('Panier ({length})', { length: cart.length })}</Text>
+                    <Text style={styles.cartItemPrice}>{cartIsValid ? t('{count} unités', { count: cartUnits.toLocaleString(getLocale()) }) : t('À compléter')}</Text>
+                  </View>
+
+                  {cart.map((item) => (
+                    <View key={item.productId} style={styles.cartItem}>
+                      <View style={styles.cartItemInfo}>
+                        <Text style={styles.cartItemName}>{item.productName}</Text>
+                        <Text style={styles.cartItemPrice}>
+                          {formatPrice(item.unitPrice)} {t('par unité')} · {isValidSaleItem(item) ? formatPrice(item.unitPrice * item.quantity) : '—'}
+                        </Text>
+                      </View>
+                      <Text style={styles.quantityLabel}>{t('Quantité')}</Text>
+                      <View style={styles.cartItemActions}>
+                        <View style={styles.quantityControls}>
+                          <TouchableOpacity
+                            style={styles.quantityButton}
+                            onPress={() => updateCartItemQuantity(item.productId, item.quantity - 1)}
+                            disabled={submitting || !item.quantity || item.quantity <= 1}
+                            accessibilityLabel={t('Diminuer la quantité de {name}', { name: item.productName })}
+                            accessibilityRole="button"
+                          >
+                            <Ionicons name="remove" size={20} color={colors.primary} />
+                          </TouchableOpacity>
+                          <TextInput
+                            style={[styles.quantityInput, !isValidSaleItem(item) && styles.quantityInputInvalid]}
+                            value={item.quantityDraft ?? String(item.quantity)}
+                            onChangeText={(text) => updateCartItemQuantity(item.productId, text)}
+                            keyboardType="number-pad"
+                            selectTextOnFocus
+                            editable={!submitting}
+                            accessibilityLabel={t('Quantité de {name}', { name: item.productName })}
+                            returnKeyType="done"
+                            onSubmitEditing={() => Keyboard.dismiss()}
+                          />
+                          <TouchableOpacity
+                            style={styles.quantityButton}
+                            onPress={() => updateCartItemQuantity(item.productId, (item.quantity || 0) + 1)}
+                            disabled={submitting}
+                            accessibilityLabel={t('Augmenter la quantité de {name}', { name: item.productName })}
+                            accessibilityRole="button"
+                          >
+                            <Ionicons name="add" size={20} color={colors.primary} />
+                          </TouchableOpacity>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.deleteButton}
+                          onPress={() => removeFromCart(item.productId)}
+                          disabled={submitting}
+                          accessibilityLabel={t('Retirer {name} du panier', { name: item.productName })}
+                          accessibilityRole="button"
+                        >
+                          <Ionicons name="trash-outline" size={20} color={colors.danger} />
+                        </TouchableOpacity>
+                      </View>
+                      <View style={styles.quantityShortcuts}>
+                        {[10, 100, 1000].map(step => (
+                          <TouchableOpacity
+                            key={step}
+                            style={styles.quantityShortcut}
+                            disabled={submitting}
+                            onPress={() => updateCartItemQuantity(item.productId, (item.quantity || 0) + step)}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('Ajouter {count} unités de {name}', { count: step, name: item.productName })}
+                          >
+                            <Text style={styles.quantityShortcutText}>+{step.toLocaleString(getLocale())}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      {!isValidSaleItem(item) && <Text style={styles.quantityError}>{t('Saisissez une quantité entière supérieure à 0 et un montant valide.')}</Text>}
+                    </View>
+                  ))}
+
+                </>
+              )}
+
               {/* Sélection des produits */}
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>{t('Produits')}</Text>
@@ -1244,7 +1337,7 @@ export const SalesScreen = () => {
                           </View>
                           {inCart && (
                             <View style={styles.productListBadge}>
-                              <Text style={styles.productBadgeText}>{inCart.quantity}</Text>
+                              <Text style={styles.productBadgeText}>{inCart.quantity ?? '—'}</Text>
                             </View>
                           )}
                           <Ionicons
@@ -1280,7 +1373,7 @@ export const SalesScreen = () => {
                         </View>
                         {inCart && (
                           <View style={styles.productBadge}>
-                            <Text style={styles.productBadgeText}>{inCart.quantity}</Text>
+                            <Text style={styles.productBadgeText}>{inCart.quantity ?? '—'}</Text>
                           </View>
                         )}
                       </TouchableOpacity>
@@ -1290,75 +1383,19 @@ export const SalesScreen = () => {
                 ListEmptyComponent={<Text style={styles.emptyText}>{t('Aucun produit disponible')}</Text>}
               />
 
-              {/* Panier */}
-              {cart.length > 0 && (
-                <>
-                  <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>{t('Panier ({length})', { length: cart.length })}</Text>
-                  </View>
-
-                  {cart.map((item) => (
-                    <View key={item.productId} style={styles.cartItem}>
-                      <View style={styles.cartItemInfo}>
-                        <Text style={styles.cartItemName}>{item.productName}</Text>
-                        <Text style={styles.cartItemPrice}>
-                          {formatPrice(item.unitPrice)} x {item.quantity} = {formatPrice(item.unitPrice * item.quantity)}
-                        </Text>
-                      </View>
-                      <View style={styles.cartItemActions}>
-                        <View style={styles.quantityControls}>
-                          <TouchableOpacity
-                            style={styles.quantityButton}
-                            onPress={() => updateCartItemQuantity(item.productId, item.quantity - 1)}
-                          >
-                            <Ionicons name="remove" size={20} color={colors.primary} />
-                          </TouchableOpacity>
-                          <TextInput
-                            style={styles.quantityInput}
-                            value={String(item.quantity)}
-                            onChangeText={(text) => {
-                              const value = text.replace(/[^0-9]/g, '');
-                              if (value === '' || value === '0') {
-                                updateCartItemQuantity(item.productId, 0);
-                              } else {
-                                updateCartItemQuantity(item.productId, parseInt(value));
-                              }
-                            }}
-                            keyboardType="numeric"
-                            selectTextOnFocus
-                            maxLength={4}
-                          />
-                          <TouchableOpacity
-                            style={styles.quantityButton}
-                            onPress={() => updateCartItemQuantity(item.productId, item.quantity + 1)}
-                          >
-                            <Ionicons name="add" size={20} color={colors.primary} />
-                          </TouchableOpacity>
-                        </View>
-                        <TouchableOpacity
-                          style={styles.deleteButton}
-                          onPress={() => removeFromCart(item.productId)}
-                        >
-                          <Ionicons name="trash-outline" size={20} color={colors.danger} />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))}
-
-                </>
-              )}
             </ScrollView>
 
             {cart.length > 0 && (
               <View style={styles.validateOverlay}>
                 <View style={styles.validateOverlaySummary}>
                   <Text style={styles.validateOverlayLabel}>{t('Total panier')}</Text>
-                  <Text style={styles.validateOverlayTotal}>{formatPrice(cartTotal)}</Text>
+                  <Text style={styles.validateOverlayTotal}>{cartIsValid ? formatPrice(cartTotal) : '—'}</Text>
                 </View>
                 <TouchableOpacity
-                  style={styles.validateOverlayButtonWrapper}
-                  onPress={handleValidateCart}
-                  disabled={submitting}
+                  onPress={keyboardVisible ? () => Keyboard.dismiss() : handleValidateCart}
+                  disabled={submitting || (!keyboardVisible && !cartIsValid)}
+                  accessibilityRole="button"
+                  style={[styles.validateOverlayButtonWrapper, !cartIsValid && !keyboardVisible && { opacity: 0.5 }]}
                 >
                   <LinearGradient
                     colors={[colors.primary, colors.primaryDark]}
@@ -1370,17 +1407,17 @@ export const SalesScreen = () => {
                       <>
                         <Ionicons name="checkmark-circle" size={22} color={colors.onPrimary} />
                         <Text style={styles.validateButtonText}>
-                          {t('Valider {length} vente(s)', { length: cart.length })}
+                          {keyboardVisible ? t('Terminer la saisie') : t('Enregistrer la vente')}
                         </Text>
                       </>
                     )}
                   </LinearGradient>
                 </TouchableOpacity>
-                <View style={styles.validateOverlayActions}>
+                {!keyboardVisible && <View style={styles.validateOverlayActions}>
                   <TouchableOpacity
                     style={[styles.shareCartButton, styles.validateOverlaySecondaryButton]}
                     onPress={() => handleShareCart()}
-                    disabled={submitting}
+                    disabled={submitting || !cartIsValid}
                   >
                     <Ionicons name="share-social-outline" size={18} color={colors.primary} />
                     <Text style={styles.shareCartButtonText}>{t('Partager')}</Text>
@@ -1394,11 +1431,11 @@ export const SalesScreen = () => {
                     <Ionicons name="trash-outline" size={18} color={colors.error} />
                     <Text style={styles.clearButtonText}>{t('Vider')}</Text>
                   </TouchableOpacity>
-                </View>
+                </View>}
               </View>
             )}
           </LinearGradient>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       {/* Modal de modification d'une vente */}
       <Modal
@@ -1837,8 +1874,8 @@ const createStyles = (colors) => ({
     marginLeft: 8,
   },
   shareSaleButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: 18,
     backgroundColor: colors.primary + '20',
     alignItems: 'center',
@@ -1847,8 +1884,8 @@ const createStyles = (colors) => ({
     borderColor: colors.primary + '30',
   },
   editSaleButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: 18,
     backgroundColor: colors.accent + '20',
     alignItems: 'center',
@@ -2043,7 +2080,7 @@ const createStyles = (colors) => ({
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     paddingBottom: 30,
-    maxHeight: '92%',
+    height: '92%',
     borderTopWidth: 2,
     borderColor: colors.primary + '40',
     position: 'relative',
@@ -2095,13 +2132,14 @@ const createStyles = (colors) => ({
     zIndex: 10,
   },
   modalForm: {
+    flex: 1,
     paddingHorizontal: 20,
   },
   modalFormContent: {
     paddingBottom: 16,
   },
-  modalFormWithOverlay: {
-    paddingBottom: 196,
+  compactModalHeader: {
+    paddingVertical: 8,
   },
   employeeInfo: {
     flexDirection: 'row',
@@ -2163,8 +2201,8 @@ const createStyles = (colors) => ({
     gap: 8,
   },
   viewModeButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: 8,
     backgroundColor: colors.background,
     borderWidth: 1,
@@ -2283,10 +2321,6 @@ const createStyles = (colors) => ({
     elevation: 3,
   },
   validateOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 18,
@@ -2521,7 +2555,14 @@ const createStyles = (colors) => ({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  quantityLabel: { fontSize: 12, color: colors.textSecondary, marginBottom: 6 },
+  quantityInputInvalid: { borderColor: colors.danger },
+  quantityError: { fontSize: 12, color: colors.danger, marginTop: 8 },
+  quantityShortcuts: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  quantityShortcut: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: colors.primary + '12' },
+  quantityShortcutText: { color: colors.primary, fontWeight: '600', fontSize: 13 },
   quantityControls: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primary + '10',
@@ -2529,15 +2570,16 @@ const createStyles = (colors) => ({
     padding: 4,
   },
   quantityButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: 18,
     backgroundColor: colors.primary + '20',
     alignItems: 'center',
     justifyContent: 'center',
   },
   quantityInput: {
-    minWidth: 50,
+    flex: 1,
+    minWidth: 80,
     height: 50,
     backgroundColor: colors.surface,
     borderRadius: 8,
@@ -2552,8 +2594,8 @@ const createStyles = (colors) => ({
     paddingVertical: 5,
   },
   deleteButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 20,
     backgroundColor: colors.danger + '20',
     alignItems: 'center',
@@ -2677,8 +2719,8 @@ const createStyles = (colors) => ({
     color: colors.textLight,
   },
   changePartyButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
