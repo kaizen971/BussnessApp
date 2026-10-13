@@ -1,0 +1,70 @@
+name: Serveur Lightsail
+
+on:
+  push:
+    branches: [master, enhancefeature]
+    paths:
+      - 'backend/**'
+      - 'backoffice/**'
+      - 'webapp/**'
+      - 'scripts/deploy-server.sh'
+      - '.github/workflows/server.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lightsail-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    if: github.ref_name == vars.LIGHTSAIL_BRANCH
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: server-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Vérifier le serveur
+        run: node --check backend/server.js
+      - name: Construire le back-office
+        working-directory: backoffice
+        run: npm ci && npm run build
+      - name: Construire la webapp
+        working-directory: webapp
+        run: npm ci && npm run build
+      - name: Préparer les fichiers web
+        run: tar -czf "$RUNNER_TEMP/web-dist.tar.gz" backoffice/dist webapp/dist
+      - name: Configurer SSH
+        env:
+          LIGHTSAIL_SSH_KEY: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          LIGHTSAIL_KNOWN_HOSTS: ${{ secrets.LIGHTSAIL_KNOWN_HOSTS }}
+        run: |
+          test -n "$LIGHTSAIL_SSH_KEY"
+          test -n "$LIGHTSAIL_KNOWN_HOSTS"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$LIGHTSAIL_SSH_KEY" > ~/.ssh/lightsail_key
+          chmod 600 ~/.ssh/lightsail_key
+          printf '%s\n' "$LIGHTSAIL_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Copier et déployer
+        env:
+          LIGHTSAIL_HOST: ${{ vars.LIGHTSAIL_HOST }}
+          LIGHTSAIL_USER: ${{ vars.LIGHTSAIL_USER }}
+        run: |
+          test -n "$LIGHTSAIL_HOST"
+          test -n "$LIGHTSAIL_USER"
+          remote="$LIGHTSAIL_USER@$LIGHTSAIL_HOST"
+          archive="/tmp/bussnessapp-${GITHUB_SHA}.tar.gz"
+          scp -i ~/.ssh/lightsail_key -o StrictHostKeyChecking=yes "$RUNNER_TEMP/web-dist.tar.gz" "$remote:$archive"
+          ssh -i ~/.ssh/lightsail_key -o StrictHostKeyChecking=yes "$remote" \
+            'bash -s' -- "$GITHUB_SHA" "$archive" "$GITHUB_REF_NAME" < scripts/deploy-server.sh
+      - name: Vérifier le site public
+        run: |
+          curl --fail --show-error --silent --retry 5 --retry-delay 3 https://businessapp.installpostiz.com/BussnessApp >/dev/null
+          curl --fail --show-error --silent --retry 5 --retry-delay 3 https://businessapp.installpostiz.com/admin/ >/dev/null
+          curl --fail --show-error --silent --retry 5 --retry-delay 3 https://businessapp.installpostiz.com/app/ >/dev/null

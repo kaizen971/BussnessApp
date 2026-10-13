@@ -1,12 +1,15 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import logo from '../assets/icon/dashboard.png';
+import { t, useLanguage } from '../i18n';
 
 export const OnboardingScreen = ({ navigation }) => {
+  useLanguage();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
@@ -14,25 +17,25 @@ export const OnboardingScreen = ({ navigation }) => {
     if (module === 'simulation') {
       navigation.navigate('Simulation');
     } else if (module === 'business') {
-      navigation.navigate('Dashboard');
+      navigation.navigate('Main', { screen: 'Dashboard' });
     } else if (module === 'tutorial') {
       navigation.navigate('Tutorial');
     }
   };
 
   return (
-    <LinearGradient colors={[colors.primary, colors.secondary]} style={styles.container}>
+    <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Image source={logo} style={styles.logo} />
-          <Text style={styles.appName}>Entreprendre avec succès - EAS</Text>
+          <Text style={styles.appName}>{t('Entreprendre avec succès - EAS')}</Text>
           {isAdmin && (
-            <Text style={styles.slogan}>Valide ton idée. Pilote ton business. Simplement.</Text>
+            <Text style={styles.slogan}>{t('Valide ton idée. Pilote ton business. Simplement.')}</Text>
           )}
         </View>
 
         <View style={styles.content}>
-          <Text style={styles.question}>Que veux-tu faire aujourd'hui ?</Text>
+          <Text style={styles.question}>{t("Que veux-tu faire aujourd'hui ?")}</Text>
           {isAdmin && (
             <TouchableOpacity
               style={styles.card}
@@ -40,14 +43,14 @@ export const OnboardingScreen = ({ navigation }) => {
               activeOpacity={0.8}
             >
               <View style={styles.cardIcon}>
-                <Ionicons name="school-outline" size={50} color={colors.accent} />
+                <Ionicons name="school-outline" size={22} color={colors.primary} />
               </View>
-              <Text style={styles.cardTitle}>Tutoriel de Démarrage</Text>
-              <Text style={styles.cardDescription}>
-                Guide étape par étape pour configurer votre business (Recommandé)
-              </Text>
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>{t('Guide de démarrage')}</Text>
+                <Text style={styles.cardDescription}>{t('Configurez votre business étape par étape')}</Text>
+              </View>
               <View style={styles.cardArrow}>
-                <Ionicons name="arrow-forward" size={24} color={colors.accent} />
+                <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
               </View>
             </TouchableOpacity>
           )}
@@ -58,14 +61,14 @@ export const OnboardingScreen = ({ navigation }) => {
               activeOpacity={0.8}
             >
               <View style={styles.cardIcon}>
-                <Ionicons name="bulb" size={50} color={colors.primary} />
+                <Ionicons name="calculator-outline" size={22} color={colors.primary} />
               </View>
-              <Text style={styles.cardTitle}>Valider une idée de business ou de produit</Text>
-              <Text style={styles.cardDescription}>
-                Simule la rentabilité, calcule ton point mort et crée ton business plan
-              </Text>
+              <View style={styles.cardContent}>
+                <Text style={styles.cardTitle}>{t('Simuler une activité')}</Text>
+                <Text style={styles.cardDescription}>{t('Rentabilité, point mort et business plan')}</Text>
+              </View>
               <View style={styles.cardArrow}>
-                <Ionicons name="arrow-forward" size={24} color={colors.primary} />
+                <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
               </View>
             </TouchableOpacity>
           )}
@@ -76,48 +79,48 @@ export const OnboardingScreen = ({ navigation }) => {
             activeOpacity={0.8}
           >
             <View style={styles.cardIcon}>
-              <Ionicons name="trending-up" size={50} color={colors.secondary} />
+              <Ionicons name="analytics-outline" size={22} color={colors.primary} />
             </View>
-            <Text style={styles.cardTitle}>Suivre mon business en cours</Text>
-            <Text style={styles.cardDescription}>
-              Gère tes ventes, dépenses, stock et clients au quotidien
-            </Text>
+            <View style={styles.cardContent}>
+              <Text style={styles.cardTitle}>{t('Accéder à mon activité')}</Text>
+              <Text style={styles.cardDescription}>{t('Ventes, dépenses, stock et clients')}</Text>
+            </View>
             <View style={styles.cardArrow}>
-              <Ionicons name="arrow-forward" size={24} color={colors.secondary} />
+              <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
             </View>
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </LinearGradient>
+    </View>
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 40,
+    paddingBottom: 32,
   },
   header: {
     alignItems: 'center',
-    paddingTop: 60,
-    paddingBottom: 40,
+    paddingTop: 64,
+    paddingBottom: 28,
   },
   appName: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginTop: 20,
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 14,
     textAlign: 'center',
   },
   slogan: {
-    fontSize: 16,
-    color: '#fff',
+    fontSize: 14,
+    color: colors.textLight,
     textAlign: 'center',
-    marginTop: 10,
-    opacity: 0.9,
+    marginTop: 8,
     paddingHorizontal: 40,
   },
   content: {
@@ -125,49 +128,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   question: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-    textAlign: 'center',
-    marginBottom: 30,
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
   },
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 25,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   cardIcon: {
+    width: 40,
+    height: 40,
     alignItems: 'center',
-    marginBottom: 15,
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: colors.primary + '18',
+    marginRight: 12,
+  },
+  cardContent: {
+    flex: 1,
   },
   cardTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1A1A1A',
-    marginBottom: 10,
-    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
   },
   cardDescription: {
-    fontSize: 14,
-    color: '#333333',
-    textAlign: 'center',
-    lineHeight: 20,
+    fontSize: 12,
+    color: colors.textLight,
+    lineHeight: 17,
+    marginTop: 3,
   },
   cardArrow: {
-    alignItems: 'flex-end',
-    marginTop: 10,
+    marginLeft: 8,
   },
   logo: {
-    width: 100,
-    height: 100,
+    width: 72,
+    height: 72,
     resizeMode: 'contain',
-    borderRadius: 50,
+    borderRadius: 12,
     overflow: 'hidden',
   },
 });

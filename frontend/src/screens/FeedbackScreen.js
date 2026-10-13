@@ -13,10 +13,15 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
+import { EmptyState, FloatingActionButton } from '../components/AppPrimitives';
 import { feedbackAPI } from '../services/api';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { t, useLanguage, getLocale } from '../i18n';
 
 export const FeedbackScreen = () => {
+  useLanguage();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const [feedbacks, setFeedbacks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,7 +41,7 @@ export const FeedbackScreen = () => {
       setFeedbacks(response.data);
     } catch (error) {
       console.error('Error loading feedbacks:', error);
-      Alert.alert('Erreur', 'Impossible de charger les feedbacks');
+      Alert.alert(t('Erreur'), t('Impossible de charger les feedbacks'));
     } finally {
       setLoading(false);
     }
@@ -44,7 +49,7 @@ export const FeedbackScreen = () => {
 
   const handleSubmitFeedback = async () => {
     if (!formData.message) {
-      Alert.alert('Erreur', 'Veuillez saisir un message');
+      Alert.alert(t('Erreur'), t('Veuillez saisir un message'));
       return;
     }
 
@@ -57,35 +62,35 @@ export const FeedbackScreen = () => {
       setFormData({ type: 'feature', message: '' });
       setModalVisible(false);
       loadFeedbacks();
-      Alert.alert('Succès', 'Feedback envoyé avec succès');
+      Alert.alert(t('Succès'), t('Feedback envoyé avec succès'));
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible d\'envoyer le feedback');
+      Alert.alert(t('Erreur'), t("Impossible d'envoyer le feedback"));
     }
   };
 
   const getTypeInfo = (type) => {
     switch (type) {
       case 'bug':
-        return { label: 'Bug', icon: 'bug-outline', color: colors.error };
+        return { label: t('Bug'), icon: 'bug-outline', color: colors.error };
       case 'feature':
-        return { label: 'Fonctionnalité', icon: 'bulb-outline', color: colors.primary };
+        return { label: t('Fonctionnalité'), icon: 'bulb-outline', color: colors.primary };
       case 'improvement':
-        return { label: 'Amélioration', icon: 'trending-up-outline', color: colors.accent };
+        return { label: t('Amélioration'), icon: 'trending-up-outline', color: colors.accent };
       default:
-        return { label: 'Autre', icon: 'chatbubble-outline', color: colors.textSecondary };
+        return { label: t('Autre'), icon: 'chatbubble-outline', color: colors.textSecondary };
     }
   };
 
   const getStatusInfo = (status) => {
     switch (status) {
       case 'pending':
-        return { label: 'En attente', color: colors.accent };
+        return { label: t('En attente'), color: colors.accent };
       case 'in_review':
-        return { label: 'En cours', color: colors.info };
+        return { label: t('En cours'), color: colors.info };
       case 'resolved':
-        return { label: 'Résolu', color: colors.success };
+        return { label: t('Résolu'), color: colors.success };
       default:
-        return { label: 'Inconnu', color: colors.textSecondary };
+        return { label: t('Inconnu'), color: colors.textSecondary };
     }
   };
 
@@ -110,7 +115,7 @@ export const FeedbackScreen = () => {
             </View>
             <Text style={styles.feedbackMessage}>{item.message}</Text>
             <Text style={styles.feedbackDate}>
-              {new Date(item.createdAt).toLocaleDateString('fr-FR', {
+              {new Date(item.createdAt).toLocaleDateString(getLocale(), {
                 day: '2-digit',
                 month: 'short',
                 year: 'numeric',
@@ -124,15 +129,15 @@ export const FeedbackScreen = () => {
 
   const TypeSelector = ({ selected, onSelect }) => {
     const types = [
-      { value: 'bug', label: 'Bug', icon: 'bug-outline' },
-      { value: 'feature', label: 'Fonctionnalité', icon: 'bulb-outline' },
-      { value: 'improvement', label: 'Amélioration', icon: 'trending-up-outline' },
-      { value: 'other', label: 'Autre', icon: 'chatbubble-outline' },
+      { value: 'bug', label: t('Bug'), icon: 'bug-outline' },
+      { value: 'feature', label: t('Fonctionnalité'), icon: 'bulb-outline' },
+      { value: 'improvement', label: t('Amélioration'), icon: 'trending-up-outline' },
+      { value: 'other', label: t('Autre'), icon: 'chatbubble-outline' },
     ];
 
     return (
       <View style={styles.typeSelector}>
-        <Text style={styles.typeSelectorLabel}>Type de feedback *</Text>
+        <Text style={styles.typeSelectorLabel}>{t('Type de feedback *')}</Text>
         <View style={styles.typeButtons}>
           {types.map((type) => (
             <TouchableOpacity
@@ -171,24 +176,18 @@ export const FeedbackScreen = () => {
         keyExtractor={(item) => item._id}
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="chatbubbles-outline" size={64} color={colors.textLight} />
-            <Text style={styles.emptyText}>Aucun feedback</Text>
-            <Text style={styles.emptySubtext}>
-              Partagez vos idées et améliorations
-            </Text>
-          </View>
+          <EmptyState
+            icon="chatbubbles-outline"
+            title={t('Aucun feedback')}
+            description={t('Partagez vos idées et les améliorations attendues.')}
+          />
         }
       />
 
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => setModalVisible(true)}
-        >
-          <Ionicons name="add" size={28} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      <FloatingActionButton
+        label={t('Ajouter un feedback')}
+        onPress={() => setModalVisible(true)}
+      />
 
       <Modal
         visible={modalVisible}
@@ -199,7 +198,7 @@ export const FeedbackScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Nouveau feedback</Text>
+              <Text style={styles.modalTitle}>{t('Nouveau feedback')}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -211,16 +210,16 @@ export const FeedbackScreen = () => {
             />
 
             <Input
-              label="Message *"
+              label={t('Message *')}
               value={formData.message}
               onChangeText={(value) => setFormData(prev => ({ ...prev, message: value }))}
-              placeholder="Décrivez votre feedback en détail..."
+              placeholder={t('Décrivez votre feedback en détail...')}
               multiline
               style={{ marginTop: 16 }}
             />
 
             <Button
-              title="Envoyer le feedback"
+              title={t('Envoyer le feedback')}
               onPress={handleSubmitFeedback}
               style={{ marginTop: 8 }}
             />
@@ -231,7 +230,7 @@ export const FeedbackScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -328,8 +327,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     padding: 24,
     paddingBottom: 40,
   },
@@ -341,7 +340,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   typeSelector: {
