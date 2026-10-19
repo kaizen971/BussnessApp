@@ -7,6 +7,7 @@ import {
   Alert,
   Modal,
   TouchableOpacity,
+  Keyboard,
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,11 +16,16 @@ import { useCurrency } from '../contexts/CurrencyContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
+import { EmptyState, FloatingActionButton, SearchField } from '../components/AppPrimitives';
 import { stockAPI } from '../services/api';
-import { colors } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import api from '../services/api';
+import { t, useLanguage, getLocale } from '../i18n';
 
 export const StockScreen = () => {
+  useLanguage();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
   const { format: formatPrice } = useCurrency();
   const [stock, setStock] = useState([]);
@@ -43,6 +49,10 @@ export const StockScreen = () => {
   const [showMovementModal, setShowMovementModal] = useState(false);
   const [products, setProducts] = useState([]);
   const [showProductSelector, setShowProductSelector] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
+  const filteredProducts = products.filter(product =>
+    product.name?.toLowerCase().includes(productSearch.trim().toLowerCase())
+  );
 
   useEffect(() => {
     loadStock();
@@ -55,7 +65,7 @@ export const StockScreen = () => {
       setStock(response.data.data || response.data || []);
     } catch (error) {
       console.error('Error loading stock:', error);
-      Alert.alert('Erreur', 'Impossible de charger le stock');
+      Alert.alert(t('Erreur'), t('Impossible de charger le stock'));
     } finally {
       setLoading(false);
     }
@@ -67,13 +77,13 @@ export const StockScreen = () => {
       setProducts(response.data?.data || []);
     } catch (error) {
       console.error('Error loading products:', error);
-      Alert.alert('Erreur', 'Impossible de charger les produits');
+      Alert.alert(t('Erreur'), t('Impossible de charger les produits'));
     }
   };
 
   const handleSaveStock = async () => {
     if (!formData.productId || !formData.quantity || formData.unitPrice === '' || formData.unitPrice === undefined) {
-      Alert.alert('Erreur', 'Veuillez sélectionner un produit et remplir tous les champs obligatoires');
+      Alert.alert(t('Erreur'), t('Veuillez sélectionner un produit et remplir tous les champs obligatoires'));
       return;
     }
 
@@ -88,13 +98,13 @@ export const StockScreen = () => {
 
       if (selectedItem) {
         const response = await stockAPI.update(selectedItem._id, stockData);
-        Alert.alert('Succès', 'Article modifié avec succès');
+        Alert.alert(t('Succès'), t('Article modifié avec succès'));
       } else {
         const response = await stockAPI.create({
           ...stockData,
           projectId: user?.projectId,
         });
-        Alert.alert('Succès', 'Article ajouté avec succès');
+        Alert.alert(t('Succès'), t('Article ajouté avec succès'));
       }
 
       setFormData({ name: '', quantity: '', unitPrice: '', minQuantity: '', productId: '' });
@@ -103,11 +113,11 @@ export const StockScreen = () => {
       await loadStock();
     } catch (error) {
       console.error('Error saving stock:', error);
-      const errorMessage = error.response?.data?.error || error.message || 'Impossible de sauvegarder l\'article';
+      const errorMessage = error.response?.data?.error || error.message || t("Impossible de sauvegarder l'article");
       const errorDetails = error.response?.status === 403
-        ? 'Vous n\'avez pas les permissions nécessaires pour créer un article'
+        ? t("Vous n'avez pas les permissions nécessaires pour créer un article")
         : errorMessage;
-      Alert.alert('Erreur', errorDetails);
+      Alert.alert(t('Erreur'), errorDetails);
     }
   };
 
@@ -116,12 +126,16 @@ export const StockScreen = () => {
       ...prev,
       productId: product._id,
       name: product.name,
-      unitPrice: product.unitPrice.toString(),
+      unitPrice: product.unitPrice == null ? '' : String(product.unitPrice),
     }));
     setShowProductSelector(false);
+    setProductSearch('');
+    Keyboard.dismiss();
   };
 
   const openStockModal = (item = null) => {
+    setShowProductSelector(false);
+    setProductSearch('');
     if (item) {
       setSelectedItem(item);
       setFormData({
@@ -147,13 +161,13 @@ export const StockScreen = () => {
       setShowMovements(true);
     } catch (error) {
       console.error('Error loading movements:', error);
-      Alert.alert('Erreur', 'Impossible de charger l\'historique');
+      Alert.alert(t('Erreur'), t("Impossible de charger l'historique"));
     }
   };
 
   const handleAddMovement = async () => {
     if (!movementQuantity || parseFloat(movementQuantity) <= 0) {
-      Alert.alert('Erreur', 'Veuillez entrer une quantité valide');
+      Alert.alert(t('Erreur'), t('Veuillez entrer une quantité valide'));
       return;
     }
 
@@ -162,10 +176,10 @@ export const StockScreen = () => {
         stockId: selectedItem._id,
         type: movementType,
         quantity: parseFloat(movementQuantity),
-        reason: movementReason || (movementType === 'in' ? 'Approvisionnement' : 'Sortie'),
+        reason: movementReason || (movementType === 'in' ? 'Approvisionnement' : 'Sortie'), // stocké en français, traduit à l'affichage
       });
 
-      Alert.alert('Succès', 'Mouvement enregistré');
+      Alert.alert(t('Succès'), t('Mouvement enregistré'));
       setShowMovementModal(false);
       setMovementQuantity('');
       setMovementReason('');
@@ -175,8 +189,31 @@ export const StockScreen = () => {
       }
     } catch (error) {
       console.error('Error adding movement:', error);
-      Alert.alert('Erreur', 'Impossible d\'enregistrer le mouvement');
+      Alert.alert(t('Erreur'), t("Impossible d'enregistrer le mouvement"));
     }
+  };
+
+  const handleDeleteStock = (item) => {
+    Alert.alert(
+      t('Supprimer le stock'),
+      t('Supprimer le stock « {name} » et ses mouvements manuels ? Le produit restera dans le catalogue.', { name: item.name }),
+      [
+        { text: t('Annuler'), style: 'cancel' },
+        {
+          text: t('Supprimer'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await stockAPI.delete(item._id);
+              await loadStock();
+              Alert.alert(t('Succès'), t('Article de stock supprimé'));
+            } catch (error) {
+              Alert.alert(t('Erreur'), error.response?.data?.error || t('Impossible de supprimer cet article de stock'));
+            }
+          },
+        },
+      ]
+    );
   };
 
   const renderStockItem = ({ item }) => {
@@ -202,30 +239,30 @@ export const StockScreen = () => {
               {isLowStock && (
                 <View style={styles.alertBadge}>
                   <Ionicons name="warning-outline" size={14} color={colors.error} />
-                  <Text style={styles.alertText}>Stock bas</Text>
+                  <Text style={styles.alertText}>{t('Stock bas')}</Text>
                 </View>
               )}
             </View>
             <View style={styles.detailsRow}>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Quantité</Text>
+                <Text style={styles.detailLabel}>{t('Quantité')}</Text>
                 <Text style={[styles.detailValue, isLowStock && { color: colors.error }]}>
                   {item.quantity}
                 </Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Prix unitaire</Text>
+                <Text style={styles.detailLabel}>{t('Prix unitaire')}</Text>
                 <Text style={styles.detailValue}>{formatPrice(item.unitPrice)}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Valeur totale</Text>
+                <Text style={styles.detailLabel}>{t('Valeur totale')}</Text>
                 <Text style={[styles.detailValue, styles.totalValue]}>
                   {formatPrice(totalValue)}
                 </Text>
               </View>
             </View>
             {item.sku && (
-              <Text style={styles.skuText}>SKU: {item.sku}</Text>
+              <Text style={styles.skuText}>{t('SKU: {sku}', { sku: item.sku })}</Text>
             )}
             {item.location && (
               <Text style={styles.locationText}>
@@ -234,10 +271,18 @@ export const StockScreen = () => {
             )}
             {item.minQuantity > 0 && (
               <Text style={styles.minQuantityText}>
-                Seuil minimum: {item.minQuantity}
+                {t('Seuil minimum: {minQuantity}', { minQuantity: item.minQuantity })}
               </Text>
             )}
           </View>
+          <TouchableOpacity
+            onPress={() => handleDeleteStock(item)}
+            accessibilityRole="button"
+            accessibilityLabel={t('Supprimer le stock')}
+            style={{ padding: 8 }}
+          >
+            <Ionicons name="trash-outline" size={20} color={colors.error} />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.stockActions}>
@@ -249,7 +294,7 @@ export const StockScreen = () => {
             }}
           >
             <Ionicons name="time-outline" size={18} color={colors.info} />
-            <Text style={[styles.actionBtnText, { color: colors.info }]}>Historique</Text>
+            <Text style={[styles.actionBtnText, { color: colors.info }]}>{t('Historique')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionBtn}
@@ -260,7 +305,7 @@ export const StockScreen = () => {
             }}
           >
             <Ionicons name="add-circle-outline" size={18} color={colors.success} />
-            <Text style={[styles.actionBtnText, { color: colors.success }]}>Entrée</Text>
+            <Text style={[styles.actionBtnText, { color: colors.success }]}>{t('Entrée')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionBtn}
@@ -271,7 +316,7 @@ export const StockScreen = () => {
             }}
           >
             <Ionicons name="remove-circle-outline" size={18} color={colors.error} />
-            <Text style={[styles.actionBtnText, { color: colors.error }]}>Sortie</Text>
+            <Text style={[styles.actionBtnText, { color: colors.error }]}>{t('Sortie')}</Text>
           </TouchableOpacity>
         </View>
       </Card>
@@ -285,14 +330,14 @@ export const StockScreen = () => {
     <View style={styles.container}>
       <View style={styles.header}>
         <Card style={styles.totalCard}>
-          <Text style={styles.totalLabel}>Valeur du stock</Text>
+          <Text style={styles.totalLabel}>{t('Valeur du stock')}</Text>
           <Text style={styles.totalAmount}>{formatPrice(totalStockValue)}</Text>
           <View style={styles.statsRow}>
-            <Text style={styles.totalCount}>{stock.length} article(s)</Text>
+            <Text style={styles.totalCount}>{t('{length} article(s)', { length: stock.length })}</Text>
             {lowStockItems.length > 0 && (
               <View style={styles.alertBadge}>
                 <Ionicons name="warning" size={14} color={colors.error} />
-                <Text style={styles.alertText}>{lowStockItems.length} en alerte</Text>
+                <Text style={styles.alertText}>{t('{length} en alerte', { length: lowStockItems.length })}</Text>
               </View>
             )}
           </View>
@@ -305,33 +350,77 @@ export const StockScreen = () => {
         keyExtractor={(item) => item._id}
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="cube-outline" size={64} color={colors.textLight} />
-            <Text style={styles.emptyText}>Aucun article en stock</Text>
-          </View>
+          <EmptyState
+            icon="cube-outline"
+            title={t('Aucun article en stock')}
+            description={t('Ajoutez un article pour commencer à suivre vos quantités.')}
+          />
         }
       />
 
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => openStockModal()}
-        >
-          <Ionicons name="add" size={28} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      <FloatingActionButton
+        label={t('Ajouter un article au stock')}
+        onPress={() => openStockModal()}
+      />
 
       <Modal
         visible={modalVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => showProductSelector ? setShowProductSelector(false) : setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, showProductSelector && { height: '80%' }]}>
+            {showProductSelector ? (<>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t('Sélectionner un produit')}</Text>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('Retour')} onPress={() => { Keyboard.dismiss(); setShowProductSelector(false); }}>
+                <Ionicons name="arrow-back" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <SearchField value={productSearch} onChangeText={setProductSearch} placeholder={t('Rechercher un produit...')} />
+            <FlatList
+              style={{ flex: 1, marginTop: 12 }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              data={filteredProducts}
+              keyExtractor={(item) => item._id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.productItem}
+                  accessibilityRole="button"
+                  onPress={() => handleSelectProduct(item)}
+                >
+                  <View style={styles.productItemIcon}>
+                    <Ionicons name="pricetag" size={20} color={colors.info} />
+                  </View>
+                  <View style={styles.productItemInfo}>
+                    <Text style={styles.productItemName}>{item.name}</Text>
+                    <Text style={styles.productItemPrice}>{formatPrice(item.unitPrice)}</Text>
+                    {item.description && (
+                      <Text style={styles.productItemDescription} numberOfLines={1}>
+                        {item.description}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <EmptyState
+                  icon="cube-outline"
+                  title={productSearch ? t('Aucun résultat') : t('Aucun produit disponible')}
+                  description={productSearch ? t('Modifiez votre recherche.') : t("Créez d'abord un produit dans la section Produits.")}
+                  compact
+                />
+              }
+            />
+            </>) : (<>
+
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {selectedItem ? 'Modifier l\'article' : 'Nouvel article'}
+                {selectedItem ? t("Modifier l'article") : t('Nouvel article')}
               </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={24} color={colors.text} />
@@ -339,15 +428,17 @@ export const StockScreen = () => {
             </View>
 
             <View style={styles.productSelectorContainer}>
-              <Text style={styles.inputLabel}>Produit *</Text>
+              <Text style={styles.inputLabel}>{t('Produit *')}</Text>
               <TouchableOpacity
                 style={styles.productSelector}
-                onPress={() => !selectedItem && setShowProductSelector(true)}
-                disabled={selectedItem}
+                onPress={() => { Keyboard.dismiss(); setProductSearch(''); setShowProductSelector(true); }}
+                disabled={!!selectedItem}
+                accessibilityRole="button"
+                accessibilityLabel={t('Sélectionner un produit')}
               >
                 <Ionicons name="pricetag-outline" size={20} color={formData.productId ? colors.success : colors.textSecondary} />
                 <Text style={[styles.productSelectorText, formData.productId && styles.productSelectorTextSelected]}>
-                  {formData.name || 'Sélectionner un produit'}
+                  {formData.name || t('Sélectionner un produit')}
                 </Text>
                 {!selectedItem && (
                   <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
@@ -364,7 +455,7 @@ export const StockScreen = () => {
             </View>
 
             <Input
-              label="Quantité *"
+              label={t('Quantité *')}
               value={formData.quantity}
               onChangeText={(value) => setFormData(prev => ({ ...prev, quantity: value }))}
               placeholder="0"
@@ -373,7 +464,7 @@ export const StockScreen = () => {
             />
 
             <Input
-              label="Prix unitaire *"
+              label={t('Prix unitaire *')}
               value={formData.unitPrice}
               onChangeText={(value) => setFormData(prev => ({ ...prev, unitPrice: value }))}
               placeholder="0.00"
@@ -382,34 +473,35 @@ export const StockScreen = () => {
             />
 
             <Input
-              label="Quantité minimale (optionnel)"
+              label={t('Quantité minimale (optionnel)')}
               value={formData.minQuantity}
               onChangeText={(value) => setFormData(prev => ({ ...prev, minQuantity: value }))}
-              placeholder="Seuil d'alerte"
+              placeholder={t("Seuil d'alerte")}
               keyboardType="numeric"
               icon="alert-circle-outline"
             />
 
             <Input
-              label="Code SKU (optionnel)"
+              label={t('Code SKU (optionnel)')}
               value={formData.sku}
               onChangeText={(value) => setFormData(prev => ({ ...prev, sku: value }))}
-              placeholder="Ex: PRD-001"
+              placeholder={t('Ex: PRD-001')}
               icon="barcode-outline"
             />
 
             <Input
-              label="Emplacement (optionnel)"
+              label={t('Emplacement (optionnel)')}
               value={formData.location}
               onChangeText={(value) => setFormData(prev => ({ ...prev, location: value }))}
-              placeholder="Ex: Étagère A3"
+              placeholder={t('Ex: Étagère A3')}
               icon="location-outline"
             />
 
             <Button
-              title={selectedItem ? 'Modifier' : 'Ajouter'}
+              title={selectedItem ? t('Modifier') : t('Ajouter')}
               onPress={handleSaveStock}
             />
+            </>)}
           </View>
         </View>
       </Modal>
@@ -425,7 +517,7 @@ export const StockScreen = () => {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {movementType === 'in' ? 'Entrée de stock' : 'Sortie de stock'}
+                {movementType === 'in' ? t('Entrée de stock') : t('Sortie de stock')}
               </Text>
               <TouchableOpacity onPress={() => setShowMovementModal(false)}>
                 <Ionicons name="close" size={24} color={colors.text} />
@@ -436,32 +528,32 @@ export const StockScreen = () => {
               <View style={styles.selectedItemInfo}>
                 <Text style={styles.selectedItemName}>{selectedItem.name}</Text>
                 <Text style={styles.selectedItemQuantity}>
-                  Stock actuel: {selectedItem.quantity}
+                  {t('Stock actuel: {quantity}', { quantity: selectedItem.quantity })}
                 </Text>
               </View>
             )}
 
             <Input
-              label="Quantité *"
+              label={t('Quantité *')}
               value={movementQuantity}
               onChangeText={setMovementQuantity}
-              placeholder="Quantité à ajouter/retirer"
+              placeholder={t('Quantité à ajouter/retirer')}
               keyboardType="numeric"
               icon={movementType === 'in' ? 'add-circle-outline' : 'remove-circle-outline'}
             />
 
             <Input
-              label="Raison (optionnel)"
+              label={t('Raison (optionnel)')}
               value={movementReason}
               onChangeText={setMovementReason}
-              placeholder={movementType === 'in' ? 'Ex: Réception commande' : 'Ex: Retour client'}
+              placeholder={movementType === 'in' ? t('Ex: Réception commande') : t('Ex: Retour client')}
               multiline
               numberOfLines={2}
               icon="document-text-outline"
             />
 
             <Button
-              title={movementType === 'in' ? 'Ajouter au stock' : 'Retirer du stock'}
+              title={movementType === 'in' ? t('Ajouter au stock') : t('Retirer du stock')}
               onPress={handleAddMovement}
             />
           </View>
@@ -478,7 +570,7 @@ export const StockScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxHeight: '80%' }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Historique des mouvements</Text>
+              <Text style={styles.modalTitle}>{t('Historique des mouvements')}</Text>
               <TouchableOpacity onPress={() => setShowMovements(false)}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
@@ -488,7 +580,7 @@ export const StockScreen = () => {
               <View style={styles.selectedItemInfo}>
                 <Text style={styles.selectedItemName}>{selectedItem.name}</Text>
                 <Text style={styles.selectedItemQuantity}>
-                  Stock actuel: {selectedItem.quantity}
+                  {t('Stock actuel: {quantity}', { quantity: selectedItem.quantity })}
                 </Text>
               </View>
             )}
@@ -516,13 +608,13 @@ export const StockScreen = () => {
                       />
                     </View>
                     <View style={styles.movementInfo}>
-                      <Text style={styles.movementType}>{item.reason || item.type}</Text>
+                      <Text style={styles.movementType}>{t(item.reason) || item.type}</Text>
                       <Text style={styles.movementDate}>
-                        {new Date(item.createdAt).toLocaleString('fr-FR')}
+                        {new Date(item.createdAt).toLocaleString(getLocale())}
                       </Text>
                       {item.userId && (
                         <Text style={styles.movementUser}>
-                          Par: {item.userId.fullName || item.userId.username}
+                          {t('Par:')}{' '}{item.userId.fullName || item.userId.username}
                         </Text>
                       )}
                     </View>
@@ -544,71 +636,23 @@ export const StockScreen = () => {
                 </View>
               )}
               ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="time-outline" size={48} color={colors.textLight} />
-                  <Text style={styles.emptyText}>Aucun mouvement enregistré</Text>
-                </View>
+                <EmptyState
+                  icon="time-outline"
+                  title={t('Aucun mouvement enregistré')}
+                  compact
+                />
               }
             />
           </View>
         </View>
       </Modal>
 
-      {/* Modal de sélection de produits */}
-      <Modal
-        visible={showProductSelector}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowProductSelector(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Sélectionner un produit</Text>
-              <TouchableOpacity onPress={() => setShowProductSelector(false)}>
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
 
-            <FlatList
-              data={products}
-              keyExtractor={(item) => item._id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.productItem}
-                  onPress={() => handleSelectProduct(item)}
-                >
-                  <View style={styles.productItemIcon}>
-                    <Ionicons name="pricetag" size={20} color={colors.info} />
-                  </View>
-                  <View style={styles.productItemInfo}>
-                    <Text style={styles.productItemName}>{item.name}</Text>
-                    <Text style={styles.productItemPrice}>{formatPrice(item.unitPrice)}</Text>
-                    {item.description && (
-                      <Text style={styles.productItemDescription} numberOfLines={1}>
-                        {item.description}
-                      </Text>
-                    )}
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="cube-outline" size={48} color={colors.textLight} />
-                  <Text style={styles.emptyText}>Aucun produit disponible</Text>
-                  <Text style={styles.emptySubtext}>Créez d'abord des produits dans la section Produits</Text>
-                </View>
-              }
-            />
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -627,7 +671,7 @@ const styles = StyleSheet.create({
   },
   totalAmount: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.info,
     marginBottom: 4,
   },
@@ -669,7 +713,7 @@ const styles = StyleSheet.create({
   },
   stockName: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     flex: 1,
   },
@@ -757,7 +801,7 @@ const styles = StyleSheet.create({
   },
   selectedItemName: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -808,7 +852,7 @@ const styles = StyleSheet.create({
   },
   quantityChange: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   quantityDetails: {
     fontSize: 11,
@@ -858,8 +902,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     padding: 24,
     paddingBottom: 40,
   },
@@ -871,7 +915,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   productSelectorContainer: {

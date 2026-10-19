@@ -15,7 +15,7 @@ const DURATION_LABELS = { days: 'jour(s)', months: 'mois', years: 'an(s)', lifet
 
 const emptyForm = {
   name: '', description: '', price: '', duration: 1, durationType: 'months',
-  maxProjects: 1, features: '', isRecurring: true, sortOrder: 0
+  maxProjects: 1, features: '', isRecurring: true, webappAccess: false, sortOrder: 0
 }
 
 export default function PlansPage() {
@@ -55,6 +55,7 @@ export default function PlansPage() {
       maxProjects: plan.maxProjects,
       features: (plan.features || []).join('\n'),
       isRecurring: plan.isRecurring,
+      webappAccess: plan.webappAccess === true,
       sortOrder: plan.sortOrder || 0
     })
     setShowModal(true)
@@ -304,6 +305,16 @@ export default function PlansPage() {
               </div>
             </label>
           )}
+
+          <label className="flex items-center gap-3 cursor-pointer p-3 bg-amber-50 border border-amber-200 rounded-xl hover:bg-amber-100 transition-colors">
+            <input type="checkbox" checked={form.webappAccess} onChange={e => setForm(f => ({ ...f, webappAccess: e.target.checked }))}
+              className="w-4 h-4 text-primary-500 rounded border-gray-300 focus:ring-primary-500"
+            />
+            <div>
+              <span className="text-sm text-gray-700 font-medium">Autoriser l'accès à la webapp</span>
+              <p className="text-xs text-gray-500">Les abonnements actifs de ce plan pourront utiliser l'application web.</p>
+            </div>
+          </label>
 
           <div>
             <label className="input-label">Fonctionnalités incluses</label>
