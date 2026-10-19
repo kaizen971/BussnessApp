@@ -66,8 +66,7 @@ export default function CustomersPage() {
     try {
       const customerData = {
         name: formData.name.trim(),
-        email: formData.email.trim(),
-        phone: formData.phone.trim(),
+        ...(isAdmin ? { email: formData.email.trim(), phone: formData.phone.trim() } : {}),
       }
       if (selectedCustomer) {
         await customersAPI.update(selectedCustomer._id, customerData)
@@ -152,13 +151,13 @@ export default function CustomersPage() {
               </span>
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-bold text-cream truncate">{item.name}</span>
-                {item.email && (
+                {isAdmin && item.email && (
                   <span className="flex items-center gap-1.5 text-[12px] text-gray-500 mt-1">
                     <Mail className="w-3.5 h-3.5 flex-shrink-0" />
                     <span className="truncate">{item.email}</span>
                   </span>
                 )}
-                {item.phone && (
+                {isAdmin && item.phone && (
                   <span className="flex items-center gap-1.5 text-[12px] text-gray-500 mt-0.5">
                     <Phone className="w-3.5 h-3.5 flex-shrink-0" />
                     {item.phone}
@@ -185,20 +184,22 @@ export default function CustomersPage() {
               <input type="text" value={formData.name} onChange={(e) => setFormData(p => ({ ...p, name: e.target.value }))} placeholder="Nom du client" className="input-field pl-10" />
             </div>
           </div>
-          <div>
-            <label className="input-label">Email</label>
-            <div className="relative">
-              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-              <input type="email" value={formData.email} onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))} placeholder="email@exemple.com" className="input-field pl-10" />
+          {isAdmin && <>
+            <div>
+              <label className="input-label">Email</label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input type="email" value={formData.email} onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))} placeholder="email@exemple.com" className="input-field pl-10" />
+              </div>
             </div>
-          </div>
-          <div>
-            <label className="input-label">Téléphone</label>
-            <div className="relative">
-              <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-              <input type="tel" value={formData.phone} onChange={(e) => setFormData(p => ({ ...p, phone: e.target.value }))} placeholder="+33 6 12 34 56 78" className="input-field pl-10" />
+            <div>
+              <label className="input-label">Téléphone</label>
+              <div className="relative">
+                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input type="tel" value={formData.phone} onChange={(e) => setFormData(p => ({ ...p, phone: e.target.value }))} placeholder="+33 6 12 34 56 78" className="input-field pl-10" />
+              </div>
             </div>
-          </div>
+          </>}
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={() => setModalVisible(false)} className="btn-secondary flex-1">Annuler</button>
             <button type="submit" disabled={saving} className="btn-primary flex-1">

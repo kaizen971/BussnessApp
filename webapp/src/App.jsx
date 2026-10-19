@@ -76,7 +76,7 @@ function AppRoutes() {
         } />
         <Route path="stock" element={<OwnerOnly><StockPage /></OwnerOnly>} />
         <Route path="clients" element={
-          <OwnerOnly><PremiumRoute screenKey="Customers" featureName="CRM Clients"><CustomersPage /></PremiumRoute></OwnerOnly>
+          <PremiumRoute screenKey="Customers" featureName="CRM Clients"><CustomersPage /></PremiumRoute>
         } />
         <Route path="equipe" element={
           <OwnerOnly><PremiumRoute screenKey="Team" featureName="Gestion d'équipe"><TeamPage /></PremiumRoute></OwnerOnly>

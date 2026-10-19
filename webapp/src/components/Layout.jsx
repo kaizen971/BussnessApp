@@ -34,7 +34,7 @@ const employeeNav = [
 // screenKey = clé de gating (PREMIUM_SCREENS du SubscriptionContext)
 const premiumNav = [
   { to: '/simulation', icon: Calculator, label: 'Simulation', screenKey: 'Simulation' },
-  { to: '/clients', icon: Users, label: 'Clients CRM', screenKey: 'Customers', ownerOnly: true },
+  { to: '/clients', icon: Users, label: 'Clients CRM', screenKey: 'Customers' },
   { to: '/equipe', icon: UserCog, label: 'Équipe', screenKey: 'Team', ownerOnly: true },
   { to: '/commissions', icon: Percent, label: 'Commissions', screenKey: 'Commissions' },
 ]

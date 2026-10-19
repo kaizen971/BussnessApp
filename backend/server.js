@@ -1629,7 +1629,7 @@ app.get('/BussnessApp/sales', authenticateToken, async (req, res) => {
     }
     const sales = await Sale.find(filter)
       .populate('productId', 'name unitPrice image')
-      .populate('customerId', 'name phone email')
+      .populate('customerId', isEmployeeRole(req.user.role) ? 'name' : 'name phone email')
       .populate('employeeId', 'username fullName')
       .sort({ date: -1 })
       .lean();
@@ -1804,7 +1804,7 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
 
     const populatedSale = await Sale.findById(sale._id)
       .populate('productId', 'name unitPrice image')
-      .populate('customerId', 'name phone')
+      .populate('customerId', isEmployeeRole(req.user.role) ? 'name' : 'name phone')
       .populate('employeeId', 'username fullName');
 
     res.status(201).json({ data: populatedSale });
@@ -2527,19 +2527,17 @@ app.post('/BussnessApp/stock/:stockId/link-product', authenticateToken, checkRol
 });
 
 // Customers Routes
-// Affilier un client à une vente sans accès au CRM : le salarié doit taper au moins
-// 2 lettres et ne reçoit que le nom (ni coordonnées, ni historique d'achats).
+// Recherche par nom dès le premier caractère ; à vide, retourne toute la liste.
+// Seuls les identifiants et noms sont exposés.
 app.get('/BussnessApp/customers/search', authenticateToken, async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
-    if (q.length < 2) return res.json({ data: [] });
     const scope = await projectScope(req, req.query.projectId);
     if (!scope) return res.status(403).json(PROJECT_DENIED);
     const pattern = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     const customers = await Customer.find({ projectId: scope, name: pattern })
       .select('_id name')
       .sort({ name: 1 })
-      .limit(10)
       .lean();
     res.json({ data: customers });
   } catch (error) {
@@ -2571,28 +2569,25 @@ app.get('/BussnessApp/customers', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/BussnessApp/customers', authenticateToken, checkRole('admin', 'manager', 'responsable'), requireProject((req) => req.body.projectId), async (req, res) => {
+app.post('/BussnessApp/customers', authenticateToken, checkRole('admin', 'manager', 'responsable', 'cashier'), requireProject((req) => req.body.projectId), async (req, res) => {
   try {
     const { name, email, phone, projectId } = req.body;
 
-    // Log pour débugger
-    console.log('Creating customer with data:', { name, email, phone, projectId, userId: req.user?.id });
-
     // Validation du nom (requis)
-    if (!name || name.trim() === '') {
+    if (typeof name !== 'string' || name.trim() === '') {
       return res.status(400).json({ error: 'Le nom du client est requis' });
     }
 
     const customer = new Customer({
       name: name.trim(),
-      email: email ? email.trim() : undefined,
-      phone: phone ? phone.trim() : undefined,
+      email: !isEmployeeRole(req.user.role) && email ? email.trim() : undefined,
+      phone: !isEmployeeRole(req.user.role) && phone ? phone.trim() : undefined,
       projectId
     });
 
     await customer.save();
     console.log('Customer created successfully:', customer._id);
-    res.status(201).json({ data: customer });
+    res.status(201).json({ data: isEmployeeRole(req.user.role) ? { _id: customer._id, name: customer.name } : customer });
   } catch (error) {
     console.error('Error creating customer:', error);
     res.status(400).json({ error: error.message });

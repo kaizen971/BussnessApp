@@ -100,7 +100,7 @@ export const SalesScreen = () => {
       const [salesRes, productsRes, customersRes, usersRes] = await Promise.all([
         salesAPI.getAll(user?.projectId, getPeriodFilters()),
         productsAPI.getAll(user?.projectId),
-        isAdmin ? customersAPI.getAll(user?.projectId) : Promise.resolve({ data: { data: [] } }),
+        customersAPI.getAll(user?.projectId),
         isAdmin ? usersAPI.getAll(user?.projectId) : Promise.resolve({ data: [] }),
       ]);
       const receivedSales = salesRes.data?.data || [];
@@ -679,32 +679,9 @@ export const SalesScreen = () => {
   const cartIsValid = cart.every(isValidSaleItem) && Number.isFinite(cartTotal) && cartTotal <= Number.MAX_SAFE_INTEGER;
   const cartUnits = cart.reduce((sum, item) => sum + (item.quantity || 0), 0);
 
-  // Salarié : pas d'accès au CRM, le client est retrouvé côté serveur par son nom
-  // (2 lettres minimum, nom uniquement). Le client choisi reste dans la liste.
-  useEffect(() => {
-    if (isAdmin) return;
-    const q = customerSearch.trim();
-    if (q.length < 2) return;
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      try {
-        const res = await customersAPI.search(user?.projectId, q);
-        if (cancelled) return;
-        const found = res.data?.data || [];
-        setCustomers((prev) => {
-          const picked = prev.find((c) => c._id === formData.customerId);
-          return picked && !found.some((c) => c._id === picked._id) ? [picked, ...found] : found;
-        });
-      } catch (error) {
-        console.error('Error searching customers:', error);
-      }
-    }, 250);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [customerSearch, isAdmin, user?.projectId]);
-
   const filteredCustomers = useMemo(() => {
-    if (!customerSearch) return customers;
-    const searchLower = customerSearch.toLowerCase();
+    const searchLower = customerSearch.trim().toLowerCase();
+    if (!searchLower) return customers;
     return customers.filter(customer =>
       customer.name?.toLowerCase().includes(searchLower) ||
       customer.phone?.toLowerCase().includes(searchLower) ||
@@ -977,11 +954,10 @@ export const SalesScreen = () => {
                         placeholder={isAdmin ? t('Nom, téléphone ou email') : t('Nom du client')}
                         style={styles.selectorSearch}
                       />
-                      {customerSearch.trim() ? (
-                        <View style={styles.autocompleteList}>
+                      <ScrollView style={[styles.autocompleteList, { maxHeight: 240 }]} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                           {filteredCustomers.length > 0 ? (
                             <>
-                              {filteredCustomers.slice(0, 4).map((customer, index) => (
+                              {filteredCustomers.map((customer, index) => (
                                 <TouchableOpacity
                                   key={customer._id}
                                   style={[styles.autocompleteItem, index > 0 && styles.autocompleteItemBorder]}
@@ -1000,11 +976,6 @@ export const SalesScreen = () => {
                                   <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
                                 </TouchableOpacity>
                               ))}
-                              {filteredCustomers.length > 4 && (
-                                <Text style={styles.moreResultsText}>
-                                  {t('4 sur {length} résultats · affinez la recherche', { length: filteredCustomers.length })}
-                                </Text>
-                              )}
                             </>
                           ) : (
                             <View style={styles.autocompleteEmpty}>
@@ -1012,44 +983,7 @@ export const SalesScreen = () => {
                               <Text style={styles.autocompleteEmptyText}>{t('Aucun client trouvé')}</Text>
                             </View>
                           )}
-                        </View>
-                      ) : !isAdmin ? null : customers.length > 0 ? (
-                        <View style={styles.quickChoices}>
-                          <Text style={styles.quickChoicesLabel}>{t('Suggestions · {length} client(s)', { length: customers.length })}</Text>
-                          <ScrollView
-                            horizontal
-                            nestedScrollEnabled
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.quickChoicesRow}
-                          >
-                            {customers.slice(0, 6).map((customer) => (
-                              <TouchableOpacity
-                                key={customer._id}
-                                style={styles.quickChoiceCard}
-                                onPress={() => setFormData({ ...formData, customerId: customer._id })}
-                              >
-                                <View style={[styles.partyAvatar, styles.quickChoiceAvatar]}>
-                                  <Text style={styles.resultAvatarText}>{(customer.name || 'C').charAt(0).toUpperCase()}</Text>
-                                </View>
-                                <Text style={styles.quickChoiceName} numberOfLines={1}>{customer.name}</Text>
-                              </TouchableOpacity>
-                            ))}
-                            {customers.length > 6 && (
-                              <View style={styles.quickChoiceMore}>
-                                <Text style={styles.quickChoiceMoreText}>+{customers.length - 6}</Text>
-                                <Text style={styles.quickChoiceMoreLabel}>{t('Rechercher')}</Text>
-                              </View>
-                            )}
-                          </ScrollView>
-                        </View>
-                      ) : (
-                        <View style={styles.autocompleteList}>
-                          <View style={styles.autocompleteEmpty}>
-                            <Ionicons name="person-add-outline" size={20} color={colors.textLight} />
-                            <Text style={styles.autocompleteEmptyText}>{t('Aucun client disponible')}</Text>
-                          </View>
-                        </View>
-                      )}
+                      </ScrollView>
                     </View>
                   )}
                 </View>

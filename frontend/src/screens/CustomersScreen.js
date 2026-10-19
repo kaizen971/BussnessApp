@@ -70,8 +70,7 @@ export const CustomersScreen = () => {
     try {
       const customerData = {
         name: formData.name.trim(),
-        email: formData.email.trim(),
-        phone: formData.phone.trim(),
+        ...(isAdmin ? { email: formData.email.trim(), phone: formData.phone.trim() } : {}),
       };
 
       if (selectedCustomer) {
@@ -128,13 +127,13 @@ export const CustomersScreen = () => {
         </View>
         <View style={styles.customerInfo}>
           <Text style={styles.customerName}>{item.name}</Text>
-          {item.email && (
+          {isAdmin && item.email && (
             <View style={styles.infoRow}>
               <Ionicons name="mail-outline" size={14} color={colors.textSecondary} />
               <Text style={styles.customerDetail}>{item.email}</Text>
             </View>
           )}
-          {item.phone && (
+          {isAdmin && item.phone && (
             <View style={styles.infoRow}>
               <Ionicons name="call-outline" size={14} color={colors.textSecondary} />
               <Text style={styles.customerDetail}>{item.phone}</Text>
@@ -205,24 +204,27 @@ export const CustomersScreen = () => {
               icon="person-outline"
             />
 
-            <Input
-              label={t('Email')}
-              value={formData.email}
-              onChangeText={(value) => setFormData(prev => ({ ...prev, email: value }))}
-              placeholder="email@exemple.com"
-              icon="mail-outline"
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
+            {isAdmin && <>
+              <Input
+                label={t('Email')}
+                value={formData.email}
+                onChangeText={(value) => setFormData(prev => ({ ...prev, email: value }))}
+                placeholder="email@exemple.com"
+                icon="mail-outline"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
 
-            <Input
-              label={t('Téléphone')}
-              value={formData.phone}
-              onChangeText={(value) => setFormData(prev => ({ ...prev, phone: value }))}
-              placeholder="+33 6 12 34 56 78"
-              icon="call-outline"
-              keyboardType="phone-pad"
-            />
+              <Input
+                label={t('Téléphone')}
+                value={formData.phone}
+                onChangeText={(value) => setFormData(prev => ({ ...prev, phone: value }))}
+                placeholder="+33 6 12 34 56 78"
+                icon="call-outline"
+                keyboardType="phone-pad"
+              />
+
+            </>}
 
             <Button
               title={selectedCustomer ? t('Modifier') : t('Ajouter')}
