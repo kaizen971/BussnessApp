@@ -7,6 +7,7 @@ import {
   Alert,
   Modal,
   TouchableOpacity,
+  Keyboard,
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,7 +16,7 @@ import { useCurrency } from '../contexts/CurrencyContext';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Card } from '../components/Card';
-import { EmptyState, FloatingActionButton } from '../components/AppPrimitives';
+import { EmptyState, FloatingActionButton, SearchField } from '../components/AppPrimitives';
 import { stockAPI } from '../services/api';
 import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
 import api from '../services/api';
@@ -48,6 +49,10 @@ export const StockScreen = () => {
   const [showMovementModal, setShowMovementModal] = useState(false);
   const [products, setProducts] = useState([]);
   const [showProductSelector, setShowProductSelector] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
+  const filteredProducts = products.filter(product =>
+    product.name?.toLowerCase().includes(productSearch.trim().toLowerCase())
+  );
 
   useEffect(() => {
     loadStock();
@@ -121,12 +126,16 @@ export const StockScreen = () => {
       ...prev,
       productId: product._id,
       name: product.name,
-      unitPrice: product.unitPrice.toString(),
+      unitPrice: product.unitPrice == null ? '' : String(product.unitPrice),
     }));
     setShowProductSelector(false);
+    setProductSearch('');
+    Keyboard.dismiss();
   };
 
   const openStockModal = (item = null) => {
+    setShowProductSelector(false);
+    setProductSearch('');
     if (item) {
       setSelectedItem(item);
       setFormData({
@@ -358,10 +367,57 @@ export const StockScreen = () => {
         visible={modalVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => showProductSelector ? setShowProductSelector(false) : setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, showProductSelector && { height: '80%' }]}>
+            {showProductSelector ? (<>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t('Sélectionner un produit')}</Text>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('Retour')} onPress={() => { Keyboard.dismiss(); setShowProductSelector(false); }}>
+                <Ionicons name="arrow-back" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <SearchField value={productSearch} onChangeText={setProductSearch} placeholder={t('Rechercher un produit...')} />
+            <FlatList
+              style={{ flex: 1, marginTop: 12 }}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              data={filteredProducts}
+              keyExtractor={(item) => item._id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.productItem}
+                  accessibilityRole="button"
+                  onPress={() => handleSelectProduct(item)}
+                >
+                  <View style={styles.productItemIcon}>
+                    <Ionicons name="pricetag" size={20} color={colors.info} />
+                  </View>
+                  <View style={styles.productItemInfo}>
+                    <Text style={styles.productItemName}>{item.name}</Text>
+                    <Text style={styles.productItemPrice}>{formatPrice(item.unitPrice)}</Text>
+                    {item.description && (
+                      <Text style={styles.productItemDescription} numberOfLines={1}>
+                        {item.description}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <EmptyState
+                  icon="cube-outline"
+                  title={productSearch ? t('Aucun résultat') : t('Aucun produit disponible')}
+                  description={productSearch ? t('Modifiez votre recherche.') : t("Créez d'abord un produit dans la section Produits.")}
+                  compact
+                />
+              }
+            />
+            </>) : (<>
+
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
                 {selectedItem ? t("Modifier l'article") : t('Nouvel article')}
@@ -375,8 +431,10 @@ export const StockScreen = () => {
               <Text style={styles.inputLabel}>{t('Produit *')}</Text>
               <TouchableOpacity
                 style={styles.productSelector}
-                onPress={() => !selectedItem && setShowProductSelector(true)}
-                disabled={selectedItem}
+                onPress={() => { Keyboard.dismiss(); setProductSearch(''); setShowProductSelector(true); }}
+                disabled={!!selectedItem}
+                accessibilityRole="button"
+                accessibilityLabel={t('Sélectionner un produit')}
               >
                 <Ionicons name="pricetag-outline" size={20} color={formData.productId ? colors.success : colors.textSecondary} />
                 <Text style={[styles.productSelectorText, formData.productId && styles.productSelectorTextSelected]}>
@@ -443,6 +501,7 @@ export const StockScreen = () => {
               title={selectedItem ? t('Modifier') : t('Ajouter')}
               onPress={handleSaveStock}
             />
+            </>)}
           </View>
         </View>
       </Modal>
@@ -588,57 +647,7 @@ export const StockScreen = () => {
         </View>
       </Modal>
 
-      {/* Modal de sélection de produits */}
-      <Modal
-        visible={showProductSelector}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowProductSelector(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t('Sélectionner un produit')}</Text>
-              <TouchableOpacity onPress={() => setShowProductSelector(false)}>
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
 
-            <FlatList
-              data={products}
-              keyExtractor={(item) => item._id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.productItem}
-                  onPress={() => handleSelectProduct(item)}
-                >
-                  <View style={styles.productItemIcon}>
-                    <Ionicons name="pricetag" size={20} color={colors.info} />
-                  </View>
-                  <View style={styles.productItemInfo}>
-                    <Text style={styles.productItemName}>{item.name}</Text>
-                    <Text style={styles.productItemPrice}>{formatPrice(item.unitPrice)}</Text>
-                    {item.description && (
-                      <Text style={styles.productItemDescription} numberOfLines={1}>
-                        {item.description}
-                      </Text>
-                    )}
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <EmptyState
-                  icon="cube-outline"
-                  title={t('Aucun produit disponible')}
-                  description={t("Créez d'abord un produit dans la section Produits.")}
-                  compact
-                />
-              }
-            />
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 };

@@ -1,6 +1,8 @@
 // Traductions anglaises. Clé = texte français exact tel qu'écrit dans le code (voir src/i18n/index.js).
 // Une phrase absente ici s'affiche en français.
 export default {
+  "Choisir un client": "Choose a customer",
+  "Continuer sans client": "Continue without a customer",
   "1 an": "1 year",
   "soit environ {amount} FCFA/mois": "approximately {amount} FCFA/month",
   "Paiement annuel — équivalent mensuel indicatif.": "Billed annually — monthly equivalent for reference only.",

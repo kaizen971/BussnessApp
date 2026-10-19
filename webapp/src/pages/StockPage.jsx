@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import {
   Plus, Boxes, AlertTriangle, History, ArrowDownCircle, ArrowUpCircle,
-  ShoppingCart, Undo2, MapPin, Tag, ChevronDown, X, Upload, Trash2,
+  ShoppingCart, Undo2, MapPin, Tag, ChevronDown, X, Upload, Trash2, Search,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useCurrency } from '../contexts/CurrencyContext'
@@ -30,6 +30,10 @@ export default function StockPage() {
   const [selectedItem, setSelectedItem] = useState(null)
   const [formData, setFormData] = useState(EMPTY_FORM)
   const [showProductSelector, setShowProductSelector] = useState(false)
+  const [productSearch, setProductSearch] = useState('')
+  const normalizeSearch = (value) => (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const productQuery = normalizeSearch(productSearch.trim())
+  const filteredProducts = products.filter(product => normalizeSearch(product.name).includes(productQuery))
   const [showMovements, setShowMovements] = useState(false)
   const [movements, setMovements] = useState([])
   const [movementModal, setMovementModal] = useState(null) // { item, type: 'in' | 'out' }
@@ -68,6 +72,8 @@ export default function StockPage() {
   }, [loadStock, loadProducts])
 
   const openStockModal = (item = null) => {
+    setShowProductSelector(false)
+    setProductSearch('')
     if (item) {
       setSelectedItem(item)
       setFormData({
@@ -299,7 +305,9 @@ export default function StockPage() {
             <div className="relative">
               <button
                 type="button"
-                onClick={() => !selectedItem && setShowProductSelector(o => !o)}
+                onClick={() => { setProductSearch(''); setShowProductSelector(o => !o) }}
+                aria-expanded={showProductSelector}
+                aria-controls="stock-product-options"
                 disabled={!!selectedItem}
                 className="input-field flex items-center gap-2 text-left disabled:opacity-60"
               >
@@ -318,16 +326,38 @@ export default function StockPage() {
               {showProductSelector && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setShowProductSelector(false)} />
-                  <div className="absolute left-0 right-0 mt-1.5 bg-night-800 border border-night-600 rounded-xl shadow-2xl z-40 max-h-52 overflow-y-auto scrollbar-thin py-1 animate-scale-in">
+                  <div className="absolute left-0 right-0 mt-1.5 bg-night-800 border border-night-600 rounded-xl shadow-2xl z-40 overflow-hidden animate-scale-in">
+                    <div className="p-2 border-b border-night-700">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+                        <input
+                          autoFocus
+                          type="search"
+                          value={productSearch}
+                          onChange={(e) => setProductSearch(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.preventDefault()
+                            if (e.key === 'Escape') { e.stopPropagation(); setShowProductSelector(false) }
+                          }}
+                          aria-label="Rechercher un produit"
+                          placeholder="Rechercher un produit..."
+                          className="w-full pl-9 pr-3 py-2 text-[13px] bg-night-900 border border-night-600 rounded-lg text-cream placeholder-gray-500 focus:outline-none focus:border-gold-500"
+                        />
+                      </div>
+                    </div>
+                    <div id="stock-product-options" className="max-h-52 overflow-y-auto scrollbar-thin py-1">
                     {products.length === 0 ? (
                       <p className="px-4 py-3 text-[13px] text-gray-500">Aucun produit — créez-en un d'abord</p>
-                    ) : products.map(product => (
+                    ) : filteredProducts.length === 0 ? (
+                      <p className="px-4 py-3 text-[13px] text-gray-500">Aucun produit ne correspond à votre recherche</p>
+                    ) : filteredProducts.map(product => (
                       <button
                         key={product._id}
                         type="button"
                         onClick={() => {
                           setFormData(prev => ({ ...prev, productId: product._id, name: product.name, unitPrice: product.unitPrice.toString() }))
                           setShowProductSelector(false)
+                          setProductSearch('')
                         }}
                         className="flex items-center justify-between w-full px-3.5 py-2.5 text-left text-[13px] text-gray-300 hover:bg-white/[0.04]"
                       >
@@ -335,6 +365,7 @@ export default function StockPage() {
                         <span className="text-gold-400 font-semibold flex-shrink-0 ml-2">{formatPrice(product.unitPrice)}</span>
                       </button>
                     ))}
+                    </div>
                   </div>
                 </>
               )}

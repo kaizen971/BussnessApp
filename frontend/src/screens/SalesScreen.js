@@ -83,6 +83,14 @@ export const SalesScreen = () => {
 
   // Nouveaux états pour la recherche et l'affichage
   const [customerSearch, setCustomerSearch] = useState('');
+  const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!modalVisible) {
+      setCustomerPickerOpen(false);
+      setCustomerSearch('');
+    }
+  }, [modalVisible]);
   const [productSearch, setProductSearch] = useState('');
   const [sellerSearch, setSellerSearch] = useState('');
   const [productViewMode, setProductViewMode] = useState('list');
@@ -843,13 +851,74 @@ export const SalesScreen = () => {
         visible={modalVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => customerPickerOpen ? setCustomerPickerOpen(false) : setModalVisible(false)}
       >
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <LinearGradient
             colors={[colors.surface, colors.background]}
             style={styles.modalContent}
           >
+            {customerPickerOpen ? (
+              <View style={styles.customerPicker}>
+                <View style={styles.customerPickerHeader}>
+                  <TouchableOpacity
+                    style={styles.changePartyButton}
+                    onPress={() => { Keyboard.dismiss(); setCustomerPickerOpen(false); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('Retour')}
+                  >
+                    <Ionicons name="arrow-back" size={22} color={colors.primary} />
+                  </TouchableOpacity>
+                  <Text style={styles.assignmentTitle}>{t('Choisir un client')}</Text>
+                </View>
+                <SearchField
+                  value={customerSearch}
+                  onChangeText={setCustomerSearch}
+                  placeholder={isAdmin ? t('Nom, téléphone ou email') : t('Nom du client')}
+                />
+                <FlatList
+                  style={styles.customerPickerList}
+                  data={filteredCustomers}
+                  keyExtractor={(customer) => customer._id}
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode="on-drag"
+                  initialNumToRender={12}
+                  maxToRenderPerBatch={12}
+                  renderItem={({ item: customer }) => (
+                    <TouchableOpacity
+                      style={styles.autocompleteItem}
+                      accessibilityRole="button"
+                      onPress={() => {
+                        setFormData(prev => ({ ...prev, customerId: customer._id }));
+                        setCustomerSearch('');
+                        setCustomerPickerOpen(false);
+                        Keyboard.dismiss();
+                      }}
+                    >
+                      <View style={[styles.partyAvatar, styles.resultAvatar]}>
+                        <Text style={styles.resultAvatarText}>{(customer.name || 'C').charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <View style={styles.autocompleteItemContent}>
+                        <Text style={styles.autocompleteItemName}>{customer.name}</Text>
+                        {isAdmin && !!(customer.phone || customer.email) && (
+                          <Text style={styles.autocompleteItemSub}>{customer.phone || customer.email}</Text>
+                        )}
+                      </View>
+                      {customer._id === formData.customerId && <Ionicons name="checkmark" size={22} color={colors.primary} />}
+                    </TouchableOpacity>
+                  )}
+                  ListEmptyComponent={<Text style={styles.emptyText}>{t('Aucun client trouvé')}</Text>}
+                />
+                {!isAdmin && (
+                  <Button title={t('Continuer sans client')} onPress={() => {
+                    setFormData(prev => ({ ...prev, customerId: '' }));
+                    setCustomerPickerOpen(false);
+                    setCustomerSearch('');
+                    Keyboard.dismiss();
+                  }} />
+                )}
+              </View>
+            ) : (<>
             <View style={[styles.modalHeaderContainer, keyboardVisible && styles.compactModalHeader]}>
               <LinearGradient
                 colors={[colors.primary + '30', colors.primary + '10']}
@@ -937,8 +1006,8 @@ export const SalesScreen = () => {
                       <TouchableOpacity
                         style={styles.changePartyButton}
                         onPress={() => {
-                          setFormData({ ...formData, customerId: '' });
                           setCustomerSearch('');
+                          setCustomerPickerOpen(true);
                         }}
                         accessibilityRole="button"
                         accessibilityLabel={t('Changer de client')}
@@ -947,44 +1016,18 @@ export const SalesScreen = () => {
                       </TouchableOpacity>
                     </View>
                   ) : (
-                    <View style={styles.autocompleteContainer}>
-                      <SearchField
-                        value={customerSearch}
-                        onChangeText={setCustomerSearch}
-                        placeholder={isAdmin ? t('Nom, téléphone ou email') : t('Nom du client')}
-                        style={styles.selectorSearch}
-                      />
-                      <ScrollView style={[styles.autocompleteList, { maxHeight: 240 }]} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                          {filteredCustomers.length > 0 ? (
-                            <>
-                              {filteredCustomers.map((customer, index) => (
-                                <TouchableOpacity
-                                  key={customer._id}
-                                  style={[styles.autocompleteItem, index > 0 && styles.autocompleteItemBorder]}
-                                  onPress={() => {
-                                    setFormData({ ...formData, customerId: customer._id });
-                                    setCustomerSearch('');
-                                  }}
-                                >
-                                  <View style={[styles.partyAvatar, styles.resultAvatar]}>
-                                    <Text style={styles.resultAvatarText}>{(customer.name || 'C').charAt(0).toUpperCase()}</Text>
-                                  </View>
-                                  <View style={styles.autocompleteItemContent}>
-                                    <Text style={styles.autocompleteItemName} numberOfLines={1}>{customer.name}</Text>
-                                    <Text style={styles.autocompleteItemSub} numberOfLines={1}>{isAdmin ? (customer.phone || customer.email || t('Aucune coordonnée')) : t('Client')}</Text>
-                                  </View>
-                                  <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
-                                </TouchableOpacity>
-                              ))}
-                            </>
-                          ) : (
-                            <View style={styles.autocompleteEmpty}>
-                              <Ionicons name="person-add-outline" size={20} color={colors.textLight} />
-                              <Text style={styles.autocompleteEmptyText}>{t('Aucun client trouvé')}</Text>
-                            </View>
-                          )}
-                      </ScrollView>
-                    </View>
+                    <TouchableOpacity
+                      style={styles.selectedPartyCard}
+                      onPress={() => { setCustomerSearch(''); setCustomerPickerOpen(true); }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('Choisir un client')}
+                    >
+                      <Ionicons name="search-outline" size={20} color={colors.primary} />
+                      <View style={styles.selectedPartyInfo}>
+                        <Text style={styles.selectedPartyName}>{t('Choisir un client')}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
+                    </TouchableOpacity>
                   )}
                 </View>
 
@@ -1368,6 +1411,7 @@ export const SalesScreen = () => {
                 </View>}
               </View>
             )}
+            </>)}
           </LinearGradient>
         </KeyboardAvoidingView>
       </Modal>
@@ -2660,6 +2704,9 @@ const createStyles = (colors) => ({
     justifyContent: 'center',
     backgroundColor: `${colors.primary}14`,
   },
+  customerPicker: { flex: 1, padding: 20, gap: 12 },
+  customerPickerHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  customerPickerList: { flex: 1 },
   autocompleteContainer: {},
   selectorSearch: {
     backgroundColor: colors.surface,
