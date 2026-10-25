@@ -20,6 +20,8 @@ const { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABELS } = require('./expenseCatego
 const { attachCustomerSalesTotals } = require('./customerSalesTotals');
 const { isChargeExpense, salaryConfigAt, applySalaryChange, salaryForPeriod } = require('./payrollMath');
 
+const { installStockConsistency, syncProductStock, archiveStock, findRefundStock, findProductStock } = require('./stockConsistency');
+
 const app = express();
 const PORT = 3003;
 
@@ -228,6 +230,7 @@ const StockSchema = new mongoose.Schema({
   location: String, // Emplacement physique dans l'entrepôt
   updatedAt: { type: Date, default: Date.now }
 });
+installStockConsistency(StockSchema);
 StockSchema.index({ projectId: 1 });
 StockSchema.index({ productId: 1 });
 StockSchema.index({ projectId: 1, name: 1 });
@@ -1516,18 +1519,16 @@ app.get('/BussnessApp/products', authenticateToken, async (req, res) => {
       ]
     }).lean();
 
-    // Indexer les stocks par productId et par name pour lookup O(1)
+    // Les liens par nom non ambigus sont déjà résolus par le middleware Stock.
     const stockByProductId = {};
-    const stockByName = {};
     for (const s of stockItems) {
       if (s.productId) stockByProductId[s.productId.toString()] = s;
-      if (s.name) stockByName[s.name] = s;
     }
 
     // Les salariés ne voient ni le prix de revient, ni la marge, ni les quantités en stock
     const hideCost = isEmployeeRole(req.user.role);
     const productsWithStock = products.map(({ costPrice, ...product }) => {
-      const stockItem = stockByProductId[product._id.toString()] || stockByName[product.name] || null;
+      const stockItem = stockByProductId[product._id.toString()] || null;
       return {
         ...product,
         ...(hideCost ? {} : { costPrice }),
@@ -1576,20 +1577,11 @@ app.put('/BussnessApp/products/:id', authenticateToken, checkRole('admin', 'mana
       await deleteS3Image(oldProduct.image);
       updateData.image = req.file.location;
     }
-    const product = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    const product = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
 
-    // Propager le renommage au stock lié et consolider le rattachement via productId,
-    // pour que la modification d'un produit ne casse jamais le lien produit ↔ stock
-    // (le matching de secours par `name` devient sans risque une fois le productId posé).
-    if (updateData.name && updateData.name !== oldProduct.name) {
-      await Stock.updateMany(
-        {
-          projectId: product.projectId,
-          $or: [{ productId: product._id }, { name: oldProduct.name }],
-        },
-        { $set: { name: updateData.name, productId: product._id, updatedAt: Date.now() } }
-      );
-    }
+    // Synchroniser uniquement l'état courant du stock ; ventes et mouvements
+    // conservent le prix enregistré au moment de l'opération.
+    await syncProductStock({ Stock, Product, product, oldName: oldProduct.name });
 
     res.json(product);
   } catch (error) {
@@ -1735,13 +1727,7 @@ app.post('/BussnessApp/sales', authenticateToken, async (req, res) => {
       User.findById(req.user.id)
     ]);
 
-    const stockItem = await Stock.findOne({
-      projectId,
-      $or: [
-        { productId: productId },
-        ...(product ? [{ name: product.name }] : [])
-      ]
-    });
+    const stockItem = await findProductStock({ Stock, Product, product });
 
     if (stockItem) {
       const previousQuantity = stockItem.quantity;
@@ -1873,10 +1859,12 @@ app.post('/BussnessApp/sales/:id/refund', authenticateToken, checkRole('admin', 
       return res.status(400).json({ error: 'Cette vente a déjà été remboursée' });
     }
 
+    const originalProductId = originalSale.productId?._id || originalSale.populated('productId');
+
     // Créer une vente négative (remboursement)
     const refundSale = new Sale({
       projectId: originalSale.projectId,
-      productId: originalSale.productId._id,
+      productId: originalProductId,
       customerId: originalSale.customerId?._id,
       employeeId: req.user.id, // L'employé qui effectue le remboursement
       quantity: -originalSale.quantity, // Quantité négative
@@ -1889,14 +1877,8 @@ app.post('/BussnessApp/sales/:id/refund', authenticateToken, checkRole('admin', 
 
     await refundSale.save();
 
-    // Remettre le stock
-    const stockItem = await Stock.findOne({
-      projectId: originalSale.projectId,
-      $or: [
-        { productId: originalSale.productId._id },
-        { name: originalSale.productId.name }
-      ]
-    });
+    // Retrouver la fiche réellement débitée, y compris après son archivage.
+    const stockItem = await findRefundStock({ Stock, StockMovement, Product, sale: originalSale });
 
     if (stockItem) {
       const previousQuantity = stockItem.quantity;
@@ -1910,7 +1892,7 @@ app.post('/BussnessApp/sales/:id/refund', authenticateToken, checkRole('admin', 
       const movement = new StockMovement({
         projectId: originalSale.projectId,
         stockId: stockItem._id,
-        productId: originalSale.productId._id,
+        productId: originalProductId,
         type: 'return',
         quantity: originalSale.quantity, // Positif pour un retour
         previousQuantity,
@@ -2290,24 +2272,16 @@ app.put('/BussnessApp/stock/:id', authenticateToken, checkRole(...OWNER_ROLES), 
   }
 });
 
-// Supprimer une fiche de stock créée par erreur, sans effacer l'historique des ventes.
+// Archiver une fiche de stock sans effacer son historique.
 app.delete('/BussnessApp/stock/:id', authenticateToken, checkRole(...OWNER_ROLES), async (req, res) => {
   try {
     const stock = await findInProject(req, Stock, req.params.id);
     if (!stock) return res.status(404).json({ error: 'Article de stock non trouvé' });
 
-    const saleMovement = await StockMovement.exists({
-      projectId: stock.projectId,
-      stockId: stock._id,
-      $or: [{ saleId: { $exists: true, $ne: null } }, { type: { $in: ['sale', 'return'] } }]
-    });
-    if (saleMovement) {
-      return res.status(409).json({ error: 'Ce stock est lié à une vente et ne peut pas être supprimé.' });
-    }
-
-    await StockMovement.deleteMany({ projectId: stock.projectId, stockId: stock._id });
-    await stock.deleteOne();
-    res.json({ message: 'Article de stock supprimé' });
+    // Retirer la fiche de l'inventaire courant sans casser les références
+    // des mouvements ni supprimer une vente. La quantité archivée est conservée.
+    await archiveStock(stock);
+    res.json({ message: 'Article retiré du stock actif ; historique conservé', archived: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2318,10 +2292,12 @@ app.delete('/BussnessApp/stock/:id', authenticateToken, checkRole(...OWNER_ROLES
 // Obtenir l'historique des mouvements de stock
 app.get('/BussnessApp/stock/:id/movements', authenticateToken, checkRole(...OWNER_ROLES), async (req, res) => {
   try {
-    if (!(await findInProject(req, Stock, req.params.id))) {
+    const stock = mongoose.isValidObjectId(req.params.id)
+      ? await Stock.findById(req.params.id).setOptions({ includeArchived: true }) : null;
+    if (!stock || !(await canAccessProject(req, stock.projectId))) {
       return res.status(404).json({ error: 'Stock item not found' });
     }
-    const movements = await StockMovement.find({ stockId: req.params.id })
+    const movements = await StockMovement.find({ stockId: req.params.id, projectId: stock.projectId })
       .populate('userId', 'username fullName')
       .populate('productId', 'name')
       .populate('saleId')
@@ -2350,7 +2326,7 @@ app.get('/BussnessApp/stock-movements', authenticateToken, checkRole(...OWNER_RO
     }
 
     const movements = await StockMovement.find(filter)
-      .populate('stockId', 'name sku')
+      .populate({ path: 'stockId', select: 'name sku', options: { includeArchived: true } })
       .populate('productId', 'name')
       .populate('userId', 'username fullName')
       .populate('saleId')
@@ -2403,7 +2379,7 @@ app.post('/BussnessApp/stock-movements', authenticateToken, checkRole(...OWNER_R
     await movement.save();
 
     const populatedMovement = await StockMovement.findById(movement._id)
-      .populate('stockId', 'name sku')
+      .populate({ path: 'stockId', select: 'name sku', options: { includeArchived: true } })
       .populate('userId', 'username fullName');
 
     res.status(201).json({ data: populatedMovement });
@@ -2779,6 +2755,14 @@ const mapCsvRows = (rows, type) => {
 };
 
 const csvNameKey = (name) => name.trim().toLowerCase();
+const indexUniqueCsvNames = (items) => {
+  const index = new Map();
+  for (const item of items) {
+    const key = csvNameKey(item.name);
+    index.set(key, index.has(key) ? null : item);
+  }
+  return index;
+};
 
 const createStockEntryMovement = async ({ projectId, stock, quantity, previousQuantity, userId, reason }) => {
   await new StockMovement({
@@ -2874,8 +2858,8 @@ const importStockCsv = async (records, { projectId, userId }) => {
     Product.find({ projectId }).select('name unitPrice').lean(),
     Stock.find({ projectId }),
   ]);
-  const productsByName = new Map(products.map(p => [csvNameKey(p.name), p]));
-  const stockByName = new Map(stockItems.map(s => [csvNameKey(s.name), s]));
+  const productsByName = indexUniqueCsvNames(products);
+  const stockByName = indexUniqueCsvNames(stockItems);
 
   for (const record of records) {
     const name = (record.name || '').trim();
@@ -2884,6 +2868,11 @@ const importStockCsv = async (records, { projectId, userId }) => {
     const quantity = parseCsvNumber(record.quantity);
     if (quantity === null || quantity < 0) { errors.push({ line: record._line, message: 'quantite invalide (nombre positif attendu)' }); continue; }
 
+    if ((productsByName.has(csvNameKey(name)) && !productsByName.get(csvNameKey(name))) ||
+        (stockByName.has(csvNameKey(name)) && !stockByName.get(csvNameKey(name)))) {
+      errors.push({ line: record._line, message: `Nom "${name}" ambigu : plusieurs produits ou fiches de stock portent ce nom` });
+      continue;
+    }
     const product = productsByName.get(csvNameKey(name));
     let unitPrice = parseCsvNumber(record.unitPrice);
     if (unitPrice === null) unitPrice = product ? product.unitPrice : null;
@@ -2946,13 +2935,17 @@ const importSalesCsv = async (records, { projectId, userId, options }) => {
     Product.find({ projectId }).select('name unitPrice').lean(),
     Customer.find({ projectId }),
   ]);
-  const productsByName = new Map(products.map(p => [csvNameKey(p.name), p]));
+  const productsByName = indexUniqueCsvNames(products);
   const customersByName = new Map(customers.map(c => [csvNameKey(c.name), c]));
 
   for (const record of records) {
     const productName = (record.productName || '').trim();
     if (!productName) { errors.push({ line: record._line, message: 'Le nom du produit est requis' }); continue; }
 
+    if (productsByName.has(csvNameKey(productName)) && !productsByName.get(csvNameKey(productName))) {
+      errors.push({ line: record._line, message: `Nom de produit "${productName}" ambigu : renommez les produits homonymes avant l'import` });
+      continue;
+    }
     const product = productsByName.get(csvNameKey(productName));
     if (!product) { errors.push({ line: record._line, message: `Produit "${productName}" introuvable — importez ou créez d'abord vos produits` }); continue; }
 
@@ -3017,10 +3010,7 @@ const importSalesCsv = async (records, { projectId, userId, options }) => {
 
     // Déduction du stock uniquement si demandé (inutile pour un historique déjà écoulé)
     if (updateStock) {
-      const stockItem = await Stock.findOne({
-        projectId,
-        $or: [{ productId: product._id }, { name: product.name }],
-      });
+      const stockItem = await findProductStock({ Stock, Product, product: { ...product, projectId } });
       if (stockItem) {
         const previousQuantity = stockItem.quantity;
         stockItem.quantity = Math.max(0, previousQuantity - quantity);

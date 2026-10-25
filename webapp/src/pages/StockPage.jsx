@@ -171,7 +171,7 @@ export default function StockPage() {
     try {
       await stockAPI.delete(deleteTarget._id)
       setDeleteTarget(null)
-      toast.success('Article de stock supprimé')
+      toast.success('Article retiré du stock actif')
       await loadStock()
     } catch (error) {
       toast.error(error.response?.data?.error || 'Impossible de supprimer cet article de stock')
@@ -288,7 +288,8 @@ export default function StockPage() {
       {/* Modal article */}
       <Modal open={!!deleteTarget} onClose={() => !deleting && setDeleteTarget(null)} title="Supprimer le stock" size="sm">
         <div className="p-6 space-y-5">
-          <p className="text-sm text-gray-300">Supprimer le stock « {deleteTarget?.name} » et ses mouvements manuels ? Le produit restera dans le catalogue.</p>
+          <p className="text-sm text-gray-300">Retirer le stock « {deleteTarget?.name} » de l’inventaire actif ? Les ventes et les mouvements seront conservés.</p>
+          <p className="text-sm text-gray-300">Les {deleteTarget?.quantity} unités restantes seront exclues du stock actif et de sa valorisation. Le produit restera disponible à la vente.</p>
           <div className="flex gap-3">
             <button type="button" onClick={() => setDeleteTarget(null)} disabled={deleting} className="btn-secondary flex-1">Annuler</button>
             <button type="button" onClick={handleDeleteStock} disabled={deleting} className="btn-danger flex-1">
@@ -377,8 +378,8 @@ export default function StockPage() {
               <input type="number" min="0" value={formData.quantity} onChange={(e) => setFormData(p => ({ ...p, quantity: e.target.value }))} placeholder="0" className="input-field" />
             </div>
             <div>
-              <label className="input-label">Prix unitaire *</label>
-              <input type="number" step="0.01" min="0" value={formData.unitPrice} onChange={(e) => setFormData(p => ({ ...p, unitPrice: e.target.value }))} placeholder="0.00" className="input-field" />
+              <label className="input-label">{formData.productId ? "Prix de vente (défini dans Produits)" : "Prix unitaire *"}</label>
+              <input type="number" step="0.01" min="0" readOnly={!!formData.productId} value={formData.unitPrice} onChange={(e) => setFormData(p => ({ ...p, unitPrice: e.target.value }))} placeholder="0.00" className="input-field" />
             </div>
           </div>
           <div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Keyboard,
   ScrollView,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useCurrency } from '../contexts/CurrencyContext';
@@ -54,10 +55,10 @@ export const StockScreen = () => {
     product.name?.toLowerCase().includes(productSearch.trim().toLowerCase())
   );
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     loadStock();
     loadProducts();
-  }, []);
+  }, [user?.projectId]));
 
   const loadStock = async () => {
     try {
@@ -196,7 +197,8 @@ export const StockScreen = () => {
   const handleDeleteStock = (item) => {
     Alert.alert(
       t('Supprimer le stock'),
-      t('Supprimer le stock « {name} » et ses mouvements manuels ? Le produit restera dans le catalogue.', { name: item.name }),
+      t('Retirer le stock « {name} » de l’inventaire actif ? Les ventes et les mouvements seront conservés.', { name: item.name }) + '\n\n' +
+      t('Les {quantity} unités restantes seront exclues du stock actif et de sa valorisation. Le produit restera disponible à la vente.', { quantity: item.quantity }),
       [
         { text: t('Annuler'), style: 'cancel' },
         {
@@ -206,7 +208,7 @@ export const StockScreen = () => {
             try {
               await stockAPI.delete(item._id);
               await loadStock();
-              Alert.alert(t('Succès'), t('Article de stock supprimé'));
+              Alert.alert(t('Succès'), t('Article retiré du stock actif'));
             } catch (error) {
               Alert.alert(t('Erreur'), error.response?.data?.error || t('Impossible de supprimer cet article de stock'));
             }
@@ -464,7 +466,8 @@ export const StockScreen = () => {
             />
 
             <Input
-              label={t('Prix unitaire *')}
+              label={t(formData.productId ? 'Prix de vente (défini dans Produits)' : 'Prix unitaire *')}
+              editable={!formData.productId}
               value={formData.unitPrice}
               onChangeText={(value) => setFormData(prev => ({ ...prev, unitPrice: value }))}
               placeholder="0.00"
