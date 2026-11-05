@@ -569,6 +569,9 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
       }
     }
 
+    // Sans choix d'offre (iOS notamment), créer aussi un essai borné.
+    if (!selectedPlan) selectedPlan = await subscriptionAccess.findRegistrationTrialPlan(mongoose);
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const userRole = role || 'admin';
 
@@ -599,62 +602,6 @@ app.post('/BussnessApp/auth/register', async (req, res) => {
     await user.save();
 
     console.log(`Nouvelle inscription: ${user.username} - Plan choisi: ${selectedPlan ? selectedPlan.name : 'Aucun (IAP)'}${partnerCode ? ` - Code partenaire: ${partnerCode}` : ''}`);
-
-    // Inscription sans plan sélectionné : compte activé, abonnement via IAP
-    if (!selectedPlan) {
-      user.isActive = true;
-      await user.save();
-
-      const token = jwt.sign(
-        { id: user._id, username: user.username, role: user.role, projectId: user.projectId },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-
-      // Notification aux super admins
-      try {
-        const SuperAdmin = mongoose.model('SuperAdmin');
-        const superAdmins = await SuperAdmin.find({ isActive: true });
-        const notifHtml = `
-          <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
-            <div style="background: linear-gradient(135deg, #1A1A1A, #2D2D2D); border-radius: 12px; padding: 30px; margin-bottom: 20px;">
-              <h1 style="color: #D4AF37; margin: 0; font-size: 24px;">Nouvelle inscription</h1>
-              <p style="color: #999; margin: 8px 0 0;">Un nouvel utilisateur s'est inscrit (abonnement via In-App Purchase)</p>
-            </div>
-            <div style="background: white; border-radius: 12px; padding: 30px;">
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr><td style="padding: 8px 0; color: #888; width: 140px;">Nom</td><td style="padding: 8px 0; color: #333; font-weight: 600;">${fullName.trim()}</td></tr>
-                <tr><td style="padding: 8px 0; color: #888;">Email</td><td style="padding: 8px 0; color: #333;">${email.trim()}</td></tr>
-                <tr><td style="padding: 8px 0; color: #888;">Plan</td><td style="padding: 8px 0; color: #333;">Abonnement via l'application (In-App Purchase)</td></tr>
-                ${partnerCode ? `<tr><td style="padding: 8px 0; color: #888;">Code partenaire</td><td style="padding: 8px 0; color: #333; font-weight: 600;">${partnerCode}</td></tr>` : ''}
-              </table>
-            </div>
-          </div>
-        `;
-        for (const admin of superAdmins) {
-          await sendEmail(admin.email, `Nouvelle inscription - ${fullName.trim()} (via app)`, notifHtml);
-        }
-      } catch (emailError) {
-        console.error('Erreur notification super admins:', emailError.message);
-      }
-
-      return res.status(201).json({
-        success: true,
-        autoActivated: true,
-        message: 'Compte créé avec succès ! Vous pouvez souscrire un abonnement depuis l\'application.',
-        token,
-        user: {
-          id: user._id,
-          username: user.username,
-          email: user.email,
-          fullName: user.fullName,
-          role: user.role,
-          isActive: user.isActive,
-          projectId: user.projectId,
-          projectIds: user.projectIds
-        }
-      });
-    }
 
     const DURATION_LABELS = { days: 'jour(s)', months: 'mois', years: 'an(s)', lifetime: 'À vie' };
     const durationLabel = selectedPlan.durationType === 'lifetime'
@@ -5317,7 +5264,8 @@ const sendUpgradeOffer = async ({ user, previousSub, reason }) => {
     reason,
     endedAt: previousSub?.endDate,
   });
-  await sendEmail(user.email, subject, html);
+  const sent = await sendEmail(user.email, subject, html);
+  if (!sent) throw new Error('Échec de l’envoi de l’offre par email');
   return true;
 };
 
@@ -5710,93 +5658,45 @@ if (process.env.STRIPE_SECRET_KEY) {
 
 // ============= JOB : EXPIRATION DES ABONNEMENTS =============
 
-// Fenêtre de rattrapage : un abonnement échu depuis plus longtemps n'est plus notifié automatiquement
-// (évite d'écrire à d'anciens comptes ; le back-office peut renvoyer l'offre manuellement).
-const EXPIRY_NOTIFY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-
-const expireSubscriptions = async () => {
-  try {
-    const Subscription = mongoose.model('Subscription');
-    const now = new Date();
-
-    // Abonnements échus pas encore notifiés. Inclut ceux déjà passés en 'expired' par
-    // /subscription/my (ouverture de l'app) avant le passage de ce job.
-    const expiredSubs = await Subscription.find({
-      status: { $in: ['active', 'expired'] },
-      endDate: { $lt: now, $gt: new Date(now.getTime() - EXPIRY_NOTIFY_WINDOW_MS) },
-      expiryNotifiedAt: null,
-    });
-
-    if (expiredSubs.length === 0) return;
-
-    for (const subscription of expiredSubs) {
-      // 1. Annuler côté Stripe si un stripeSubscriptionId existe
-      if (subscription.status === 'active' && stripeForExpiry && subscription.stripeSubscriptionId) {
-        try {
-          await stripeForExpiry.subscriptions.cancel(subscription.stripeSubscriptionId);
-          console.log(`[expireSubscriptions] Stripe subscription ${subscription.stripeSubscriptionId} annulée`);
-        } catch (stripeErr) {
-          // Si déjà annulée côté Stripe, on continue sans bloquer
-          console.warn(`[expireSubscriptions] Stripe cancel ignoré (${subscription.stripeSubscriptionId}): ${stripeErr.message}`);
-        }
-      }
-
-      // 2. Passer le statut à 'expired'. Le compte n'est PAS désactivé : l'utilisateur doit pouvoir
-      // se reconnecter pour voir l'écran de renouvellement (exigence App Review 2.1). L'accès aux
-      // données du business est bloqué par la garde d'accès (subscriptionAccess.js).
-      subscription.status = 'expired';
-      subscription.expiryNotifiedAt = new Date();
-      subscription.updatedAt = new Date();
-      await subscription.save();
-      subscriptionAccess.invalidateAccessCache(subscription.adminId);
-
-      // 3. Prévenir l'admin, sauf s'il a déjà un autre abonnement en cours (ex. payé pendant l'essai)
-      try {
-        const current = await Subscription.findOne({ adminId: subscription.adminId, status: 'active', _id: { $ne: subscription._id } });
-        if (subscriptionAccess.isSubscriptionCurrent(current)) continue;
-
-        const user = await User.findById(subscription.adminId);
-        if (!user || !user.email) continue;
-
-        const reason = subscriptionAccess.isTrialSubscription(subscription) ? 'trial_expired' : 'subscription_expired';
-        // Abonnement Apple : le renouvellement se fait dans l'app (pas de lien de paiement externe)
-        const offered = subscription.paymentMethod !== 'apple_iap'
-          && await sendUpgradeOffer({ user, previousSub: subscription, reason });
-
-        if (!offered) {
-          const planLabel = subscription.planName || subscription.plan || 'votre abonnement';
-          const expirationDate = new Date(subscription.endDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
-          await sendEmail(
-            user.email,
-            'Votre abonnement EAS a expiré',
-            `
-            <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
-              <div style="background: linear-gradient(135deg, #1A1A1A, #2D2D2D); border-radius: 12px; padding: 30px; margin-bottom: 20px; text-align: center;">
-                <h1 style="color: #FFFFFF; margin: 0; font-size: 24px;">EAS</h1>
-              </div>
-              <div style="background: #FFFFFF; border-radius: 12px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-                <h2 style="color: #E53E3E; margin-top: 0;">Abonnement expiré</h2>
-                <p style="color: #4A5568;">Bonjour <strong>${user.fullName || user.username}</strong>,</p>
-                <p style="color: #4A5568;">
-                  Votre abonnement <strong>${planLabel}</strong> a expiré le <strong>${expirationDate}</strong>.
-                  Vos données sont conservées : renouvelez votre abonnement depuis l'application (menu Abonnement) pour retrouver l'accès.
-                </p>
-              </div>
-            </div>
-            `
-          );
-        }
-        console.log(`[expireSubscriptions] ${user.email} notifié (${reason}${offered ? ', offre envoyée' : ''})`);
-      } catch (mailErr) {
-        console.warn(`[expireSubscriptions] Email non envoyé pour adminId ${subscription.adminId}: ${mailErr.message}`);
-      }
+const { createExpiryJob } = require('./subscriptionExpiry');
+const expireSubscriptions = createExpiryJob({
+  mongoose,
+  getStripe: () => stripeForExpiry,
+  sendNotice: async (user, subscription) => {
+    const reason = subscriptionAccess.isTrialSubscription(subscription) ? 'trial_expired' : 'subscription_expired';
+    // Abonnement Apple : le renouvellement se fait dans l'app (pas de lien de paiement externe)
+    const offered = subscription.paymentMethod !== 'apple_iap'
+      && await sendUpgradeOffer({ user, previousSub: subscription, reason });
+    if (!offered && subscription.paymentMethod !== 'apple_iap') {
+      throw new Error('Aucun plan payant actif disponible pour l’offre de renouvellement');
     }
 
-    console.log(`[expireSubscriptions] ${expiredSubs.length} abonnement(s) expiré(s) traité(s)`);
-  } catch (error) {
-    console.error('[expireSubscriptions] Erreur:', error.message);
-  }
-};
+    if (!offered) {
+      const planLabel = subscription.planName || subscription.plan || 'votre abonnement';
+      const expirationDate = new Date(subscription.endDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+      const sent = await sendEmail(
+        user.email,
+        'Votre abonnement EAS a expiré',
+        `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; background: #f8f9fa;">
+          <div style="background: linear-gradient(135deg, #1A1A1A, #2D2D2D); border-radius: 12px; padding: 30px; margin-bottom: 20px; text-align: center;">
+            <h1 style="color: #FFFFFF; margin: 0; font-size: 24px;">EAS</h1>
+          </div>
+          <div style="background: #FFFFFF; border-radius: 12px; padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+            <h2 style="color: #E53E3E; margin-top: 0;">Abonnement expiré</h2>
+            <p style="color: #4A5568;">Bonjour <strong>${user.fullName || user.username}</strong>,</p>
+            <p style="color: #4A5568;">
+              Votre abonnement <strong>${planLabel}</strong> a expiré le <strong>${expirationDate}</strong>.
+              Vos données sont conservées : renouvelez votre abonnement depuis l'application (menu Abonnement) pour retrouver l'accès.
+            </p>
+          </div>
+        </div>
+        `
+      );
+      if (!sent) throw new Error('Échec de l’envoi de l’email d’expiration');
+    }
+  },
+});
 
 // Start server
 app.listen(PORT, async () => {

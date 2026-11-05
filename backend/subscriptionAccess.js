@@ -121,6 +121,14 @@ async function findOfferPlan(mongoose, previousSub) {
   return paid.find((p) => /basic/i.test(p.name)) || paid[0] || null;
 }
 
+// Même essai borné pour les inscriptions sans offre choisie, y compris iOS.
+async function findRegistrationTrialPlan(mongoose) {
+  const plan = await mongoose.model('SubscriptionPlan').findOne({
+    isActive: true, price: 0, durationType: 'days', duration: { $gt: 0 },
+  }).sort({ sortOrder: 1, duration: 1 });
+  return plan || { name: 'EAS Essai', price: 0, duration: 7, durationType: 'days', maxProjects: 1 };
+}
+
 const signPayToken = (jwt, secret, adminId, planId) =>
   jwt.sign({ purpose: 'subscription_pay', adminId: String(adminId), planId: String(planId) }, secret, { expiresIn: PAY_LINK_VALIDITY });
 
@@ -205,6 +213,7 @@ module.exports = {
   getAccessStatus,
   createAccessGuard,
   findOfferPlan,
+  findRegistrationTrialPlan,
   signPayToken,
   verifyPayToken,
   buildPayLink,
