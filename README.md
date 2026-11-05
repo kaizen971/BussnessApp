@@ -104,6 +104,7 @@ npm run web      # Pour Web
 - `GET /BussnessApp/stock` - Liste du stock
 - `POST /BussnessApp/stock` - Ajouter un article
 - `PUT /BussnessApp/stock/:id` - Modifier un article
+- `DELETE /BussnessApp/stock/:id` - Supprimer un stock et ses mouvements manuels (refusé si lié à une vente)
 
 ### Customers
 - `GET /BussnessApp/customers` - Liste des clients

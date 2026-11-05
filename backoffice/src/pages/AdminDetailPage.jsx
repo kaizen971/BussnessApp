@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, UserCheck, UserX, Send, CreditCard, Activity, FolderOpen, Clock, Loader2, RefreshCw, Banknote, Heart, AlertTriangle, ChevronRight, Plus, Check, Package, Trash2 } from 'lucide-react'
+import { ArrowLeft, UserCheck, UserX, Send, CreditCard, Activity, FolderOpen, Clock, Loader2, RefreshCw, Banknote, Heart, AlertTriangle, ChevronRight, Plus, Check, Package, Trash2, Tag, Mail } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Badge, Skeleton, ConfirmDialog, Modal } from '../components/ui'
 import api from '../services/api'
@@ -77,6 +77,9 @@ export default function AdminDetailPage() {
       } else if (type === 'link') {
         const res = await api.post(`/backoffice/admins/${id}/resend-payment-link`)
         toast.success(res.data.message)
+      } else if (type === 'offer') {
+        const res = await api.post(`/backoffice/admins/${id}/send-upgrade-offer`)
+        toast.success(res.data.message)
       } else if (type === 'delete') {
         await api.delete(`/backoffice/admins/${id}`)
         toast.success('Admin supprimé définitivement')
@@ -128,6 +131,7 @@ export default function AdminDetailPage() {
     if (confirm.type === 'toggle' && admin.isActive) return { title: 'Désactiver cet admin ?', message: `${admin.fullName} n'aura plus accès à l'application.`, confirmText: 'Désactiver', variant: 'danger' }
     if (confirm.type === 'toggle') return { title: 'Réactiver cet admin ?', message: `${admin.fullName} retrouvera l'accès.`, confirmText: 'Activer', variant: 'success' }
     if (confirm.type === 'creds') return { title: 'Envoyer les identifiants ?', message: `Un nouveau mot de passe sera envoyé à ${admin.email}.`, confirmText: 'Envoyer', variant: 'info' }
+    if (confirm.type === 'offer') return { title: 'Envoyer l\'offre d\'abonnement ?', message: `${admin.email} recevra la proposition de licence (Basic pour un essai terminé) avec un lien de paiement par carte valable 30 jours.`, confirmText: 'Envoyer', variant: 'info' }
     if (confirm.type === 'link') return { title: 'Renvoyer le lien ?', message: `Un email de rappel sera envoyé à ${admin.email}.`, confirmText: 'Renvoyer', variant: 'info' }
     if (confirm.type === 'delete') return { title: 'Supprimer définitivement ?', message: `${admin.fullName || admin.username} sera supprimé avec tous ses projets, abonnements et données. Cette action est irréversible.`, confirmText: 'Supprimer', variant: 'danger' }
     return {}
@@ -205,6 +209,11 @@ export default function AdminDetailPage() {
             <div className="flex items-center gap-3 mt-2.5 flex-wrap">
               <span className="text-xs text-gray-400 bg-gray-50 px-2.5 py-1 rounded-lg font-medium">@{admin.username}</span>
               <span className="text-xs text-gray-400 bg-gray-50 px-2.5 py-1 rounded-lg font-medium">Créé le {formatShort(admin.createdAt)}</span>
+              {admin.partnerCode && (
+                <Link to={`/admins?partner=${encodeURIComponent(admin.partnerCode)}`} className="inline-flex items-center gap-1 text-xs text-primary-600 bg-primary-50 px-2.5 py-1 rounded-lg font-semibold hover:bg-primary-100">
+                  <Tag className="w-3 h-3" /> Code partenaire : {admin.partnerCode}
+                </Link>
+              )}
               {latestSub && <Badge variant={SUB_STATUS[latestSub.status]?.variant || 'neutral'}>{latestSub.planName || latestSub.plan}</Badge>}
             </div>
           </div>
@@ -224,6 +233,15 @@ export default function AdminDetailPage() {
             >
               {actionLoading === 'creds' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               Identifiants
+            </button>
+            <button
+              onClick={() => setConfirm({ open: true, type: 'offer' })}
+              disabled={actionLoading === 'offer'}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100 hover:shadow-sm transition-all disabled:opacity-50"
+              title="Envoyer par email la proposition de licence avec le lien de paiement"
+            >
+              {actionLoading === 'offer' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+              Offre d'abonnement
             </button>
             {hasPendingPayment && (
               <button

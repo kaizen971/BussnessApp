@@ -1,6 +1,8 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authAPI, setCachedToken, clearCachedToken } from '../services/api';
+import { authAPI, setCachedToken, clearCachedToken, setOnSessionInvalidated } from '../services/api';
+import { t, useLanguage } from '../i18n';
 
 const AuthContext = createContext();
 
@@ -13,15 +15,35 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
+  useLanguage();
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [availableProjects, setAvailableProjects] = useState([]);
 
+  const clearSessionState = useCallback(async () => {
+    clearCachedToken();
+    setToken(null);
+    setUser(null);
+    setSelectedProjectId(null);
+    setAvailableProjects([]);
+    try {
+      await AsyncStorage.removeItem('selectedProjectId');
+    } catch (_) {
+      // ignore storage errors during forced logout
+    }
+  }, []);
+
   useEffect(() => {
     loadStoredAuth();
   }, []);
+
+  // Si l'intercepteur API détecte une session morte, on ramène l'UI à l'écran de connexion
+  useEffect(() => {
+    setOnSessionInvalidated(clearSessionState);
+    return () => setOnSessionInvalidated(null);
+  }, [clearSessionState]);
 
   const loadStoredAuth = async () => {
     try {
@@ -41,8 +63,13 @@ export const AuthProvider = ({ children }) => {
           activeToken = refreshed.token;
           userData = refreshed.user;
         } catch (refreshError) {
+          const status = refreshError.response?.status;
           console.log('Stored session refresh failed:', refreshError.response?.data || refreshError.message);
-          if (refreshError.response) {
+          // Ne déconnecter QUE si le token est réellement invalide/expiré (401/403).
+          // Sur erreur réseau ou serveur (5xx, timeout), on conserve la session locale
+          // et on continue avec le token stocké — évite une reconnexion forcée intempestive
+          // (ex. juste après un achat qui a mis l'app en arrière-plan).
+          if (status === 401 || status === 403) {
             await Promise.all([
               AsyncStorage.removeItem('userToken'),
               AsyncStorage.removeItem('userData'),
@@ -51,6 +78,7 @@ export const AuthProvider = ({ children }) => {
             clearCachedToken();
             return;
           }
+          // Sinon : on garde activeToken = storedToken et userData = storedUser (déjà initialisés).
         }
 
         setCachedToken(activeToken);
@@ -99,7 +127,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.log('Login error details:', error.response?.data);
       const errorData = error.response?.data;
-      const errorMessage = errorData?.error || 'Échec de la connexion - vérifiez votre connexion';
+      const errorMessage = errorData?.error || t('Échec de la connexion - vérifiez votre connexion');
       const errorCode = errorData?.code || 'UNKNOWN';
       const errorField = errorData?.field;
 
@@ -143,7 +171,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.log('Registration error details:', error.response?.data);
       const errorData = error.response?.data;
-      const errorMessage = errorData?.error || 'Échec de l\'inscription - vérifiez votre connexion';
+      const errorMessage = errorData?.error || t("Échec de l'inscription - vérifiez votre connexion");
       const errorCode = errorData?.code || 'UNKNOWN';
       const errorField = errorData?.field;
 
@@ -188,6 +216,24 @@ export const AuthProvider = ({ children }) => {
 
   };
 
+  const deleteAccount = async (password) => {
+    try {
+      await authAPI.deleteAccount(password);
+      await AsyncStorage.removeItem('userToken');
+      await AsyncStorage.removeItem('userData');
+      await AsyncStorage.removeItem('selectedProjectId');
+      clearCachedToken();
+      setToken(null);
+      setUser(null);
+      setSelectedProjectId(null);
+      setAvailableProjects([]);
+      return { success: true };
+    } catch (error) {
+      const errorMessage = error.response?.data?.error || t('Impossible de supprimer le compte.');
+      return { success: false, error: errorMessage };
+    }
+  };
+
   const loadAvailableProjects = async (projects) => {
     setAvailableProjects(projects);
   };
@@ -199,6 +245,7 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    deleteAccount,
     updateUser,
     isAuthenticated: !!token,
     isAdmin: user?.role === 'admin' || user?.role === 'responsable',
