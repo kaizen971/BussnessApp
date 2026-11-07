@@ -19,7 +19,9 @@ import {
 } from 'react-native';
 import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EXPENSE_CATEGORIES, LEGACY_EXPENSE_CATEGORIES } from '../constants/expenseCategories';
+import { buildExpenseBreakdown } from '../utils/expenseBreakdown';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -60,6 +62,7 @@ export const DashboardScreen = ({ navigation }) => {
   const styles = useThemedStyles(createStyles);
   const { user, logout, deleteAccount, selectedProjectId, availableProjects, loadAvailableProjects, selectProject } = useAuth();
   const { format: formatPrice, currency, setProjectCurrency, availableCurrencies } = useCurrency();
+  const insets = useSafeAreaInsets();
   const { subscription, isPremium, canAccessScreen, refreshSubscription } = useSubscription();
   const [stats, setStats] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(startOfMonth());
@@ -996,6 +999,7 @@ export const DashboardScreen = ({ navigation }) => {
 
             <ScrollView
               style={styles.modalContent}
+              contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
               showsVerticalScrollIndicator={false}
             >
               {stats && (
@@ -1164,38 +1168,39 @@ export const DashboardScreen = ({ navigation }) => {
                     </>
                   )}
 
-                  {stats.expensesByCategory && (
-                    <Card style={styles.chartCard}>
-                      <Text style={styles.chartTitle}>{t('Répartition des charges')}</Text>
-                      <PieChart
-                        data={[
-                          ...[...EXPENSE_CATEGORIES, ...LEGACY_EXPENSE_CATEGORIES].map(({ value, label, chartLabel }, index) => ({
-                            name: t(chartLabel || label),
-                            population: stats.expensesByCategory[value] || 0,
-                            color: [colors.primary, colors.accent, colors.error, colors.info, colors.warning][index % 5],
-                            legendFontColor: colors.textSecondary,
-                            legendFontSize: 13,
-                          })),
-                          {
-                            name: t('Masse salariale'),
-                            population: stats.expensesByCategory.payroll || 0,
-                            color: colors.warning,
-                            legendFontColor: colors.textSecondary,
-                            legendFontSize: 13,
-                          },
-                        ].filter(item => item.population > 0)}
-                        width={screenWidth - 64}
-                        height={200}
-                        chartConfig={{
-                          color: (opacity = 1) => colors.text + Math.round(opacity * 255).toString(16).padStart(2, '0'),
-                        }}
-                        accessor="population"
-                        backgroundColor="transparent"
-                        paddingLeft="15"
-                        absolute
-                      />
-                    </Card>
-                  )}
+                  {stats.expensesByCategory && (() => {
+                    const { items: pieData, total: pieTotal } = buildExpenseBreakdown(stats.expensesByCategory, t);
+                    if (pieTotal <= 0) return null;
+                    const pieSize = Math.min(screenWidth - 64, 260);
+                    return (
+                      <Card style={styles.chartCard}>
+                        <Text style={styles.chartTitle}>{t('Répartition des charges')}</Text>
+                        <PieChart
+                          data={pieData}
+                          width={pieSize}
+                          height={pieSize * 0.8}
+                          chartConfig={{
+                            color: (opacity = 1) => colors.text + Math.round(opacity * 255).toString(16).padStart(2, '0'),
+                          }}
+                          accessor="population"
+                          backgroundColor="transparent"
+                          paddingLeft="0"
+                          center={[pieSize / 4, 0]}
+                          hasLegend={false}
+                        />
+                        <View style={styles.pieLegend}>
+                          {pieData.map(item => (
+                            <View key={item.key} style={styles.pieLegendRow}>
+                              <View style={[styles.pieLegendSwatch, { backgroundColor: item.color }]} />
+                              <Text style={styles.pieLegendName} numberOfLines={1}>{item.name}</Text>
+                              <Text style={styles.pieLegendValue}>{formatPrice(item.population)}</Text>
+                              <Text style={styles.pieLegendPercent}>{item.percentLabel}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </Card>
+                    );
+                  })()}
 
                   {stats.topProducts && stats.topProducts.length > 0 && (
                     <Card style={styles.summaryCard}>
@@ -2057,8 +2062,11 @@ const createStyles = (colors) => ({
     borderBottomColor: colors.borderLight + '50',
   },
   summaryRowLeft: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
+    marginRight: 8,
   },
   summaryDot: {
     width: 8,
@@ -2132,6 +2140,38 @@ const createStyles = (colors) => ({
     marginVertical: 8,
     borderRadius: 16,
   },
+  pieLegend: {
+    alignSelf: 'stretch',
+    marginTop: 8,
+  },
+  pieLegendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  pieLegendSwatch: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 10,
+  },
+  pieLegendName: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  pieLegendValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+    marginLeft: 8,
+  },
+  pieLegendPercent: {
+    width: 44,
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'right',
+  },
   rankBadge: {
     width: 28,
     height: 28,
@@ -2164,7 +2204,6 @@ const createStyles = (colors) => ({
     fontWeight: '700',
     color: colors.text,
     flexShrink: 0,
-    minWidth: 80,
     textAlign: 'right',
   },
   statsButton: {

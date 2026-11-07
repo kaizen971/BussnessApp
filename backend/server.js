@@ -300,6 +300,7 @@ const UserSchema = new mongoose.Schema({
   }],
   partnerCode: { type: String, trim: true, uppercase: true }, // Code promo / partenaire saisi à l'inscription (attribution)
   lastLogin: { type: Date },
+  lastActivityAt: { type: Date }, // Dernière requête authentifiée (alertes d'inactivité du backoffice)
   createdAt: { type: Date, default: Date.now }
 });
 UserSchema.index({ projectId: 1 });
@@ -370,6 +371,8 @@ const Schedule = mongoose.model('Schedule', ScheduleSchema);
 const Commission = mongoose.model('Commission', CommissionSchema);
 const Category = mongoose.model('Category', CategorySchema);
 
+const activityAlerts = require('./activityAlerts');
+
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'bussnessapp_secret_key_2025';
 
@@ -380,6 +383,7 @@ const authenticateToken = createAuthenticateToken({
   User,
   secret: JWT_SECRET,
   accessGuard: subscriptionAccess.createAccessGuard(mongoose),
+  onAuthenticated: activityAlerts.createActivityTracker({ User }),
 });
 
 // Cloisonnement des données entre business (voir projectAccess.js)
@@ -5715,4 +5719,9 @@ app.listen(PORT, async () => {
   // Expirer les abonnements dépassés au démarrage puis toutes les heures
   await expireSubscriptions();
   setInterval(expireSubscriptions, 60 * 60 * 1000);
+
+  // Alertes d'inactivité / reprise d'activité des clients (backoffice) toutes les heures
+  const checkClientActivity = activityAlerts.getSharedJob(mongoose);
+  checkClientActivity().catch(error => console.error('[activityAlerts]', error.message));
+  setInterval(checkClientActivity, 60 * 60 * 1000);
 });

@@ -1,5 +1,6 @@
 // accessGuard (optionnel) : async (req, user) => null | corps d'une réponse 402 (abonnement requis)
-const createAuthenticateToken = ({ jwt, User, secret, accessGuard }) => (req, res, next) => {
+// onAuthenticated (optionnel) : (userId) => void, appelé sans attendre (suivi d'activité)
+const createAuthenticateToken = ({ jwt, User, secret, accessGuard, onAuthenticated }) => (req, res, next) => {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -25,6 +26,9 @@ const createAuthenticateToken = ({ jwt, User, secret, accessGuard }) => (req, re
       }
 
       req.user = { ...claims, role: user.role, projectId: user.projectId };
+      if (onAuthenticated) {
+        try { onAuthenticated(user._id); } catch (trackError) { console.warn('onAuthenticated:', trackError.message); }
+      }
 
       if (accessGuard) {
         const denial = await accessGuard(req, user);

@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const subscriptionAccess = require('./subscriptionAccess');
+const activityAlerts = require('./activityAlerts');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'bussnessapp_secret_key_2025';
 const SUPERADMIN_JWT_SECRET = JWT_SECRET + '_superadmin';
@@ -213,6 +214,7 @@ const Payment = mongoose.model('Payment', PaymentSchema);
 const ActivityLog = mongoose.model('ActivityLog', ActivityLogSchema);
 const User = mongoose.model('User');
 const Project = mongoose.model('Project');
+const { ClientActivityAlert } = activityAlerts.registerModels(mongoose);
 
 // ============= EMAIL SERVICE =============
 
@@ -1489,6 +1491,92 @@ router.get('/activity-logs', authenticateSuperAdmin, async (req, res) => {
   }
 });
 
+// ============= ALERTES D'ACTIVITÉ CLIENTS =============
+
+router.get('/activity-alerts/settings', authenticateSuperAdmin, async (req, res) => {
+  try {
+    res.json(await activityAlerts.getSettings(mongoose));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/activity-alerts/settings', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { settings, error } = activityAlerts.validateSettingsInput(req.body || {});
+    if (error) return res.status(400).json({ error });
+    const saved = await activityAlerts.saveSettings(mongoose, settings, req.superAdmin.id);
+    await logActivity(req.superAdmin.id, 'superadmin', 'update_activity_alerts',
+      `Alertes d'inactivité ${saved.enabled ? 'activées' : 'désactivées'} · seuil ${saved.inactivityDays} j`, 'BackofficeSetting');
+    // Applique immédiatement le nouveau seuil
+    const summary = await activityAlerts.getSharedJob(mongoose)();
+    res.json({ settings: saved, summary });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/activity-alerts/run', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const summary = await activityAlerts.getSharedJob(mongoose)({ force: true });
+    res.json(summary);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// status : 'pending' (open, défaut) | 'ongoing' (inactivité en cours, traitée ou non) | 'all'
+router.get('/activity-alerts', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { status = 'pending', type, adminId } = req.query;
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const query = {};
+    if (status === 'pending') query.status = 'open';
+    else if (status === 'ongoing') query.ongoing = true;
+    else if (['open', 'acknowledged', 'resolved'].includes(status)) query.status = status;
+    if (['inactivity', 'reactivation'].includes(type)) query.type = type;
+    if (adminId && mongoose.isValidObjectId(adminId)) query.adminId = adminId;
+
+    const [alerts, counts] = await Promise.all([
+      ClientActivityAlert.find(query).sort({ createdAt: -1 }).limit(limit)
+        .populate('adminId', 'fullName username email isActive').lean(),
+      ClientActivityAlert.aggregate([
+        { $match: { status: 'open' } },
+        { $group: { _id: '$type', count: { $sum: 1 } } },
+      ]),
+    ]);
+    const byType = Object.fromEntries(counts.map(c => [c._id, c.count]));
+    res.json({
+      alerts: alerts.map(({ adminId: admin, ...alert }) => ({
+        ...alert,
+        adminId: admin?._id || null,
+        admin: admin ? { _id: admin._id, fullName: admin.fullName, username: admin.username, email: admin.email, isActive: admin.isActive } : null,
+      })),
+      counts: { inactivity: byType.inactivity || 0, reactivation: byType.reactivation || 0 },
+      ongoingInactive: await ClientActivityAlert.countDocuments({ ongoing: true }),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Marquer comme traitée : l'alerte disparaît des alertes à traiter, mais une alerte
+// d'inactivité reste « en cours » (pas de nouvelle alerte avant une reprise d'activité).
+router.post('/activity-alerts/acknowledge', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).filter(id => mongoose.isValidObjectId(id));
+    if (!ids.length) return res.status(400).json({ error: 'Aucune alerte sélectionnée' });
+    const now = new Date();
+    const result = await ClientActivityAlert.updateMany(
+      { _id: { $in: ids }, status: 'open' },
+      { $set: { status: 'acknowledged', acknowledgedAt: now, acknowledgedBy: req.superAdmin.id, updatedAt: now } }
+    );
+    res.json({ acknowledged: result.modifiedCount });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ============= DASHBOARD STATS =============
 
 // ============= PARTNER CODES (attribution des inscriptions) =============
@@ -1580,11 +1668,16 @@ router.get('/dashboard/stats', authenticateSuperAdmin, async (req, res) => {
 
     const totalPlans = await SubscriptionPlan.countDocuments();
     const activePlans = await SubscriptionPlan.countDocuments({ isActive: true });
+    const [openInactivityAlerts, openReactivationAlerts] = await Promise.all([
+      ClientActivityAlert.countDocuments({ type: 'inactivity', status: 'open' }),
+      ClientActivityAlert.countDocuments({ type: 'reactivation', status: 'open' })
+    ]);
 
     res.json({
       admins: { total: totalAdmins, active: activeAdmins, inactive: inactiveAdmins },
       subscriptions: { total: totalSubs, active: activeSubs, pending: pendingSubs, suspended: suspendedSubs },
       plans: { total: totalPlans, active: activePlans },
+      activityAlerts: { inactivity: openInactivityAlerts, reactivation: openReactivationAlerts },
       revenue: { total: totalRevenue[0]?.total || 0, monthly: monthlyRevenue[0]?.total || 0 },
       paymentMethods: paymentMethodStats,
       recentAdmins,
