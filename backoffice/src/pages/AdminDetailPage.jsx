@@ -27,6 +27,7 @@ const ACTION_LABELS = {
   activate_admin: 'Admin activé', send_credentials: 'Identifiants envoyés',
   update_subscription: 'Abonnement modifié', payment_completed: 'Paiement reçu',
   resend_payment_link: 'Lien renvoyé', assign_subscription: 'Abonnement attribué',
+  simulate_subscription_expiry: 'Fin d’abonnement simulée',
 }
 
 function formatDate(d) {
@@ -80,6 +81,13 @@ export default function AdminDetailPage() {
       } else if (type === 'offer') {
         const res = await api.post(`/backoffice/admins/${id}/send-upgrade-offer`)
         toast.success(res.data.message)
+      } else if (type === 'expiry') {
+        const current = data.subscriptions.filter(sub => sub.status === 'active' && (!sub.endDate || new Date(sub.endDate) > new Date()))
+        if (current.length !== 1) throw new Error('Rechargez la fiche pour vérifier l’abonnement en cours.')
+        const res = await api.post(`/backoffice/admins/${id}/simulate-subscription-expiry`, { subscriptionId: current[0]._id, confirmed: true })
+        if (res.data.emailSent) toast.success(res.data.message, { duration: 7000 })
+        else toast.error(res.data.message, { duration: 10000 })
+        load()
       } else if (type === 'delete') {
         await api.delete(`/backoffice/admins/${id}`)
         toast.success('Admin supprimé définitivement')
@@ -87,7 +95,8 @@ export default function AdminDetailPage() {
         return
       }
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Erreur')
+      toast.error(err.response?.data?.error || err.message || 'Erreur')
+      if (type === 'expiry') load()
     }
     setActionLoading(null)
     setConfirm({ open: false, type: null })
@@ -132,6 +141,7 @@ export default function AdminDetailPage() {
     if (confirm.type === 'toggle') return { title: 'Réactiver cet admin ?', message: `${admin.fullName} retrouvera l'accès.`, confirmText: 'Activer', variant: 'success' }
     if (confirm.type === 'creds') return { title: 'Envoyer les identifiants ?', message: `Un nouveau mot de passe sera envoyé à ${admin.email}.`, confirmText: 'Envoyer', variant: 'info' }
     if (confirm.type === 'offer') return { title: 'Envoyer l\'offre d\'abonnement ?', message: `${admin.email} recevra la proposition de licence (Basic pour un essai terminé) avec un lien de paiement par carte valable 30 jours.`, confirmText: 'Envoyer', variant: 'info' }
+    if (confirm.type === 'expiry') return { title: 'Simuler une fin d’abonnement ?', message: `À utiliser sur un compte de test. L’abonnement de ${admin.fullName || admin.username} prendra réellement fin maintenant : les fonctionnalités seront bloquées et le mail de renouvellement sera envoyé à ${admin.email}. Le compte restera connecté. Pour rétablir l’accès, vous devrez lui attribuer un nouvel abonnement.`, confirmText: 'Expirer et envoyer le mail', variant: 'danger' }
     if (confirm.type === 'link') return { title: 'Renvoyer le lien ?', message: `Un email de rappel sera envoyé à ${admin.email}.`, confirmText: 'Renvoyer', variant: 'info' }
     if (confirm.type === 'delete') return { title: 'Supprimer définitivement ?', message: `${admin.fullName || admin.username} sera supprimé avec tous ses projets, abonnements et données. Cette action est irréversible.`, confirmText: 'Supprimer', variant: 'danger' }
     return {}
@@ -177,6 +187,11 @@ export default function AdminDetailPage() {
   const { admin, subscriptions, payments, projects, activities } = data
   const latestSub = subscriptions[0]
   const hasPendingPayment = latestSub?.status === 'pending_payment' && latestSub?.stripePaymentLinkUrl
+  const currentSubscriptions = subscriptions.filter(sub => sub.status === 'active' && (!sub.endDate || new Date(sub.endDate) > new Date()))
+  const simulationSub = currentSubscriptions.length === 1 ? currentSubscriptions[0] : null
+  const canSimulateExpiry = admin.isActive && simulationSub && simulationSub.startDate && new Date(simulationSub.startDate) <= new Date()
+    && !simulationSub.stripeSubscriptionId && !simulationSub.stripeSessionId && !simulationSub.stripePaymentLinkUrl
+    && !['apple_iap', 'google_play'].includes(simulationSub.paymentMethod)
 
   const tabs = [
     { key: 'subscriptions', label: 'Abonnements', count: subscriptions.length, icon: CreditCard },
@@ -253,6 +268,15 @@ export default function AdminDetailPage() {
                 Lien paiement
               </button>
             )}
+            <button
+              onClick={() => setConfirm({ open: true, type: 'expiry' })}
+              disabled={!canSimulateExpiry || actionLoading !== null}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold rounded-xl bg-red-50 text-red-700 hover:bg-red-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              title={canSimulateExpiry ? 'Expirer immédiatement cet abonnement et envoyer le mail de renouvellement' : 'Nécessite un compte actif avec un seul abonnement en cours, sans facturation Stripe, Apple ou Google'}
+            >
+              {actionLoading === 'expiry' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Clock className="w-3.5 h-3.5" />}
+              Simuler une fin d’abonnement
+            </button>
             <button
               onClick={openSubModal}
               className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:shadow-sm transition-all"

@@ -975,6 +975,32 @@ router.post('/admins/:id/send-upgrade-offer', authenticateSuperAdmin, async (req
   }
 });
 
+router.post('/admins/:id/simulate-subscription-expiry', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { subscriptionId, confirmed } = req.body || {};
+    if (!mongoose.isValidObjectId(req.params.id) || !mongoose.isValidObjectId(subscriptionId) || confirmed !== true) {
+      return res.status(400).json({ error: 'Un compte, un abonnement et une confirmation explicite sont requis.' });
+    }
+    const admin = await User.findById(req.params.id);
+    if (!admin || admin.role !== 'admin') return res.status(404).json({ error: 'Admin non trouvé' });
+    if (!admin.isActive) return res.status(409).json({ error: 'Réactivez le compte avant de simuler une fin d’abonnement.' });
+    const expire = req.app.locals.expireSubscriptions;
+    if (typeof expire !== 'function') return res.status(503).json({ error: 'Simulation indisponible' });
+    const result = await expire({ simulateForAdminId: admin._id, subscriptionId });
+    await logActivity(req.superAdmin.id, 'superadmin', 'simulate_subscription_expiry',
+      `Fin d’abonnement simulée pour ${admin.fullName || admin.username} (${subscriptionId}). Email : ${result.emailSent ? 'envoyé' : 'en attente'}.`,
+      'User', admin._id);
+    res.json({
+      ...result,
+      message: result.emailSent
+        ? 'Abonnement expiré. Email envoyé. Le compte reste connecté avec un accès limité au renouvellement.'
+        : 'Abonnement expiré. Email non envoyé : une nouvelle tentative sera effectuée par le job d’expiration.',
+    });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
 router.post('/admins/:id/resend-payment-link', authenticateSuperAdmin, async (req, res) => {
   try {
     const subscription = await Subscription.findOne({

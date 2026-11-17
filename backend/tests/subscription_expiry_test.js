@@ -74,3 +74,110 @@ test('inscription sans offre : essai configuré ou sept jours par défaut', asyn
   assert.equal(fallback.durationType, 'days');
   assert.equal(fallback.price, 0);
 });
+
+function simulationFixture(overrides = {}) {
+  const sub = {
+    _id: 'test-sub', adminId: 'test-admin', status: 'active', amount: 0, durationType: 'days',
+    startDate: new Date(Date.now() - DAY), endDate: new Date(Date.now() + DAY),
+    paymentMethod: 'donation', updatedAt: new Date(Date.now() - DAY),
+    async save() {}, ...overrides,
+  };
+  const notices = [];
+  let fail = false;
+  let raced = false;
+  let current = [sub];
+  let stripeCalls = 0;
+  const mongoose = { model(name) {
+    if (name === 'User') return { findById: async (id) => ({ _id: id, email: 'debug@example.com' }) };
+    return {
+      find: async (filter) => {
+        // Une simulation ne doit pas lancer le rattrapage global des autres comptes.
+        assert.equal(filter.adminId, 'test-admin');
+        return current.filter(s => s.status === 'active' && (!s.endDate || s.endDate > filter.$or[1].endDate.$gt));
+      },
+      findOneAndUpdate: async (filter, update, options) => {
+        assert.equal(filter._id, sub._id);
+        assert.equal(filter.adminId, sub.adminId);
+        assert.equal(filter.status, 'active');
+        assert.equal(filter.endDate, sub.endDate);
+        assert.equal(options.new, true);
+        if (raced) return null;
+        Object.assign(sub, update.$set);
+        return sub;
+      },
+      findOne: async () => null,
+    };
+  } };
+  const job = createExpiryJob({ mongoose,
+    getStripe: () => ({ subscriptions: { cancel: async () => { stripeCalls++; } } }),
+    logger: { warn() {}, error() {} },
+    sendNotice: async (user, subscription) => {
+      if (fail) throw new Error('SMTP indisponible');
+      notices.push({ user, subscription });
+    },
+  });
+  return { sub, notices, job, simulate: () => job({ simulateForAdminId: 'test-admin', subscriptionId: sub._id }),
+    setFail() { fail = true; }, setRace() { raced = true; },
+    addCurrent() { current = [sub, { ...sub, _id: 'second-sub' }]; },
+    get stripeCalls() { return stripeCalls; },
+  };
+}
+
+test('simulation ciblée : fin immédiate, expiration et même notification, sans appel Stripe', async () => {
+  const f = simulationFixture();
+  const before = new Date();
+  const result = await f.simulate();
+  assert.deepEqual(result, { expired: true, emailSent: true });
+  assert.equal(f.sub.status, 'expired');
+  assert.ok(f.sub.endDate >= before && f.sub.endDate <= new Date());
+  assert.ok(f.sub.expiryNotifiedAt instanceof Date);
+  assert.equal(f.notices.length, 1);
+  assert.equal(f.notices[0].user._id, 'test-admin');
+  assert.equal(f.stripeCalls, 0);
+  await assert.rejects(f.simulate(), { status: 409 });
+  assert.equal(f.notices.length, 1);
+});
+
+test('simulation : SMTP en panne laisse l’accès expiré et la notification en attente', async () => {
+  const f = simulationFixture();
+  f.setFail();
+  assert.deepEqual(await f.simulate(), { expired: true, emailSent: false });
+  assert.equal(f.sub.status, 'expired');
+  assert.equal(f.sub.expiryNotifiedAt, null);
+});
+
+test('simulation : refuse les abonnements facturés par un prestataire sans les modifier', async () => {
+  for (const external of [
+    { stripeSubscriptionId: 'sub_external' }, { stripeSessionId: 'cs_external' },
+    { stripePaymentLinkUrl: 'https://example.com/pay' },
+    { paymentMethod: 'apple_iap' }, { paymentMethod: 'google_play' },
+  ]) {
+    const f = simulationFixture(external);
+    const endDate = f.sub.endDate;
+    await assert.rejects(f.simulate(), { status: 409 });
+    assert.equal(f.sub.status, 'active');
+    assert.equal(f.sub.endDate, endDate);
+    assert.equal(f.notices.length, 0);
+    assert.equal(f.stripeCalls, 0);
+  }
+});
+
+test('simulation : refuse plusieurs abonnements en cours ou un abonnement non démarré', async () => {
+  const f = simulationFixture();
+  f.addCurrent();
+  await assert.rejects(f.simulate(), { status: 409 });
+  for (const startDate of [null, new Date(Date.now() + DAY)]) {
+    await assert.rejects(simulationFixture({ startDate }).simulate(), { status: 409 });
+  }
+});
+
+test('simulation : changement concurrent et double clic ne déclenchent pas deux emails', async () => {
+  const raced = simulationFixture();
+  raced.setRace();
+  await assert.rejects(raced.simulate(), { status: 409 });
+  assert.equal(raced.sub.status, 'active');
+  const f = simulationFixture();
+  const results = await Promise.allSettled([f.simulate(), f.simulate()]);
+  assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
+  assert.equal(f.notices.length, 1);
+});

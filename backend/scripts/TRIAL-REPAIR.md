@@ -44,6 +44,21 @@ l'application. Aucun abonnement payant n'est activé sans paiement.
 
 ## Vérification locale
 
+Dans le back-office, ouvrir la fiche d’un administrateur de test et choisir
+« Simuler une fin d’abonnement ». La confirmation indique que l’expiration est
+réelle : la date de fin passe à maintenant, le traitement habituel expire
+l’abonnement, invalide le cache d’accès et envoie le même mail de renouvellement.
+Le compte reste actif et peut se connecter pour renouveler. L’action est réservée
+aux superadministrateurs et enregistrée dans l’activité du compte.
+
+La simulation nécessite un seul abonnement en cours et déjà démarré. Elle refuse
+les abonnements associés à une session, un lien ou un abonnement Stripe, ainsi
+que les achats Apple/Google, pour ne pas désynchroniser la facturation externe.
+Utiliser un essai ou un abonnement de test attribué en donation. L’email part à
+l’adresse du compte ciblé. En cas d’échec SMTP, l’expiration reste effective et le
+job horaire réessaie l’envoi. Pour rétablir l’accès après le test, attribuer un
+nouvel abonnement depuis la fiche.
+
 ```sh
 node --test tests/subscription_access_test.js tests/subscription_expiry_test.js
 ```

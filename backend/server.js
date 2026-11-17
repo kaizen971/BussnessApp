@@ -5702,6 +5702,9 @@ const expireSubscriptions = createExpiryJob({
   },
 });
 
+// Même traitement pour le job horaire et la simulation ciblée du back-office.
+app.locals.expireSubscriptions = expireSubscriptions;
+
 // Start server
 app.listen(PORT, async () => {
   const publicApiUrl = process.env.BACKEND_PUBLIC_URL || `http://localhost:${PORT}/BussnessApp`;
