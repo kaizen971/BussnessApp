@@ -11,7 +11,7 @@ import {
   TextInput,
   Image,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
@@ -20,10 +20,15 @@ import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { projectsAPI } from '../services/api';
-import { colors, gradients } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { AppHeader } from '../components/AppHeader';
 import { CURRENCIES } from '../utils/currency';
+import { t, useLanguage } from '../i18n';
 
 export const ProjectsScreen = ({ navigation }) => {
+  useLanguage();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { user, isAdmin, isManager, selectedProjectId, selectProject, loadAvailableProjects, availableProjects } = useAuth();
   const { setProjectCurrency } = useCurrency();
   const [projects, setProjects] = useState([]);
@@ -50,7 +55,7 @@ export const ProjectsScreen = ({ navigation }) => {
       loadAvailableProjects(projectsList);
     } catch (error) {
       console.error('Error loading projects:', error);
-      Alert.alert('Erreur', 'Impossible de charger les projets');
+      Alert.alert(t('Erreur'), t('Impossible de charger les projets'));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -71,7 +76,7 @@ export const ProjectsScreen = ({ navigation }) => {
       setProjectCurrency(selectedProject.currency || 'XOF');
     }
     
-    navigation.navigate('Dashboard');
+    navigation.navigate('Main', { screen: 'Dashboard' });
   };
 
   const openAddModal = () => {
@@ -108,107 +113,115 @@ export const ProjectsScreen = ({ navigation }) => {
   };
 
   const pickImage = async () => {
-    // Demander la permission d'accéder à la galerie
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission refusée', 'Nous avons besoin de votre permission pour accéder à vos photos');
-      return;
-    }
-
-    // Lancer le sélecteur d'images
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      try {
-        const base64Image = await convertImageToBase64(result.assets[0].uri);
-        setFormData({ ...formData, logo: base64Image });
-      } catch (error) {
-        Alert.alert('Erreur', 'Impossible de traiter l\'image');
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(t('Permission refusée'), t('Nous avons besoin de votre permission pour accéder à vos photos'));
+        return;
       }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const base64Image = await convertImageToBase64(result.assets[0].uri);
+        setFormData(prev => ({ ...prev, logo: base64Image }));
+      }
+    } catch (error) {
+      console.error('pickImage error:', error);
+      Alert.alert(t('Erreur'), t("Impossible de traiter l'image. Veuillez réessayer."));
     }
   };
 
   const takePhoto = async () => {
-    // Demander la permission d'accéder à la caméra
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission refusée', 'Nous avons besoin de votre permission pour utiliser la caméra');
-      return;
-    }
-
-    // Lancer la caméra
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      try {
-        const base64Image = await convertImageToBase64(result.assets[0].uri);
-        setFormData({ ...formData, logo: base64Image });
-      } catch (error) {
-        Alert.alert('Erreur', 'Impossible de traiter l\'image');
+    try {
+      const cameraAvailable = await ImagePicker.getCameraPermissionsAsync();
+      if (cameraAvailable.status === 'undetermined') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert(t('Permission refusée'), t('Nous avons besoin de votre permission pour utiliser la caméra'));
+          return;
+        }
+      } else if (cameraAvailable.status !== 'granted') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert(t('Permission refusée'), t('Nous avons besoin de votre permission pour utiliser la caméra'));
+          return;
+        }
       }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const base64Image = await convertImageToBase64(result.assets[0].uri);
+        setFormData(prev => ({ ...prev, logo: base64Image }));
+      }
+    } catch (error) {
+      console.error('takePhoto error:', error);
+      Alert.alert(t('Erreur'), t("Impossible d'utiliser la caméra. Veuillez réessayer avec la galerie."));
     }
   };
 
   const showImageOptions = () => {
     Alert.alert(
-      'Ajouter un logo',
-      'Choisissez une option',
+      t('Ajouter un logo'),
+      t('Choisissez une option'),
       [
-        { text: 'Galerie', onPress: pickImage },
-        { text: 'Prendre une photo', onPress: takePhoto },
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Galerie'), onPress: pickImage },
+        { text: t('Prendre une photo'), onPress: takePhoto },
+        { text: t('Annuler'), style: 'cancel' },
       ]
     );
   };
 
   const handleSubmit = async () => {
     if (!formData.name.trim()) {
-      Alert.alert('Erreur', 'Le nom du projet est requis');
+      Alert.alert(t('Erreur'), t('Le nom du projet est requis'));
       return;
     }
 
     try {
       if (editingProject) {
         await projectsAPI.update(editingProject._id, formData);
-        Alert.alert('Succès', 'Projet modifié avec succès');
+        Alert.alert(t('Succès'), t('Projet modifié avec succès'));
       } else {
         await projectsAPI.create(formData);
-        Alert.alert('Succès', 'Projet créé avec succès');
+        Alert.alert(t('Succès'), t('Projet créé avec succès'));
       }
       setModalVisible(false);
       loadProjects();
     } catch (error) {
       console.error('Error saving project:', error);
-      Alert.alert('Erreur', error.response?.data?.error || 'Erreur lors de la sauvegarde du projet');
+      Alert.alert(t('Erreur'), error.response?.data?.error || t('Erreur lors de la sauvegarde du projet'));
     }
   };
 
   const handleDelete = (project) => {
     Alert.alert(
-      'Confirmer la suppression',
-      `Êtes-vous sûr de vouloir supprimer "${project.name}" ?`,
+      t('Confirmer la suppression'),
+      t('Êtes-vous sûr de vouloir supprimer "{name}" ?', { name: project.name }),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
         {
-          text: 'Supprimer',
+          text: t('Supprimer'),
           style: 'destructive',
           onPress: async () => {
             try {
               await projectsAPI.delete(project._id);
-              Alert.alert('Succès', 'Projet supprimé avec succès');
+              Alert.alert(t('Succès'), t('Projet supprimé avec succès'));
               loadProjects();
             } catch (error) {
               console.error('Error deleting project:', error);
-              Alert.alert('Erreur', 'Impossible de supprimer le projet');
+              Alert.alert(t('Erreur'), t('Impossible de supprimer le projet'));
             }
           },
         },
@@ -219,16 +232,16 @@ export const ProjectsScreen = ({ navigation }) => {
   const handleChangeCurrency = (project) => {
     const currentCurrency = project.currency || 'XOF';
     const newCurrency = currentCurrency === 'EUR' ? 'XOF' : 'EUR';
-    const currencyName = CURRENCIES[newCurrency].name;
+    const currencyName = t(CURRENCIES[newCurrency].name);
     const currencySymbol = CURRENCIES[newCurrency].symbol;
 
     Alert.alert(
-      'Changer la devise',
-      `Voulez-vous changer la devise de "${project.name}" en ${currencyName} (${currencySymbol}) ?\n\nToute l'équipe verra les montants dans cette devise.`,
+      t('Changer la devise'),
+      t('Voulez-vous changer la devise de "{name}" en {currencyName} ({currencySymbol}) ?\n\nToute l\'équipe verra les montants dans cette devise.', { name: project.name, currencyName: currencyName, currencySymbol: currencySymbol }),
       [
-        { text: 'Annuler', style: 'cancel' },
+        { text: t('Annuler'), style: 'cancel' },
         {
-          text: 'Changer',
+          text: t('Changer'),
           onPress: async () => {
             try {
               await projectsAPI.updateCurrency(project._id, newCurrency);
@@ -238,11 +251,11 @@ export const ProjectsScreen = ({ navigation }) => {
                 setProjectCurrency(newCurrency);
               }
               
-              Alert.alert('Succès', `Devise changée en ${currencyName}`);
+              Alert.alert(t('Succès'), t('Devise changée en {currencyName}', { currencyName: currencyName }));
               loadProjects();
             } catch (error) {
               console.error('Error changing currency:', error);
-              Alert.alert('Erreur', 'Impossible de changer la devise');
+              Alert.alert(t('Erreur'), t('Impossible de changer la devise'));
             }
           },
         },
@@ -256,17 +269,14 @@ export const ProjectsScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={gradients.gold} style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={colors.background} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Mes Projets</Text>
-        {(isAdmin) && (
-          <TouchableOpacity onPress={openAddModal} style={styles.addButton}>
-            <Ionicons name="add" size={24} color={colors.background} />
-          </TouchableOpacity>
-        )}
-      </LinearGradient>
+      <AppHeader
+        title={t('Mes business')}
+        subtitle={`${projects.length} business`}
+        onBack={() => navigation.goBack()}
+        rightIcon={isAdmin ? 'add' : undefined}
+        rightLabel={t('Ajouter un business')}
+        onRightPress={isAdmin ? openAddModal : undefined}
+      />
 
       <ScrollView
         style={styles.scrollView}
@@ -276,9 +286,9 @@ export const ProjectsScreen = ({ navigation }) => {
         {projects.length === 0 ? (
           <Card style={styles.emptyCard}>
             <Ionicons name="folder-open-outline" size={64} color={colors.textLight} />
-            <Text style={styles.emptyText}>Aucun projet disponible</Text>
+            <Text style={styles.emptyText}>{t('Aucun projet disponible')}</Text>
             <Text style={styles.emptySubtext}>
-              {isAdmin ? 'Créez votre premier projet' : 'Contactez un administrateur'}
+              {isAdmin ? t('Créez votre premier projet') : t('Contactez un administrateur')}
             </Text>
           </Card>
         ) : (
@@ -341,7 +351,7 @@ export const ProjectsScreen = ({ navigation }) => {
 
                 {selectedProjectId === project._id && (
                   <View style={styles.selectedBadge}>
-                    <Text style={styles.selectedText}>Projet actif</Text>
+                    <Text style={styles.selectedText}>{t('Projet actif')}</Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -388,7 +398,7 @@ export const ProjectsScreen = ({ navigation }) => {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
-                {editingProject ? 'Modifier le projet' : 'Nouveau projet'}
+                {editingProject ? t('Modifier le projet') : t('Nouveau projet')}
               </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={28} color={colors.text} />
@@ -399,7 +409,7 @@ export const ProjectsScreen = ({ navigation }) => {
               {/* Logo Section */}
               {isAdmin && (
                 <View style={styles.logoSection}>
-                  <Text style={styles.inputLabel}>Logo du business</Text>
+                  <Text style={styles.inputLabel}>{t('Logo du business')}</Text>
                   <TouchableOpacity
                     style={styles.logoPickerButton}
                     onPress={showImageOptions}
@@ -412,15 +422,15 @@ export const ProjectsScreen = ({ navigation }) => {
                         />
                         <View style={styles.logoOverlay}>
                           <Ionicons name="camera" size={24} color={colors.background} />
-                          <Text style={styles.logoOverlayText}>Modifier</Text>
+                          <Text style={styles.logoOverlayText}>{t('Modifier')}</Text>
                         </View>
                       </View>
                     ) : (
                       <View style={styles.logoPlaceholder}>
                         <Ionicons name="business-outline" size={48} color={colors.primary} />
-                        <Text style={styles.logoPlaceholderText}>Ajouter un logo</Text>
+                        <Text style={styles.logoPlaceholderText}>{t('Ajouter un logo')}</Text>
                         <Text style={styles.logoPlaceholderSubtext}>
-                          Touchez pour sélectionner une image
+                          {t('Touchez pour sélectionner une image')}
                         </Text>
                       </View>
                     )}
@@ -428,19 +438,19 @@ export const ProjectsScreen = ({ navigation }) => {
                 </View>
               )}
 
-              <Text style={styles.inputLabel}>Nom du projet *</Text>
+              <Text style={styles.inputLabel}>{t('Nom du projet *')}</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Ex: Restaurant Le Gourmet"
+                placeholder={t('Ex: Restaurant Le Gourmet')}
                 value={formData.name}
                 onChangeText={(text) => setFormData({ ...formData, name: text })}
                 placeholderTextColor={colors.textLight}
               />
 
-              <Text style={styles.inputLabel}>Description</Text>
+              <Text style={styles.inputLabel}>{t('Description')}</Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
-                placeholder="Description du projet"
+                placeholder={t('Description du projet')}
                 value={formData.description}
                 onChangeText={(text) => setFormData({ ...formData, description: text })}
                 multiline
@@ -448,17 +458,17 @@ export const ProjectsScreen = ({ navigation }) => {
                 placeholderTextColor={colors.textLight}
               />
 
-              <Text style={styles.inputLabel}>Catégorie</Text>
+              <Text style={styles.inputLabel}>{t('Catégorie')}</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Ex: Restauration, Commerce, Service..."
+                placeholder={t('Ex: Restauration, Commerce, Service...')}
                 value={formData.category}
                 onChangeText={(text) => setFormData({ ...formData, category: text })}
                 placeholderTextColor={colors.textLight}
               />
 
               <Button
-                title={editingProject ? 'Mettre à jour' : 'Créer le projet'}
+                title={editingProject ? t('Mettre à jour') : t('Créer le projet')}
                 onPress={handleSubmit}
                 style={styles.submitButton}
               />
@@ -470,7 +480,7 @@ export const ProjectsScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -493,7 +503,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.background,
     flex: 1,
     textAlign: 'center',
@@ -554,7 +564,7 @@ const styles = StyleSheet.create({
   },
   projectName: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -636,8 +646,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: colors.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     maxHeight: '90%',
     paddingBottom: 40,
   },
@@ -651,7 +661,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: colors.text,
   },
   modalScroll: {

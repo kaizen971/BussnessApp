@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, LayoutAnimation, Platform, UIManager } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ToneSurface as LinearGradient } from '../components/ToneSurface';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, gradients } from '../utils/colors';
+import { useTheme, useThemedStyles } from '../contexts/ThemeContext';
+import { t, useLanguage } from '../i18n';
 
 if (Platform.OS === 'android') {
     if (UIManager.setLayoutAnimationEnabledExperimental) {
@@ -11,101 +12,104 @@ if (Platform.OS === 'android') {
 }
 
 export const TutorialScreen = ({ navigation }) => {
+  useLanguage();
+  const { colors, gradients } = useTheme();
+  const styles = useThemedStyles(createStyles);
     const [expandedStep, setExpandedStep] = useState(0);
     const [completedSteps, setCompletedSteps] = useState([]);
 
     const steps = [
         {
             id: 1,
-            title: 'Créer votre business',
+            title: t('Créer votre business'),
             icon: 'briefcase',
-            description: 'Configurez l\'identité de votre commerce.',
+            description: t("Configurez l'identité de votre commerce."),
             details: [
-                'Depuis l\'écran "Projets", cliquez sur "Créer un business".',
-                'Renseignez le nom, la devise et le secteur d\'activité.',
-                '(Admin uniquement) Ajoutez un logo pour personnaliser votre espace.'
+                t('Depuis l\'écran "Projets", cliquez sur "Créer un business".'),
+                t("Renseignez le nom, la devise et le secteur d'activité."),
+                t('(Admin uniquement) Ajoutez un logo pour personnaliser votre espace.')
             ],
-            action: 'Aller aux Projets',
+            action: t('Aller aux Projets'),
             route: 'Projects'
         },
         {
             id: 2,
-            title: 'Ajouter votre équipe',
+            title: t('Ajouter votre équipe'),
             icon: 'people',
-            description: 'Invitez vos collaborateurs.',
+            description: t('Invitez vos collaborateurs.'),
             details: [
-                'Accédez au menu "Équipe".',
-                'Ajoutez un membre avec son rôle (manager, vendeur...).',
-                'Définissez son niveau d\'accès (lecture, ventes, admin).',
-                '(Admin uniquement) Personnalisez la photo de profil de chaque membre.'
+                t('Accédez au menu "Équipe".'),
+                t('Ajoutez un membre avec son rôle (manager, vendeur...).'),
+                t("Définissez son niveau d'accès (lecture, ventes, admin)."),
+                t('(Admin uniquement) Personnalisez la photo de profil de chaque membre.')
             ],
-            action: 'Gérer l\'équipe',
+            action: t("Gérer l'équipe"),
             route: 'Team'
         },
         {
             id: 3,
-            title: 'Créer les catégories',
+            title: t('Créer les catégories'),
             icon: 'grid',
-            description: 'Organisez vos produits et services.',
+            description: t('Organisez vos produits et services.'),
             details: [
-                'Dans le menu "Produits", allez sur "Gérer les catégories".',
-                'Créez des familles : Soins, Boissons, Accessoires...',
-                'Cela facilitera la navigation lors des ventes.'
+                t('Dans le menu "Produits", allez sur "Gérer les catégories".'),
+                t('Créez des familles : Soins, Boissons, Accessoires...'),
+                t('Cela facilitera la navigation lors des ventes.')
             ],
-            action: 'Créer une catégorie',
+            action: t('Créer une catégorie'),
             route: 'CREATE_CATEGORY'
         },
         {
             id: 4,
-            title: 'Ajouter vos produits',
+            title: t('Ajouter vos produits'),
             icon: 'pricetag',
-            description: 'Remplissez votre catalogue.',
+            description: t('Remplissez votre catalogue.'),
             details: [
-                'Ajoutez vos produits ou services un par un.',
-                'Indiquez le nom, le prix unitaire et la catégorie.',
-                'Ajoutez une description si nécessaire.'
+                t('Ajoutez vos produits ou services un par un.'),
+                t('Indiquez le nom, le prix unitaire et la catégorie.'),
+                t('Ajoutez une description si nécessaire.')
             ],
-            action: 'Ajouter un produit',
+            action: t('Ajouter un produit'),
             route: 'Products'
         },
         {
             id: 5,
-            title: 'Configurer le stock',
+            title: t('Configurer le stock'),
             icon: 'cube',
-            description: 'Initialisez vos quantités.',
+            description: t('Initialisez vos quantités.'),
             details: [
-                'Dans le menu "Stock", ajustez les quantités disponibles.',
-                'Vous pourrez ensuite suivre les entrées et sorties.',
-                'Gérez les réapprovisionnements facilement.'
+                t('Dans le menu "Stock", ajustez les quantités disponibles.'),
+                t('Vous pourrez ensuite suivre les entrées et sorties.'),
+                t('Gérez les réapprovisionnements facilement.')
             ],
-            action: 'Gérer le Stock',
+            action: t('Gérer le Stock'),
             route: 'Stock'
         },
         {
             id: 6,
-            title: 'Paramètres de vente',
+            title: t('Paramètres de vente'),
             icon: 'settings',
-            description: 'Personnalisez l\'expérience de vente.',
+            description: t("Personnalisez l'expérience de vente."),
             details: [
-                'Activez les retours ou annulations si besoin.',
-                'Configurez l\'affichage de l\'historique pour les employés.',
-                'Gérez les options d\'export et de partage de tickets.'
+                t('Activez les retours ou annulations si besoin.'),
+                t("Configurez l'affichage de l'historique pour les employés."),
+                t("Gérez les options d'export et de partage de tickets.")
             ],
-            action: 'Tableau de bord',
+            action: t('Tableau de bord'),
             route: 'Dashboard'
         },
 
         {
             id: 8,
-            title: 'Lancer votre activité',
+            title: t('Lancer votre activité'),
             icon: 'rocket',
-            description: 'Vous êtes prêt !',
+            description: t('Vous êtes prêt !'),
             details: [
-                'Enregistrez vos premières ventes.',
-                'Suivez vos performances en temps réel.',
-                'Exportez vos données comptables.'
+                t('Enregistrez vos premières ventes.'),
+                t('Suivez vos performances en temps réel.'),
+                t('Exportez vos données comptables.')
             ],
-            action: 'Commencer',
+            action: t('Commencer'),
             route: 'Dashboard'
         }
     ];
@@ -130,6 +134,8 @@ export const TutorialScreen = ({ navigation }) => {
     const handleAction = (route) => {
         if (route === 'CREATE_CATEGORY') {
             navigation.navigate('Categories');
+        } else if (['Dashboard', 'Sales', 'Products', 'Customers'].includes(route)) {
+            navigation.navigate('Main', { screen: route });
         } else {
             navigation.navigate(route);
         }
@@ -204,7 +210,7 @@ export const TutorialScreen = ({ navigation }) => {
                                     style={styles.doneButton}
                                     onPress={() => markAsDone(index)}
                                 >
-                                    <Text style={styles.doneButtonText}>Marquer comme fait</Text>
+                                    <Text style={styles.doneButtonText}>{t('Marquer comme fait')}</Text>
                                 </TouchableOpacity>
                             )}
                         </View>
@@ -218,18 +224,18 @@ export const TutorialScreen = ({ navigation }) => {
 
     return (
         <View style={styles.container}>
-            <LinearGradient colors={gradients.dark} style={styles.background} />
+            <LinearGradient colors={[colors.background, colors.background]} style={styles.background} />
 
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={24} color={colors.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Tutoriel de Démarrage</Text>
+                <Text style={styles.headerTitle}>{t('Tutoriel de Démarrage')}</Text>
                 <View style={{ width: 24 }} />
             </View>
 
             <View style={styles.progressBarContainer}>
-                <Text style={styles.progressText}>{Math.round(progress * 100)}% complété</Text>
+                <Text style={styles.progressText}>{t('{round}% complété', { round: Math.round(progress * 100) })}</Text>
                 <View style={styles.progressBarBackground}>
                     <View style={[styles.progressBarFill, { width: `${progress * 100}%` }]} />
                 </View>
@@ -237,7 +243,7 @@ export const TutorialScreen = ({ navigation }) => {
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <Text style={styles.introText}>
-                    Bienvenue dans EAS ! Suivez ces étapes pour configurer votre espace de gestion et lancer votre activité sereinement.
+                    {t('Bienvenue dans EAS ! Suivez ces étapes pour configurer votre espace de gestion et lancer votre activité sereinement.')}
                 </Text>
 
                 <View style={styles.stepsList}>
@@ -245,14 +251,14 @@ export const TutorialScreen = ({ navigation }) => {
                 </View>
 
                 <View style={styles.footer}>
-                    <Text style={styles.footerText}>Besoin d'aide supplémentaire ? Contactez le support.</Text>
+                    <Text style={styles.footerText}>{t("Besoin d'aide supplémentaire ? Contactez le support.")}</Text>
                 </View>
             </ScrollView>
         </View>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => ({
     container: {
         flex: 1,
         backgroundColor: colors.background,
@@ -279,7 +285,7 @@ const styles = StyleSheet.create({
     },
     headerTitle: {
         fontSize: 20,
-        fontWeight: 'bold',
+        fontWeight: '700',
         color: colors.text,
     },
     progressBarContainer: {
@@ -312,7 +318,7 @@ const styles = StyleSheet.create({
         paddingBottom: 40,
     },
     introText: {
-        color: colors.textLight,
+        color: colors.textSecondary,
         fontSize: 16,
         marginBottom: 24,
         lineHeight: 24,
@@ -364,7 +370,7 @@ const styles = StyleSheet.create({
     },
     stepTitle: {
         fontSize: 16,
-        fontWeight: 'bold',
+        fontWeight: '700',
         color: colors.text,
         marginBottom: 4,
     },
@@ -378,9 +384,13 @@ const styles = StyleSheet.create({
     },
     stepDetails: {
         marginLeft: 56,
-        paddingRight: 16,
-        paddingBottom: 24,
+        marginRight: 16,
+        padding: 14,
         marginBottom: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.surface,
     },
     detailItem: {
         flexDirection: 'row',
@@ -413,7 +423,7 @@ const styles = StyleSheet.create({
     },
     actionButtonText: {
         color: colors.secondary,
-        fontWeight: 'bold',
+        fontWeight: '700',
         fontSize: 14,
     },
     doneButton: {

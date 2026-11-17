@@ -23,7 +23,7 @@ Le fichier Excel généré contient **8 feuilles** avec les données suivantes :
 
 2. **Dépenses** - Toutes les dépenses enregistrées
    - Date
-   - Catégorie (Achat / Variable / Fixe)
+   - Catégorie de dépense (les 13 catégories du formulaire ; anciennes catégories conservées pour l'historique)
    - Montant
    - Description
 
@@ -214,4 +214,3 @@ Pour toute question ou problème, veuillez créer un ticket dans la section Feed
 
 **Version** : 1.0.0  
 **Dernière mise à jour** : 9 Novembre 2025
-

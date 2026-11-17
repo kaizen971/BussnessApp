@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Users, CreditCard, TrendingUp, Activity, ArrowRight, AlertCircle, Package, ArrowUpRight, UserPlus, Eye } from 'lucide-react'
+import { Users, CreditCard, TrendingUp, Activity, ArrowRight, AlertCircle, Package, ArrowUpRight, UserPlus, Eye, BellRing } from 'lucide-react'
 import { SkeletonCard, SkeletonRow, Badge, Skeleton } from '../components/ui'
+import ActivityAlertsPanel from '../components/ActivityAlertsPanel'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 
@@ -24,6 +25,7 @@ const ACTION_CONFIG = {
   create_plan: { label: 'Plan créé', color: 'bg-indigo-100 text-indigo-600' },
   update_plan: { label: 'Plan modifié', color: 'bg-indigo-100 text-indigo-600' },
   delete_plan: { label: 'Plan supprimé', color: 'bg-red-100 text-red-600' },
+  update_activity_alerts: { label: 'Alertes d\'activité modifiées', color: 'bg-amber-100 text-amber-600' },
 }
 
 function getGreeting() {
@@ -81,6 +83,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const { user } = useAuth()
+  const [alertCounts, setAlertCounts] = useState(null)
+  const handleAlertCounts = useCallback(counts => setAlertCounts(counts), [])
 
   useEffect(() => {
     api.get('/backoffice/dashboard/stats')
@@ -120,6 +124,8 @@ export default function DashboardPage() {
     )
   }
 
+  const inactiveAlerts = (alertCounts || stats.activityAlerts)?.inactivity || 0
+  const reactivationAlerts = (alertCounts || stats.activityAlerts)?.reactivation || 0
   const activeRate = stats.admins.total > 0 ? ((stats.admins.active / stats.admins.total) * 100).toFixed(0) : 0
 
   return (
@@ -157,6 +163,24 @@ export default function DashboardPage() {
         </Link>
       )}
 
+      {/* Inactivity alert banner */}
+      {(inactiveAlerts > 0 || reactivationAlerts > 0) && (
+        <a href="#activity-alerts" className="flex items-center gap-4 bg-gradient-to-r from-rose-50 to-amber-50 border border-rose-200/60 rounded-2xl p-4 group animate-in hover:shadow-md transition-all">
+          <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <BellRing className="w-5 h-5 text-rose-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-rose-900">Suivi d'activité clients</p>
+            <p className="text-[13px] text-rose-700 mt-0.5">
+              {inactiveAlerts > 0 && `${inactiveAlerts} client(s) sans activité`}
+              {inactiveAlerts > 0 && reactivationAlerts > 0 && ' · '}
+              {reactivationAlerts > 0 && `${reactivationAlerts} reprise(s) d'activité`}
+            </p>
+          </div>
+          <ArrowUpRight className="w-4 h-4 text-rose-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform flex-shrink-0" />
+        </a>
+      )}
+
       {/* Stats grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard
@@ -180,6 +204,8 @@ export default function DashboardPage() {
           }
         />
       </div>
+
+      <ActivityAlertsPanel onCountsChange={handleAlertCounts} />
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Recent admins */}

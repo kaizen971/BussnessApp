@@ -1,7 +1,7 @@
 {
   "cli": {
     "version": ">= 16.20.4",
-    "appVersionSource": "local"
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -15,16 +15,32 @@
       }
     },
     "production": {
+      "env": {
+        "EAS_USE_CACHE": "1"
+      },
       "android": {
         "buildType": "app-bundle"
       },
       "ios": {
+        "image": "macos-sequoia-15.6-xcode-26.0",
         "autoIncrement": true
       },
       "autoIncrement": true
     }
   },
   "submit": {
-    "production": {}
+    "internal": {
+      "android": {
+        "track": "internal"
+      }
+    },
+    "production": {
+      "android": {
+        "track": "production"
+      },
+      "ios": {
+        "ascAppId": "6773653959"
+      }
+    }
   }
 }
