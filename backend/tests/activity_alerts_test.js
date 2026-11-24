@@ -55,7 +55,21 @@ test('validation du seuil configurable', () => {
   assert.ok(validateSettingsInput({ inactivityDays: 400 }).error);
   assert.ok(validateSettingsInput({ inactivityDays: 2.5 }).error);
   assert.ok(validateSettingsInput({ enabled: 'oui' }).error);
-  assert.deepEqual(normalizeSettings(undefined), { enabled: true, inactivityDays: 14 });
+  assert.deepEqual(normalizeSettings(undefined), { enabled: true, inactivityDays: 14, emailEnabled: true });
+  assert.deepEqual(validateSettingsInput({ emailEnabled: false }), { settings: { emailEnabled: false } });
+  assert.ok(validateSettingsInput({ emailEnabled: 'oui' }).error);
+});
+
+test('une panne du suivi est réessayée à la requête suivante sans attendre l’intervalle', async () => {
+  let attempts = 0;
+  const track = createActivityTracker({
+    User: { updateOne() { if (++attempts === 1) throw new Error('Mongo indisponible'); } },
+    logger: { warn() {} }, clock: () => 1000,
+  });
+  await track('u1');
+  await track('u1');
+  await track('u1');
+  assert.equal(attempts, 2);
 });
 
 test('suivi d’activité : au plus une écriture par intervalle', async () => {

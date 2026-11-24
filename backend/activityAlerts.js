@@ -9,9 +9,10 @@
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SETTINGS_KEY = 'activityAlerts';
-const DEFAULT_SETTINGS = Object.freeze({ enabled: true, inactivityDays: 14 });
+const DEFAULT_SETTINGS = Object.freeze({ enabled: true, inactivityDays: 14, emailEnabled: true });
 const MIN_DAYS = 1;
 const MAX_DAYS = 365;
+const { createActivityEmailNotifier } = require('./activityAlertEmail');
 
 function registerModels(mongoose) {
   if (!mongoose.models.ClientActivityAlert) {
@@ -28,11 +29,16 @@ function registerModels(mongoose) {
       resolvedAt: { type: Date },
       acknowledgedAt: { type: Date },
       acknowledgedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'SuperAdmin' },
+      emailNotifiedAt: Date,
+      emailSentTo: [String],
+      emailClaimedAt: Date,
+      emailClaimToken: String,
       createdAt: { type: Date, default: Date.now },
       updatedAt: { type: Date, default: Date.now },
     });
     schema.index({ adminId: 1 }, { unique: true, partialFilterExpression: { ongoing: true } });
     schema.index({ status: 1, createdAt: -1 });
+    schema.index({ type: 1, ongoing: 1, emailNotifiedAt: 1 });
     mongoose.model('ClientActivityAlert', schema);
   }
   if (!mongoose.models.BackofficeSetting) {
@@ -55,6 +61,7 @@ function normalizeSettings(value = {}) {
   return {
     enabled: value.enabled === undefined ? DEFAULT_SETTINGS.enabled : value.enabled === true,
     inactivityDays: Number.isFinite(days) ? Math.min(MAX_DAYS, Math.max(MIN_DAYS, days)) : DEFAULT_SETTINGS.inactivityDays,
+    emailEnabled: value.emailEnabled === undefined ? DEFAULT_SETTINGS.emailEnabled : value.emailEnabled === true,
   };
 }
 
@@ -64,6 +71,10 @@ function validateSettingsInput(input = {}) {
   if (input.enabled !== undefined) {
     if (typeof input.enabled !== 'boolean') return { error: 'enabled doit être un booléen' };
     out.enabled = input.enabled;
+  }
+  if (input.emailEnabled !== undefined) {
+    if (typeof input.emailEnabled !== 'boolean') return { error: 'emailEnabled doit être un booléen' };
+    out.emailEnabled = input.emailEnabled;
   }
   if (input.inactivityDays !== undefined) {
     const days = Number(input.inactivityDays);
@@ -139,7 +150,7 @@ async function computeLastActivity(mongoose, admins) {
   const projectIds = projects.map(p => p._id);
 
   const team = await User.find({
-    role: { $ne: 'admin' },
+    role: { $ne: 'admin' }, deletedAt: null,
     $or: [{ projectId: { $in: projectIds } }, { projectIds: { $in: projectIds } }],
   }).select('projectId projectIds lastLogin lastActivityAt').lean();
   for (const member of team) {
@@ -149,10 +160,10 @@ async function computeLastActivity(mongoose, admins) {
     for (const pid of new Set(ids)) if (ownerByProject.has(pid)) bump(ownerByProject.get(pid), seen);
   }
 
-  // Requêtes indexées (projectId + date/createdAt), une par projet.
+  // Requêtes indexées (projectId + createdAt), une par projet.
   await Promise.all(projects.map(async (project) => {
     const [sale, movement] = await Promise.all([
-      Sale ? Sale.findOne({ projectId: project._id }).sort({ date: -1 }).select('createdAt').lean() : null,
+      Sale ? Sale.findOne({ projectId: project._id }).sort({ createdAt: -1 }).select('createdAt').lean() : null,
       StockMovement ? StockMovement.findOne({ projectId: project._id }).sort({ createdAt: -1 }).select('createdAt').lean() : null,
     ]);
     bump(project.ownerId, latest(sale?.createdAt, movement?.createdAt));
@@ -160,7 +171,7 @@ async function computeLastActivity(mongoose, admins) {
   return result;
 }
 
-function createActivityAlertJob({ mongoose, logger = console, clock = () => new Date() }) {
+function createActivityAlertJob({ mongoose, sendEmail, logger = console, clock = () => new Date() }) {
   let running = false;
   return async function checkClientActivity({ force = false } = {}) {
     if (running) return { skipped: true };
@@ -248,6 +259,12 @@ function createActivityAlertJob({ mongoose, logger = console, clock = () => new 
           if (error?.code !== 11000) logger.warn(`[activityAlerts] ${key} : ${error.message}`);
         }
       }
+      if (sendEmail && settings.enabled && settings.emailEnabled) {
+        const notify = createActivityEmailNotifier({
+          ClientActivityAlert, User, SuperAdmin: mongoose.model('SuperAdmin'), sendEmail, logger, clock,
+        });
+        Object.assign(summary, await notify());
+      }
       return summary;
     } catch (error) {
       logger.error(`[activityAlerts] ${error.message}`);
@@ -261,24 +278,28 @@ function createActivityAlertJob({ mongoose, logger = console, clock = () => new 
 // Instance partagée : le planificateur et le bouton « Vérifier maintenant » du
 // backoffice utilisent le même verrou d'exécution.
 let sharedJob = null;
-function getSharedJob(mongoose) {
-  if (!sharedJob) sharedJob = createActivityAlertJob({ mongoose });
+function getSharedJob(mongoose, { sendEmail } = {}) {
+  if (!sharedJob) sharedJob = createActivityAlertJob({ mongoose, sendEmail });
   return sharedJob;
 }
 
 // Enregistre la dernière activité d'un utilisateur authentifié (au plus une écriture
 // par utilisateur et par intervalle) — sans jamais bloquer la requête.
-function createActivityTracker({ User, intervalMs = 15 * 60 * 1000, logger = console }) {
+function createActivityTracker({ User, intervalMs = 15 * 60 * 1000, logger = console, clock = () => Date.now() }) {
   const lastWrite = new Map();
   return function trackActivity(userId) {
     if (!userId) return;
     const key = String(userId);
-    const nowMs = Date.now();
-    if (nowMs - (lastWrite.get(key) || 0) < intervalMs) return;
+    const nowMs = clock();
+    if (lastWrite.has(key) && nowMs - lastWrite.get(key) < intervalMs) return;
     lastWrite.set(key, nowMs);
     if (lastWrite.size > 50000) lastWrite.clear();
-    Promise.resolve(User.updateOne({ _id: userId }, { $set: { lastActivityAt: new Date(nowMs) } }))
-      .catch(error => logger.warn(`[activityTracker] ${error.message}`));
+    return Promise.resolve()
+      .then(() => User.updateOne({ _id: userId }, { $max: { lastActivityAt: new Date(nowMs) } }))
+      .catch(error => {
+        if (lastWrite.get(key) === nowMs) lastWrite.delete(key);
+        logger.warn(`[activityTracker] ${error.message}`);
+      });
   };
 }
 

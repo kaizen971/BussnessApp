@@ -1,4 +1,6 @@
-require('dotenv').config();
+require('dotenv').config({
+  path: require('path').join(__dirname, process.env.APP_ENV === 'local' ? '.env.local' : '.env'),
+});
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -13,6 +15,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { createDeleteAccountHandler } = require('./accountDeletion');
 const { createAuthenticateToken, checkRole } = require('./authorization');
+const { createLoginRecorder } = require('./userActivity');
 const subscriptionAccess = require('./subscriptionAccess');
 const { createProjectAccess, PROJECT_DENIED, OWNER_ROLES, isEmployeeRole } = require('./projectAccess');
 const { createArchiveTeamMemberHandler } = require('./archiveTeamMember');
@@ -135,6 +138,7 @@ const sendEmail = async (to, subject, html) => {
     const transporter = createTransporter();
     await transporter.sendMail({
       from: process.env.SMTP_FROM || '"BussnessApp" <noreply@bussnessapp.com>',
+      replyTo: process.env.SMTP_REPLY_TO || process.env.SMTP_USER,
       to,
       subject,
       html
@@ -199,6 +203,7 @@ const SaleSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 SaleSchema.index({ projectId: 1, date: -1 });
+SaleSchema.index({ projectId: 1, createdAt: -1 });
 SaleSchema.index({ projectId: 1, employeeId: 1 });
 SaleSchema.index({ projectId: 1, customerId: 1 });
 
@@ -300,6 +305,7 @@ const UserSchema = new mongoose.Schema({
   }],
   partnerCode: { type: String, trim: true, uppercase: true }, // Code promo / partenaire saisi à l'inscription (attribution)
   lastLogin: { type: Date },
+  loginCount: { type: Number }, // Compté à partir de la mise en place du suivi
   lastActivityAt: { type: Date }, // Dernière requête authentifiée (alertes d'inactivité du backoffice)
   createdAt: { type: Date, default: Date.now }
 });
@@ -372,6 +378,7 @@ const Commission = mongoose.model('Commission', CommissionSchema);
 const Category = mongoose.model('Category', CategorySchema);
 
 const activityAlerts = require('./activityAlerts');
+const trackUserActivity = activityAlerts.createActivityTracker({ User });
 
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'bussnessapp_secret_key_2025';
@@ -383,7 +390,7 @@ const authenticateToken = createAuthenticateToken({
   User,
   secret: JWT_SECRET,
   accessGuard: subscriptionAccess.createAccessGuard(mongoose),
-  onAuthenticated: activityAlerts.createActivityTracker({ User }),
+  onAuthenticated: trackUserActivity,
 });
 
 // Cloisonnement des données entre business (voir projectAccess.js)
@@ -396,6 +403,7 @@ const TOKEN_REFRESH_GRACE_SECONDS = 30 * 24 * 60 * 60; // 30 jours
 // Backoffice routes
 const backofficeRoutes = require('./backoffice');
 app.use('/BussnessApp/backoffice', backofficeRoutes);
+const recordLogin = createLoginRecorder({ User, ActivityLog: mongoose.model('ActivityLog') });
 
 // Routes de base
 app.get('/BussnessApp', (req, res) => {
@@ -908,7 +916,7 @@ app.post('/BussnessApp/auth/login', async (req, res) => {
       });
     }
 
-    await User.updateOne({ _id: user._id }, { $set: { lastLogin: new Date() } });
+    await recordLogin(user, { userAgent: req.get('user-agent') });
 
     // Generate token
     const token = jwt.sign(
@@ -967,6 +975,8 @@ app.post('/BussnessApp/auth/refresh', async (req, res) => {
         code: 'ACCOUNT_DISABLED'
       });
     }
+
+    trackUserActivity(user._id);
 
     const newToken = jwt.sign(
       { id: user._id, username: user.username, role: user.role, projectId: user.projectId },
@@ -5724,7 +5734,7 @@ app.listen(PORT, async () => {
   setInterval(expireSubscriptions, 60 * 60 * 1000);
 
   // Alertes d'inactivité / reprise d'activité des clients (backoffice) toutes les heures
-  const checkClientActivity = activityAlerts.getSharedJob(mongoose);
+  const checkClientActivity = activityAlerts.getSharedJob(mongoose, { sendEmail });
   checkClientActivity().catch(error => console.error('[activityAlerts]', error.message));
   setInterval(checkClientActivity, 60 * 60 * 1000);
 });

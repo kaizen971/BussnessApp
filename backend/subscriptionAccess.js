@@ -150,6 +150,47 @@ const planPeriodLabel = (plan) => {
 
 const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// Parité fixe EUR/XOF, identique aux applications mobile et web.
+// https://www.bceao.int/fr/content/histoire-du-franc-cfa
+const EUR_TO_XOF_RATE = 655.957;
+
+function mobileMoneyAmount(plan) {
+  const price = Number(plan.price);
+  if (!Number.isFinite(price) || price <= 0) return null;
+  const currency = String(plan.currency || 'EUR').toUpperCase();
+  if (currency === 'EUR') return Math.round(price * EUR_TO_XOF_RATE);
+  if (currency === 'XOF') return Math.round(price);
+  return null;
+}
+
+function buildMobileMoneySection({ user, plan }) {
+  const amount = mobileMoneyAmount(plan);
+  const reference = user.email ? `EAS ${user.email}` : 'EAS + votre adresse e-mail';
+  return `
+    <div style="border-top: 1px solid #E2E8F0; padding-top: 20px; margin-top: 24px;">
+      <h3 style="font-size: 16px; color: #1A1A1A;">1. Paiement par Mobile Money (recommandé)</h3>
+      <p style="color: #4A5568; font-size: 14px;">Réglez votre abonnement facilement depuis votre téléphone, sans carte bancaire.</p>
+      <div style="background: #FAF7EB; border-radius: 8px; padding: 16px;">
+        ${amount !== null
+          ? `<p style="margin: 0 0 12px;"><strong>Montant à transférer : <span style="color: #9A7A17;">${amount.toLocaleString('fr-FR')} FCFA</span></strong></p>`
+          : '<p style="margin: 0 0 12px;">Contactez notre équipe pour confirmer le montant à transférer en FCFA.</p>'}
+        <p style="margin: 6px 0; color: #4A5568;"><strong>MTN Mobile Money (Bénin)</strong><br>
+          <a href="tel:+2290159507754" style="color: #1A1A1A;">+229 01 59 50 77 54</a></p>
+        <p style="margin: 6px 0; color: #4A5568;"><strong>Celtiis Cash (Bénin)</strong><br>
+          <a href="tel:+2290193336767" style="color: #1A1A1A;">+229 01 93 33 67 67</a></p>
+      </div>
+      <p style="font-size: 14px; color: #4A5568;"><strong>Comment procéder ?</strong></p>
+      <ol style="padding-left: 22px; color: #4A5568; font-size: 14px; line-height: 1.6;">
+        <li>Transférez le montant de votre abonnement vers l’un des numéros ci-dessus.</li>
+        <li>Dans le champ « Motif » ou « Raison du transfert », indiquez obligatoirement
+          <strong style="word-break: break-word;">${escapeHtml(reference)}</strong> (EAS suivi de l’adresse e-mail associée à votre compte).</li>
+        <li>Après vérification et identification du paiement par notre équipe, votre abonnement sera activé.</li>
+      </ol>
+      <p style="font-size: 12px; color: #718096;">Important : renseignez bien le motif du transfert pour permettre
+        l’identification de votre paiement et éviter tout retard d’activation.</p>
+    </div>`;
+}
+
 // Email « fin d'essai / abonnement expiré » avec l'offre et le bouton de paiement
 function buildOfferEmail({ user, plan, payLink, reason, endedAt }) {
   const name = escapeHtml(user.fullName || user.username);
@@ -180,23 +221,33 @@ function buildOfferEmail({ user, plan, payLink, reason, endedAt }) {
         <p style="color: #4A5568;">Pour continuer, nous vous proposons la licence :</p>
         <div style="border: 2px solid #D4AF37; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;">
           <p style="margin: 0; font-size: 20px; font-weight: 700; color: #1A1A1A;">${escapeHtml(plan.name)}</p>
-          <p style="margin: 8px 0 0; font-size: 28px; font-weight: 800; color: #B8941E;">${plan.price} ${escapeHtml(plan.currency || 'EUR') === 'EUR' ? '€' : escapeHtml(plan.currency)}<span style="font-size: 15px; color: #718096; font-weight: 500;"> / ${planPeriodLabel(plan)}</span></p>
+          <p style="margin: 8px 0 0; font-size: 28px; font-weight: 800; color: #B8941E;">${escapeHtml(plan.price)} ${escapeHtml(plan.currency || 'EUR') === 'EUR' ? '€' : escapeHtml(plan.currency)}<span style="font-size: 15px; color: #718096; font-weight: 500;"> / ${planPeriodLabel(plan)}</span></p>
           ${plan.maxProjects ? `<p style="margin: 6px 0 0; color: #718096; font-size: 13px;">Jusqu'à ${plan.maxProjects} business</p>` : ''}
           ${features ? `<ul style="list-style: none; padding: 0; margin: 16px 0 0; text-align: left; display: inline-block;">${features}</ul>` : ''}
         </div>
+        ${buildMobileMoneySection({ user, plan })}
+        <div style="border-top: 1px solid #E2E8F0; padding-top: 20px; margin-top: 24px;">
+        <h3 style="font-size: 16px; color: #1A1A1A;">2. Paiement par carte bancaire</h3>
+        <p style="color: #4A5568; font-size: 14px;">Vous préférez payer directement en ligne ?</p>
         <div style="text-align: center; margin: 28px 0;">
-          <a href="${payLink}" style="display: inline-block; background: linear-gradient(135deg, #D4AF37, #B8941E); color: #1A1A1A; padding: 16px 40px; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 700;">
+          <a href="${escapeHtml(payLink)}" style="display: inline-block; background: #D4AF37; color: #1A1A1A; padding: 16px 24px; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 700;">
             Activer ${escapeHtml(plan.name)} – Payer en ligne
           </a>
           <p style="color: #A0AEC0; font-size: 12px; margin-top: 10px;">Paiement sécurisé par carte via Stripe. Lien valable 30 jours.</p>
         </div>
         <p style="color: #4A5568; font-size: 14px;">
-          Dès le paiement confirmé, votre accès est rétabli automatiquement : il suffit de rouvrir l'application.
+          Dès confirmation du paiement par carte, votre accès est rétabli automatiquement : il suffit de rouvrir l'application.
           Vous pouvez aussi choisir une autre offre depuis l'application (menu Abonnement).
         </p>
-        <p style="color: #718096; font-size: 13px; margin-top: 30px;">
-          Une question ? Répondez simplement à cet email.
-        </p>
+        </div>
+        <div style="border-top: 1px solid #E2E8F0; padding-top: 20px; margin-top: 24px; color: #4A5568; font-size: 14px;">
+          <h3 style="font-size: 16px; color: #1A1A1A;">Une question ? Besoin d’assistance ?</h3>
+          <p>Notre équipe reste à votre disposition pour toute question concernant votre abonnement ou votre paiement.
+            Vous pouvez également répondre directement à cet e-mail.</p>
+          <p>WhatsApp Bénin : <a href="https://wa.me/2290193336767" style="color: #1A1A1A;">+229 01 93 33 67 67</a><br>
+            WhatsApp France : <a href="https://wa.me/33638027210" style="color: #1A1A1A;">+33 6 38 02 72 10</a></p>
+          <p style="color: #718096; font-size: 13px;">Merci de votre confiance et à bientôt sur EAS !</p>
+        </div>
       </div>
     </div>`;
 
@@ -218,4 +269,5 @@ module.exports = {
   verifyPayToken,
   buildPayLink,
   buildOfferEmail,
+  mobileMoneyAmount,
 };

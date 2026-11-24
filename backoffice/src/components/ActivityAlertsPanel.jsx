@@ -28,6 +28,7 @@ function plural(n, word) {
 
 function SettingsModal({ open, onClose, settings, onSaved }) {
   const [enabled, setEnabled] = useState(true)
+  const [emailEnabled, setEmailEnabled] = useState(true)
   const [days, setDays] = useState(14)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -35,6 +36,7 @@ function SettingsModal({ open, onClose, settings, onSaved }) {
   useEffect(() => {
     if (open && settings) {
       setEnabled(settings.enabled)
+      setEmailEnabled(settings.emailEnabled)
       setDays(settings.inactivityDays)
       setError('')
     }
@@ -45,7 +47,7 @@ function SettingsModal({ open, onClose, settings, onSaved }) {
     setSaving(true)
     setError('')
     try {
-      const res = await api.put('/backoffice/activity-alerts/settings', { enabled, inactivityDays: Number(days) })
+      const res = await api.put('/backoffice/activity-alerts/settings', { enabled, emailEnabled, inactivityDays: Number(days) })
       onSaved(res.data.settings)
       onClose()
     } catch (err) {
@@ -64,6 +66,13 @@ function SettingsModal({ open, onClose, settings, onSaved }) {
             <p className="text-xs text-gray-400 mt-0.5">Vérification automatique toutes les heures</p>
           </div>
           <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} className="w-5 h-5 accent-primary-500" />
+        </label>
+        <label className="flex items-center justify-between gap-4 cursor-pointer">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Alertes d’inactivité par e-mail</p>
+            <p className="text-xs text-gray-400 mt-0.5">Envoyées aux super-admins actifs, une fois par période d’inactivité et par destinataire</p>
+          </div>
+          <input type="checkbox" checked={emailEnabled} onChange={e => setEmailEnabled(e.target.checked)} className="w-5 h-5 accent-primary-500" />
         </label>
         <div>
           <label className="input-label" htmlFor="inactivity-days">Seuil d'inactivité (jours)</label>
@@ -130,10 +139,12 @@ export default function ActivityAlertsPanel({ onCountsChange }) {
   const runNow = async () => {
     setRunning(true)
     try {
-      await api.post('/backoffice/activity-alerts/run')
+      const res = await api.post('/backoffice/activity-alerts/run')
+      if (res.data.error) throw new Error(res.data.error)
       await load(tab)
+      if (res.data.emailsFailed > 0) setError('Vérification terminée. Certains e-mails restent en attente et seront réessayés automatiquement.')
     } catch (err) {
-      setError(err.response?.data?.error || 'Vérification impossible')
+      setError(err.response?.data?.error || err.message || 'Vérification impossible')
     } finally {
       setRunning(false)
     }
@@ -144,6 +155,7 @@ export default function ActivityAlertsPanel({ onCountsChange }) {
   const counts = data?.counts || { inactivity: 0, reactivation: 0 }
 
   return (
+    <>
     <div className="card animate-in" id="activity-alerts">
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-gray-100">
         <div className="flex items-center gap-2.5">
@@ -224,6 +236,12 @@ export default function ActivityAlertsPanel({ onCountsChange }) {
                       : `De retour le ${formatDate(alert.lastActivityAt)} après ${plural(alert.inactiveDays ?? 0, 'jour')} d'inactivité`}
                     {alert.admin?.email && ` · ${alert.admin.email}`}
                   </p>
+                  {inactivity && alert.emailNotifiedAt && (
+                    <p className="text-xs text-gray-400 mt-0.5">E-mail envoyé à l’équipe le {formatDate(alert.emailNotifiedAt)}</p>
+                  )}
+                  {inactivity && !alert.emailNotifiedAt && alert.ongoing && settings?.enabled && settings?.emailEnabled && (
+                    <p className="text-xs text-amber-600 mt-0.5">Notification e-mail en attente</p>
+                  )}
                 </div>
                 {alert.status === 'open' && (
                   <button onClick={() => acknowledge([alert._id])} className="btn-ghost text-xs py-1.5 flex-shrink-0" title="Marquer comme traitée">
@@ -236,10 +254,11 @@ export default function ActivityAlertsPanel({ onCountsChange }) {
         )}
       </div>
 
-      <SettingsModal
+    </div>
+    <SettingsModal
         open={settingsOpen} onClose={() => setSettingsOpen(false)} settings={settings}
         onSaved={(s) => { setSettings(s); load(tab) }}
       />
-    </div>
+    </>
   )
 }

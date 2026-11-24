@@ -166,3 +166,28 @@ test("email d'offre : contient le lien, le prix, et échappe le nom", () => {
   assert.ok(html.includes('10 €'));
   assert.ok(html.includes('&lt;b&gt;Awa&lt;/b&gt;') && !html.includes('<b>Awa</b>'));
 });
+
+test('email de renouvellement : Mobile Money, référence du compte, carte et assistance séparés', () => {
+  const { html } = access.buildOfferEmail({
+    user: { fullName: 'Awa', email: 'a&b@example.com' },
+    plan: { name: 'EAS Premium', price: 48, duration: 1, durationType: 'years', features: ['<Business Max>'] },
+    payLink: 'https://example.com/pay?token=abc&source=email', reason: 'subscription_expired',
+  });
+  for (const text of ['MTN Mobile Money (Bénin)', '+229 01 59 50 77 54', 'Celtiis Cash (Bénin)',
+    '+229 01 93 33 67 67', 'EAS a&amp;b@example.com', '31\u202f486 FCFA',
+    'https://wa.me/2290193336767', 'https://wa.me/33638027210', 'Après vérification',
+    'https://example.com/pay?token=abc&amp;source=email', '&lt;Business Max&gt;']) {
+    assert.ok(html.includes(text), `Contenu attendu : ${text}`);
+  }
+  assert.ok(html.indexOf('1. Paiement par Mobile Money') < html.indexOf('2. Paiement par carte'));
+  assert.match(html, /confirmation du paiement par carte/);
+  assert.doesNotMatch(html, /\{\{|undefined|Alerte d’inactivité/);
+});
+
+test('montant Mobile Money : euros convertis, FCFA conservés, devise inconnue sans montant inventé', () => {
+  assert.equal(access.mobileMoneyAmount({ price: 10, currency: 'EUR' }), 6560);
+  assert.equal(access.mobileMoneyAmount({ price: 15000, currency: 'XOF' }), 15000);
+  assert.equal(access.mobileMoneyAmount({ price: 10, currency: 'USD' }), null);
+  assert.equal(access.mobileMoneyAmount({ price: -5 }), null);
+  assert.equal(access.mobileMoneyAmount({ price: 'invalide' }), null);
+});

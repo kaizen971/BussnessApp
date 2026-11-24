@@ -88,8 +88,8 @@ export default function AdminsPage() {
 
   const filters = [
     { key: 'all', label: 'Tous', count: null },
-    { key: 'active', label: 'Actifs' },
-    { key: 'inactive', label: 'Inactifs' },
+    { key: 'active', label: 'Activés' },
+    { key: 'inactive', label: 'Désactivés' },
   ]
 
   return (
@@ -155,6 +155,7 @@ export default function AdminsPage() {
                 <tr className="bg-gray-50/60">
                   <th className="text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-5 py-3">Admin</th>
                   <th className="text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-5 py-3">Statut</th>
+                  <th className="text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-5 py-3 hidden md:table-cell">Dernière connexion</th>
                   <th className="text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-5 py-3 hidden md:table-cell">Abonnement</th>
                   <th className="text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-5 py-3 hidden lg:table-cell">Paiement</th>
                   <th className="text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider px-5 py-3 hidden lg:table-cell">Business</th>
@@ -186,7 +187,12 @@ export default function AdminsPage() {
                         </Link>
                       </td>
                       <td className="px-5 py-3.5">
-                        <Badge variant={admin.isActive ? 'success' : 'danger'} dot>{admin.isActive ? 'Actif' : 'Inactif'}</Badge>
+                        <Badge variant={admin.isActive ? 'success' : 'danger'} dot>{admin.isActive ? 'Activé' : 'Désactivé'}</Badge>
+                      </td>
+                      <td className="px-5 py-3.5 hidden md:table-cell text-xs text-gray-500">
+                        {admin.lastLogin
+                          ? new Date(admin.lastLogin).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })
+                          : 'Jamais enregistrée'}
                       </td>
                       <td className="px-5 py-3.5 hidden md:table-cell">
                         {sub ? (

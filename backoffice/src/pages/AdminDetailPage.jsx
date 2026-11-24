@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, UserCheck, UserX, Send, CreditCard, Activity, FolderOpen, Clock, Loader2, RefreshCw, Banknote, Heart, AlertTriangle, ChevronRight, Plus, Check, Package, Trash2, Tag, Mail } from 'lucide-react'
+import { ArrowLeft, UserCheck, UserX, Send, CreditCard, Activity, FolderOpen, Clock, Loader2, RefreshCw, Banknote, Heart, AlertTriangle, ChevronRight, Plus, Check, Package, Trash2, Tag, Mail, LogIn } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Badge, Skeleton, ConfirmDialog, Modal } from '../components/ui'
 import api from '../services/api'
 
 const METHOD_LABELS = { card: 'Carte', cash: 'Liquide', donation: 'Donation' }
+const ROLE_LABELS = { admin: 'Propriétaire', responsable: 'Responsable', manager: 'Responsable', cashier: 'Caissier' }
 
 const SUB_STATUS = {
   pending_payment: { label: 'En attente', variant: 'warning' },
@@ -184,7 +185,7 @@ export default function AdminDetailPage() {
     </div>
   )
 
-  const { admin, subscriptions, payments, projects, activities } = data
+  const { admin, subscriptions, payments, projects, activities, connectionUsers = [admin], businessLastActivityAt } = data
   const latestSub = subscriptions[0]
   const hasPendingPayment = latestSub?.status === 'pending_payment' && latestSub?.stripePaymentLinkUrl
   const currentSubscriptions = subscriptions.filter(sub => sub.status === 'active' && (!sub.endDate || new Date(sub.endDate) > new Date()))
@@ -197,6 +198,7 @@ export default function AdminDetailPage() {
     { key: 'subscriptions', label: 'Abonnements', count: subscriptions.length, icon: CreditCard },
     { key: 'payments', label: 'Paiements', count: payments.length, icon: Banknote },
     { key: 'projects', label: 'Projets', count: projects.length, icon: FolderOpen },
+    { key: 'connections', label: 'Connexions', count: connectionUsers.length, icon: LogIn },
     { key: 'activity', label: 'Activité', count: activities.length, icon: Activity },
   ]
 
@@ -211,14 +213,14 @@ export default function AdminDetailPage() {
 
       {/* Header card */}
       <div className="card p-6 animate-in stagger-1">
-        <div className="flex flex-col sm:flex-row sm:items-start gap-5">
+        <div className="flex flex-wrap items-start gap-5">
           <div className="w-16 h-16 bg-gradient-to-br from-primary-400 to-primary-600 rounded-2xl flex items-center justify-center text-white text-2xl font-bold flex-shrink-0 shadow-lg shadow-primary-500/20">
             {(admin.fullName || admin.username)?.[0]?.toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">{admin.fullName || admin.username}</h1>
-              <Badge variant={admin.isActive ? 'success' : 'danger'} dot>{admin.isActive ? 'Actif' : 'Inactif'}</Badge>
+              <Badge variant={admin.isActive ? 'success' : 'danger'} dot>{admin.isActive ? 'Activé' : 'Désactivé'}</Badge>
             </div>
             <p className="text-sm text-gray-500 mt-1">{admin.email}</p>
             <div className="flex items-center gap-3 mt-2.5 flex-wrap">
@@ -232,7 +234,7 @@ export default function AdminDetailPage() {
               {latestSub && <Badge variant={SUB_STATUS[latestSub.status]?.variant || 'neutral'}>{latestSub.planName || latestSub.plan}</Badge>}
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 sm:flex-shrink-0">
+          <div className="w-full flex flex-wrap gap-2">
             <button
               onClick={() => setConfirm({ open: true, type: 'toggle' })}
               disabled={actionLoading === 'toggle'}
@@ -292,6 +294,21 @@ export default function AdminDetailPage() {
               {actionLoading === 'delete' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
               Supprimer
             </button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Dernière connexion du propriétaire</p>
+            <p className="text-sm font-semibold text-gray-900 mt-1">{admin.lastLogin ? formatDate(admin.lastLogin) : 'Jamais enregistrée'}</p>
+          </div>
+          <div className="rounded-xl bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Dernière activité du business</p>
+            <p className="text-sm font-semibold text-gray-900 mt-1">{formatDate(businessLastActivityAt)}</p>
+          </div>
+          <div className="rounded-xl bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Connexions du propriétaire suivies</p>
+            <p className="text-sm font-semibold text-gray-900 mt-1">{admin.loginCount ?? '—'}</p>
           </div>
         </div>
 
@@ -432,6 +449,42 @@ export default function AdminDetailPage() {
           )
         )}
 
+        {tab === 'connections' && (
+          <>
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-gray-900">Connexions du propriétaire et de son équipe</h2>
+              <p className="text-xs text-gray-500 mt-1">Les compteurs et l’historique sont enregistrés depuis la mise en place du suivi.
+                Le renouvellement automatique d’une session compte comme une activité. Les connexions explicites apparaissent dans l’onglet Activité.</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-gray-50/60 text-[11px] uppercase text-gray-500">
+                  <tr>
+                    <th className="px-5 py-3">Utilisateur</th>
+                    <th className="px-5 py-3">Dernière connexion</th>
+                    <th className="px-5 py-3">Dernière activité</th>
+                    <th className="px-5 py-3">Connexions suivies</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100/60">
+                  {connectionUsers.map(user => (
+                    <tr key={user._id}>
+                      <td className="px-5 py-3.5">
+                        <p className="text-sm font-semibold text-gray-900">{user.fullName || user.username}</p>
+                        <p className="text-xs text-gray-500">{ROLE_LABELS[user.role] || user.role} · {user.email}</p>
+                        {user.isActive === false && <Badge variant="danger">Désactivé</Badge>}
+                      </td>
+                      <td className="px-5 py-3.5 text-xs text-gray-500">{user.lastLogin ? formatDate(user.lastLogin) : 'Jamais enregistrée'}</td>
+                      <td className="px-5 py-3.5 text-xs text-gray-500">{formatDate(user.lastActivityAt)}</td>
+                      <td className="px-5 py-3.5 text-sm font-semibold text-gray-900">{user.loginCount ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
         {tab === 'activity' && (
           activities.length === 0 ? (
             <div className="py-16 text-center">
@@ -448,6 +501,7 @@ export default function AdminDetailPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-gray-800 font-medium">{ACTION_LABELS[log.action] || log.action}</p>
                     {log.details && <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{log.details}</p>}
+                    {log.action === 'login' && log.userAgent && <p className="text-xs text-gray-400 mt-0.5 break-all">{log.userAgent}</p>}
                   </div>
                   <span className="text-xs text-gray-400 flex-shrink-0 font-medium bg-gray-50 px-2.5 py-1 rounded-lg">{formatDate(log.createdAt)}</span>
                 </div>

@@ -197,13 +197,16 @@ const PaymentSchema = new mongoose.Schema({
 
 const ActivityLogSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId },
-  userType: { type: String, enum: ['superadmin', 'admin', 'system'] },
+  userType: { type: String, enum: ['superadmin', 'admin', 'user', 'system'] },
   action: { type: String, required: true },
   details: String,
   entityType: String,
   entityId: { type: mongoose.Schema.Types.ObjectId },
+  userAgent: String,
   createdAt: { type: Date, default: Date.now }
 });
+ActivityLogSchema.index({ userId: 1, createdAt: -1 });
+ActivityLogSchema.index({ entityType: 1, entityId: 1, createdAt: -1 });
 
 // ============= MODELS =============
 
@@ -235,6 +238,7 @@ const sendEmail = async (to, subject, html) => {
     const transporter = createTransporter();
     await transporter.sendMail({
       from: process.env.SMTP_FROM || '"BussnessApp" <noreply@bussnessapp.com>',
+      replyTo: process.env.SMTP_REPLY_TO || process.env.SMTP_USER,
       to,
       subject,
       html
@@ -661,14 +665,30 @@ router.get('/admins', authenticateSuperAdmin, async (req, res) => {
 router.get('/admins/:id', authenticateSuperAdmin, async (req, res) => {
   try {
     const admin = await User.findById(req.params.id).select('-password');
-    if (!admin) return res.status(404).json({ error: 'Admin non trouvé' });
+    if (!admin || admin.role !== 'admin') return res.status(404).json({ error: 'Admin non trouvé' });
 
     const subscriptions = await Subscription.find({ adminId: admin._id }).sort({ createdAt: -1 });
     const payments = await Payment.find({ adminId: admin._id }).sort({ createdAt: -1 });
     const projects = await Project.find({ ownerId: admin._id });
-    const activities = await ActivityLog.find({ userId: admin._id }).sort({ createdAt: -1 }).limit(50);
+    const projectIds = projects.map(project => project._id);
+    const team = await User.find({
+      role: { $ne: 'admin' }, deletedAt: null,
+      $or: [{ projectId: { $in: projectIds } }, { projectIds: { $in: projectIds } }],
+    }).select('fullName username email role isActive lastLogin lastActivityAt loginCount').lean();
+    const activities = await ActivityLog.find({ $or: [
+      { userId: admin._id },
+      { entityType: 'User', entityId: admin._id },
+      { userId: { $in: team.map(member => member._id) }, action: 'login' },
+    ] }).sort({ createdAt: -1 }).limit(50);
+    const lastActivity = await activityAlerts.computeLastActivity(mongoose, [admin]);
+    const connectionUsers = [admin, ...team].map(user => ({
+      _id: user._id, fullName: user.fullName, username: user.username, email: user.email,
+      role: user.role, isActive: user.isActive, lastLogin: user.lastLogin,
+      lastActivityAt: user.lastActivityAt, loginCount: user.loginCount,
+    }));
 
-    res.json({ admin: admin.toObject(), subscriptions, payments, projects, activities });
+    res.json({ admin: admin.toObject(), subscriptions, payments, projects, activities,
+      connectionUsers, businessLastActivityAt: lastActivity.get(String(admin._id)) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -1535,7 +1555,7 @@ router.put('/activity-alerts/settings', authenticateSuperAdmin, async (req, res)
     await logActivity(req.superAdmin.id, 'superadmin', 'update_activity_alerts',
       `Alertes d'inactivité ${saved.enabled ? 'activées' : 'désactivées'} · seuil ${saved.inactivityDays} j`, 'BackofficeSetting');
     // Applique immédiatement le nouveau seuil
-    const summary = await activityAlerts.getSharedJob(mongoose)();
+    const summary = await activityAlerts.getSharedJob(mongoose, { sendEmail })();
     res.json({ settings: saved, summary });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1544,7 +1564,7 @@ router.put('/activity-alerts/settings', authenticateSuperAdmin, async (req, res)
 
 router.post('/activity-alerts/run', authenticateSuperAdmin, async (req, res) => {
   try {
-    const summary = await activityAlerts.getSharedJob(mongoose)({ force: true });
+    const summary = await activityAlerts.getSharedJob(mongoose, { sendEmail })({ force: true });
     res.json(summary);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1565,6 +1585,7 @@ router.get('/activity-alerts', authenticateSuperAdmin, async (req, res) => {
 
     const [alerts, counts] = await Promise.all([
       ClientActivityAlert.find(query).sort({ createdAt: -1 }).limit(limit)
+        .select('-emailClaimToken -emailClaimedAt -emailSentTo')
         .populate('adminId', 'fullName username email isActive').lean(),
       ClientActivityAlert.aggregate([
         { $match: { status: 'open' } },
