@@ -104,6 +104,7 @@ npm run web      # Pour Web
 - `GET /BussnessApp/stock` - Liste du stock
 - `POST /BussnessApp/stock` - Ajouter un article
 - `PUT /BussnessApp/stock/:id` - Modifier un article
+- `DELETE /BussnessApp/stock/:id` - Supprimer un stock et ses mouvements manuels (refusé si lié à une vente)
 
 ### Customers
 - `GET /BussnessApp/customers` - Liste des clients
@@ -196,3 +197,51 @@ handle_path /BussnessApp* {
 - Gradient backgrounds
 - États de chargement
 - Messages d'erreur clairs
+
+## Suivi des connexions et inactivité
+
+Le backoffice affiche la dernière connexion dans la liste des administrateurs. La fiche d’un
+administrateur propose un onglet **Connexions** pour le propriétaire et les membres de ses
+business. L’onglet **Activité** présente les 50 derniers événements, dont les connexions et
+les actions de gestion du compte. Les nouveaux compteurs et journaux commencent à la mise
+en place du suivi ; les anciennes dates de dernière connexion sont conservées.
+
+Une connexion avec mot de passe met à jour les dates et incrémente le compteur. Un
+renouvellement de session met uniquement à jour l’activité. Les requêtes authentifiées
+enregistrent aussi l’activité, au plus toutes les 15 minutes par utilisateur.
+
+Dans **Tableau de bord → Suivi d’activité clients → Réglages**, le seuil par défaut est de
+14 jours (réglable de 1 à 365 jours). L’activité du propriétaire, de son équipe non archivée,
+les ventes et les mouvements de stock sont pris en compte. La vérification s’exécute au
+démarrage et toutes les heures, ou via **Vérifier maintenant**.
+
+Les notifications d’inactivité par e-mail sont activées par défaut et peuvent être
+désactivées séparément. Elles sont destinées aux super-admins actifs et utilisent le SMTP
+existant. Un destinataire déjà notifié n’est pas relancé pendant la même période
+d’inactivité, même après acquittement dans le backoffice. Les échecs d’envoi restent en
+attente et sont réessayés au passage suivant. Une reprise d’activité clôture l’alerte.
+
+## Mobile Money dans le mail de renouvellement
+
+Ce mail est indépendant des alertes d’inactivité. Les offres envoyées en fin d’essai ou
+d’abonnement et les offres renvoyées depuis la fiche client proposent :
+
+- MTN Mobile Money : **+229 01 59 50 77 54** ;
+- Celtiis Cash : **+229 01 93 33 67 67** ;
+- le motif obligatoire **EAS suivi de l’adresse e-mail du compte** ;
+- le paiement par carte Stripe existant et les contacts WhatsApp Bénin / France fournis.
+
+Le montant en FCFA est arrondi au franc, avec la même parité EUR/XOF que les applications
+([source BCEAO](https://www.bceao.int/fr/content/histoire-du-franc-cfa)). Un tarif déjà en
+XOF est conservé. Pour une autre devise, le mail invite à confirmer le montant avec
+l’équipe. Le paiement Mobile Money doit être vérifié puis l’abonnement activé manuellement
+dans le backoffice. Le mail n’effectue aucune confirmation de transfert automatique.
+`SMTP_REPLY_TO` permet de choisir l’adresse recevant les réponses ; à défaut, `SMTP_USER`
+est utilisé.
+
+Tests locaux de ces deux fonctionnalités (sans envoi d’e-mail ni accès à une base réelle) :
+
+```bash
+cd backend
+node --test tests/activity_alerts_test.js tests/activity_workflow_test.js tests/subscription_access_test.js tests/subscription_expiry_test.js
+```

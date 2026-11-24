@@ -20,3 +20,12 @@ yarn-error.*
 *.tsbuildinfo
 backend/
 backoffice/
+webapp/
+outputs/
+imagePromo/
+.git/
+frontend/ios/
+frontend/android/
+*.ipa
+*.apk
+*.aab

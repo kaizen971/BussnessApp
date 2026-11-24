@@ -7,9 +7,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/BussnessApp': {
-        target: 'https://businessapp.installpostiz.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/BussnessApp/, '/bussnessapp')
+        target: 'http://127.0.0.1:3003',
+        changeOrigin: true
       }
     }
   }

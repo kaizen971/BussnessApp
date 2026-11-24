@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, UserCheck, UserX, Send, CreditCard, Activity, FolderOpen, Clock, Loader2, RefreshCw, Banknote, Heart, AlertTriangle, ChevronRight, Plus, Check, Package, Trash2 } from 'lucide-react'
+import { ArrowLeft, UserCheck, UserX, Send, CreditCard, Activity, FolderOpen, Clock, Loader2, RefreshCw, Banknote, Heart, AlertTriangle, ChevronRight, Plus, Check, Package, Trash2, Tag, Mail, LogIn } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Badge, Skeleton, ConfirmDialog, Modal } from '../components/ui'
 import api from '../services/api'
 
 const METHOD_LABELS = { card: 'Carte', cash: 'Liquide', donation: 'Donation' }
+const ROLE_LABELS = { admin: 'Propriétaire', responsable: 'Responsable', manager: 'Responsable', cashier: 'Caissier' }
 
 const SUB_STATUS = {
   pending_payment: { label: 'En attente', variant: 'warning' },
@@ -27,6 +28,7 @@ const ACTION_LABELS = {
   activate_admin: 'Admin activé', send_credentials: 'Identifiants envoyés',
   update_subscription: 'Abonnement modifié', payment_completed: 'Paiement reçu',
   resend_payment_link: 'Lien renvoyé', assign_subscription: 'Abonnement attribué',
+  simulate_subscription_expiry: 'Fin d’abonnement simulée',
 }
 
 function formatDate(d) {
@@ -77,6 +79,16 @@ export default function AdminDetailPage() {
       } else if (type === 'link') {
         const res = await api.post(`/backoffice/admins/${id}/resend-payment-link`)
         toast.success(res.data.message)
+      } else if (type === 'offer') {
+        const res = await api.post(`/backoffice/admins/${id}/send-upgrade-offer`)
+        toast.success(res.data.message)
+      } else if (type === 'expiry') {
+        const current = data.subscriptions.filter(sub => sub.status === 'active' && (!sub.endDate || new Date(sub.endDate) > new Date()))
+        if (current.length !== 1) throw new Error('Rechargez la fiche pour vérifier l’abonnement en cours.')
+        const res = await api.post(`/backoffice/admins/${id}/simulate-subscription-expiry`, { subscriptionId: current[0]._id, confirmed: true })
+        if (res.data.emailSent) toast.success(res.data.message, { duration: 7000 })
+        else toast.error(res.data.message, { duration: 10000 })
+        load()
       } else if (type === 'delete') {
         await api.delete(`/backoffice/admins/${id}`)
         toast.success('Admin supprimé définitivement')
@@ -84,7 +96,8 @@ export default function AdminDetailPage() {
         return
       }
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Erreur')
+      toast.error(err.response?.data?.error || err.message || 'Erreur')
+      if (type === 'expiry') load()
     }
     setActionLoading(null)
     setConfirm({ open: false, type: null })
@@ -128,6 +141,8 @@ export default function AdminDetailPage() {
     if (confirm.type === 'toggle' && admin.isActive) return { title: 'Désactiver cet admin ?', message: `${admin.fullName} n'aura plus accès à l'application.`, confirmText: 'Désactiver', variant: 'danger' }
     if (confirm.type === 'toggle') return { title: 'Réactiver cet admin ?', message: `${admin.fullName} retrouvera l'accès.`, confirmText: 'Activer', variant: 'success' }
     if (confirm.type === 'creds') return { title: 'Envoyer les identifiants ?', message: `Un nouveau mot de passe sera envoyé à ${admin.email}.`, confirmText: 'Envoyer', variant: 'info' }
+    if (confirm.type === 'offer') return { title: 'Envoyer l\'offre d\'abonnement ?', message: `${admin.email} recevra la proposition de licence (Basic pour un essai terminé) avec un lien de paiement par carte valable 30 jours.`, confirmText: 'Envoyer', variant: 'info' }
+    if (confirm.type === 'expiry') return { title: 'Simuler une fin d’abonnement ?', message: `À utiliser sur un compte de test. L’abonnement de ${admin.fullName || admin.username} prendra réellement fin maintenant : les fonctionnalités seront bloquées et le mail de renouvellement sera envoyé à ${admin.email}. Le compte restera connecté. Pour rétablir l’accès, vous devrez lui attribuer un nouvel abonnement.`, confirmText: 'Expirer et envoyer le mail', variant: 'danger' }
     if (confirm.type === 'link') return { title: 'Renvoyer le lien ?', message: `Un email de rappel sera envoyé à ${admin.email}.`, confirmText: 'Renvoyer', variant: 'info' }
     if (confirm.type === 'delete') return { title: 'Supprimer définitivement ?', message: `${admin.fullName || admin.username} sera supprimé avec tous ses projets, abonnements et données. Cette action est irréversible.`, confirmText: 'Supprimer', variant: 'danger' }
     return {}
@@ -170,14 +185,20 @@ export default function AdminDetailPage() {
     </div>
   )
 
-  const { admin, subscriptions, payments, projects, activities } = data
+  const { admin, subscriptions, payments, projects, activities, connectionUsers = [admin], businessLastActivityAt } = data
   const latestSub = subscriptions[0]
   const hasPendingPayment = latestSub?.status === 'pending_payment' && latestSub?.stripePaymentLinkUrl
+  const currentSubscriptions = subscriptions.filter(sub => sub.status === 'active' && (!sub.endDate || new Date(sub.endDate) > new Date()))
+  const simulationSub = currentSubscriptions.length === 1 ? currentSubscriptions[0] : null
+  const canSimulateExpiry = admin.isActive && simulationSub && simulationSub.startDate && new Date(simulationSub.startDate) <= new Date()
+    && !simulationSub.stripeSubscriptionId && !simulationSub.stripeSessionId && !simulationSub.stripePaymentLinkUrl
+    && !['apple_iap', 'google_play'].includes(simulationSub.paymentMethod)
 
   const tabs = [
     { key: 'subscriptions', label: 'Abonnements', count: subscriptions.length, icon: CreditCard },
     { key: 'payments', label: 'Paiements', count: payments.length, icon: Banknote },
     { key: 'projects', label: 'Projets', count: projects.length, icon: FolderOpen },
+    { key: 'connections', label: 'Connexions', count: connectionUsers.length, icon: LogIn },
     { key: 'activity', label: 'Activité', count: activities.length, icon: Activity },
   ]
 
@@ -192,23 +213,28 @@ export default function AdminDetailPage() {
 
       {/* Header card */}
       <div className="card p-6 animate-in stagger-1">
-        <div className="flex flex-col sm:flex-row sm:items-start gap-5">
+        <div className="flex flex-wrap items-start gap-5">
           <div className="w-16 h-16 bg-gradient-to-br from-primary-400 to-primary-600 rounded-2xl flex items-center justify-center text-white text-2xl font-bold flex-shrink-0 shadow-lg shadow-primary-500/20">
             {(admin.fullName || admin.username)?.[0]?.toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">{admin.fullName || admin.username}</h1>
-              <Badge variant={admin.isActive ? 'success' : 'danger'} dot>{admin.isActive ? 'Actif' : 'Inactif'}</Badge>
+              <Badge variant={admin.isActive ? 'success' : 'danger'} dot>{admin.isActive ? 'Activé' : 'Désactivé'}</Badge>
             </div>
             <p className="text-sm text-gray-500 mt-1">{admin.email}</p>
             <div className="flex items-center gap-3 mt-2.5 flex-wrap">
               <span className="text-xs text-gray-400 bg-gray-50 px-2.5 py-1 rounded-lg font-medium">@{admin.username}</span>
               <span className="text-xs text-gray-400 bg-gray-50 px-2.5 py-1 rounded-lg font-medium">Créé le {formatShort(admin.createdAt)}</span>
+              {admin.partnerCode && (
+                <Link to={`/admins?partner=${encodeURIComponent(admin.partnerCode)}`} className="inline-flex items-center gap-1 text-xs text-primary-600 bg-primary-50 px-2.5 py-1 rounded-lg font-semibold hover:bg-primary-100">
+                  <Tag className="w-3 h-3" /> Code partenaire : {admin.partnerCode}
+                </Link>
+              )}
               {latestSub && <Badge variant={SUB_STATUS[latestSub.status]?.variant || 'neutral'}>{latestSub.planName || latestSub.plan}</Badge>}
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 sm:flex-shrink-0">
+          <div className="w-full flex flex-wrap gap-2">
             <button
               onClick={() => setConfirm({ open: true, type: 'toggle' })}
               disabled={actionLoading === 'toggle'}
@@ -225,6 +251,15 @@ export default function AdminDetailPage() {
               {actionLoading === 'creds' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               Identifiants
             </button>
+            <button
+              onClick={() => setConfirm({ open: true, type: 'offer' })}
+              disabled={actionLoading === 'offer'}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100 hover:shadow-sm transition-all disabled:opacity-50"
+              title="Envoyer par email la proposition de licence avec le lien de paiement"
+            >
+              {actionLoading === 'offer' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+              Offre d'abonnement
+            </button>
             {hasPendingPayment && (
               <button
                 onClick={() => setConfirm({ open: true, type: 'link' })}
@@ -235,6 +270,15 @@ export default function AdminDetailPage() {
                 Lien paiement
               </button>
             )}
+            <button
+              onClick={() => setConfirm({ open: true, type: 'expiry' })}
+              disabled={!canSimulateExpiry || actionLoading !== null}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold rounded-xl bg-red-50 text-red-700 hover:bg-red-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              title={canSimulateExpiry ? 'Expirer immédiatement cet abonnement et envoyer le mail de renouvellement' : 'Nécessite un compte actif avec un seul abonnement en cours, sans facturation Stripe, Apple ou Google'}
+            >
+              {actionLoading === 'expiry' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Clock className="w-3.5 h-3.5" />}
+              Simuler une fin d’abonnement
+            </button>
             <button
               onClick={openSubModal}
               className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-semibold rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:shadow-sm transition-all"
@@ -250,6 +294,21 @@ export default function AdminDetailPage() {
               {actionLoading === 'delete' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
               Supprimer
             </button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Dernière connexion du propriétaire</p>
+            <p className="text-sm font-semibold text-gray-900 mt-1">{admin.lastLogin ? formatDate(admin.lastLogin) : 'Jamais enregistrée'}</p>
+          </div>
+          <div className="rounded-xl bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Dernière activité du business</p>
+            <p className="text-sm font-semibold text-gray-900 mt-1">{formatDate(businessLastActivityAt)}</p>
+          </div>
+          <div className="rounded-xl bg-gray-50 p-3">
+            <p className="text-xs text-gray-500">Connexions du propriétaire suivies</p>
+            <p className="text-sm font-semibold text-gray-900 mt-1">{admin.loginCount ?? '—'}</p>
           </div>
         </div>
 
@@ -390,6 +449,42 @@ export default function AdminDetailPage() {
           )
         )}
 
+        {tab === 'connections' && (
+          <>
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-gray-900">Connexions du propriétaire et de son équipe</h2>
+              <p className="text-xs text-gray-500 mt-1">Les compteurs et l’historique sont enregistrés depuis la mise en place du suivi.
+                Le renouvellement automatique d’une session compte comme une activité. Les connexions explicites apparaissent dans l’onglet Activité.</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-gray-50/60 text-[11px] uppercase text-gray-500">
+                  <tr>
+                    <th className="px-5 py-3">Utilisateur</th>
+                    <th className="px-5 py-3">Dernière connexion</th>
+                    <th className="px-5 py-3">Dernière activité</th>
+                    <th className="px-5 py-3">Connexions suivies</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100/60">
+                  {connectionUsers.map(user => (
+                    <tr key={user._id}>
+                      <td className="px-5 py-3.5">
+                        <p className="text-sm font-semibold text-gray-900">{user.fullName || user.username}</p>
+                        <p className="text-xs text-gray-500">{ROLE_LABELS[user.role] || user.role} · {user.email}</p>
+                        {user.isActive === false && <Badge variant="danger">Désactivé</Badge>}
+                      </td>
+                      <td className="px-5 py-3.5 text-xs text-gray-500">{user.lastLogin ? formatDate(user.lastLogin) : 'Jamais enregistrée'}</td>
+                      <td className="px-5 py-3.5 text-xs text-gray-500">{formatDate(user.lastActivityAt)}</td>
+                      <td className="px-5 py-3.5 text-sm font-semibold text-gray-900">{user.loginCount ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
         {tab === 'activity' && (
           activities.length === 0 ? (
             <div className="py-16 text-center">
@@ -406,6 +501,7 @@ export default function AdminDetailPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-gray-800 font-medium">{ACTION_LABELS[log.action] || log.action}</p>
                     {log.details && <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{log.details}</p>}
+                    {log.action === 'login' && log.userAgent && <p className="text-xs text-gray-400 mt-0.5 break-all">{log.userAgent}</p>}
                   </div>
                   <span className="text-xs text-gray-400 flex-shrink-0 font-medium bg-gray-50 px-2.5 py-1 rounded-lg">{formatDate(log.createdAt)}</span>
                 </div>
